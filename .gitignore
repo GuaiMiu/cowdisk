@@ -1,0 +1,15 @@
+/backend/Storage/
+/backend/.env
+/backend/.venv/
+/backend/data.db
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+frontend/node_modules/
+frontend/dist/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
