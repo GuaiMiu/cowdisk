@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.core.database import async_session, async_engine, redis_client
 from app.utils.logger import logger
 from app.admin.models.user import User
+from app.disk.models.share import Share
 
 
 def _is_sqlite() -> bool:

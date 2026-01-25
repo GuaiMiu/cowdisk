@@ -39,7 +39,7 @@ if __name__ == "__main__":
         port=settings.APP_PORT,
         proxy_headers=True,
         forwarded_allow_ips="*",
-        # log_config="uvicorn_config.json",
+        log_config="uvicorn_config.json",
         log_level="debug",
         workers=None if settings.APP_DEBUG else 1,
     )

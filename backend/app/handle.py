@@ -103,7 +103,7 @@ def handle_exception(app: FastAPI):
         :return:
         """
         # logger.warning(f"请求 {request.url} 服务异常: {exc.msg}")
-        return Res.success(data=exc.data, msg=exc.msg or "服务异常")
+        return Res.error(msg=exc.msg or "服务异常", data=exc.data, code=400, status_code=400)
 
     @app.exception_handler(Exception)
     async def global_exception_handler(

@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "standard": {
+      "format": "%(asctime)s | %(levelname)s | %(name)s | %(process)d | %(threadName)s | %(filename)s:%(lineno)d | %(message)s"
+    },
+    "access": {
+      "format": "%(asctime)s | %(levelname)s | %(client_addr)s | \"%(request_line)s\" %(status_code)s"
+    }
+  },
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "level": "INFO",
+      "formatter": "standard",
+      "stream": "ext://sys.stdout"
+    },
+    "console_access": {
+      "class": "logging.StreamHandler",
+      "level": "INFO",
+      "formatter": "access",
+      "stream": "ext://sys.stdout"
+    },
+    "default": {
+      "class": "logging.handlers.TimedRotatingFileHandler",
+      "level": "INFO",
+      "formatter": "standard",
+      "filename": "logs/uvicorn.log",
+      "when": "D",
+      "interval": 1,
+      "backupCount": 7,
+      "encoding": "utf-8",
+      "utc": true
+    },
+    "access": {
+      "class": "logging.handlers.TimedRotatingFileHandler",
+      "level": "INFO",
+      "formatter": "access",
+      "filename": "logs/uvicorn_access.log",
+      "when": "D",
+      "interval": 1,
+      "backupCount": 7,
+      "encoding": "utf-8",
+      "utc": true
+    }
+  },
+  "loggers": {
+    "uvicorn": {
+      "handlers": [
+        "console",
+        "default"
+      ],
+      "level": "INFO",
+      "propagate": false
+    },
+    "uvicorn.error": {
+      "handlers": [
+        "console",
+        "default"
+      ],
+      "level": "INFO",
+      "propagate": false
+    },
+    "uvicorn.access": {
+      "handlers": [
+        "console_access"
+      ],
+      "level": "INFO",
+      "propagate": false
+    }
+  },
+  "root": {
+    "handlers": [
+      "console",
+      "default"
+    ],
+    "level": "INFO"
+  }
+}

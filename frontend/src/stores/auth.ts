@@ -1,70 +1,111 @@
-import { defineStore } from "pinia";
-import { fetchMe, fetchMenus, login, logout } from "../api";
-import { clearAppStorageToken, getAppStorage, setAppStorage } from "../utils/storage";
+import { defineStore } from 'pinia'
+import { login as loginApi, getMe, getPermissions, getRouters, logout as logoutApi } from '@/api/modules/auth'
+import type { MenuRoutersOut } from '@/types/menu'
+import type { UserOut } from '@/types/auth'
+import router from '@/router'
+import { useToastStore } from './toast'
 
-interface MenuNode {
-  id?: number;
-  name?: string;
-  router_path?: string;
-  type?: number;
-  children?: MenuNode[];
+type AuthState = {
+  token: string | null
+  me: UserOut | null
+  permissions: Set<string>
+  routers: MenuRoutersOut[]
+  loading: boolean
 }
 
-interface UserInfo {
-  username?: string;
-  mail?: string;
-  is_superuser?: boolean;
-  roles?: Array<{ name?: string }>;
-}
+const TOKEN_KEY = 'cowdisk_token'
 
-export const useAuthStore = defineStore("auth", {
-  state: () => ({
-    token: (() => {
-      const storage = getAppStorage();
-      if (storage.token) return storage.token;
-      const legacy = localStorage.getItem("cow_admin_token");
-      if (legacy) {
-        setAppStorage({ token: legacy });
-        localStorage.removeItem("cow_admin_token");
-        return legacy;
-      }
-      return "";
-    })(),
-    user: null as UserInfo | null,
-    menus: [] as MenuNode[]
+export const useAuthStore = defineStore('auth', {
+  state: (): AuthState => ({
+    token: localStorage.getItem(TOKEN_KEY),
+    me: null,
+    permissions: new Set(),
+    routers: [],
+    loading: false,
   }),
-  getters: {
-    isAuthed: (state) => Boolean(state.token)
-  },
   actions: {
-    async login(username: string, password: string) {
-      const { data } = await login(username, password);
-      const token = data?.data?.access_token || data?.access_token;
-      if (!token) {
-        throw new Error("登录失败");
-      }
-      this.token = token;
-      setAppStorage({ token });
-      await Promise.all([this.loadUser(), this.loadMenus()]);
-    },
-    async loadUser() {
-      const { data } = await fetchMe();
-      this.user = data?.data || null;
-    },
-    async loadMenus() {
-      const { data } = await fetchMenus();
-      this.menus = data?.data || [];
-    },
-    async logout() {
+    async login(payload: { username: string; password: string }) {
+      const toast = useToastStore()
+      this.loading = true
       try {
-        await logout();
+        const tokenOut = await loginApi(payload)
+        const token = tokenOut?.access_token
+        if (!token) {
+          throw new Error('登录失败')
+        }
+        this.token = token
+        localStorage.setItem(TOKEN_KEY, token)
+        await this.bootstrap()
       } catch (error) {
-        // Ignore logout errors.
+        toast.error('登录失败', error instanceof Error ? error.message : '请稍后重试')
+        throw error
+      } finally {
+        this.loading = false
       }
-      this.token = "";
-      this.user = null;
-      this.menus = [];
-      clearAppStorageToken();
-    }
-  }
-});
+    },
+    async bootstrap() {
+      this.loading = true
+      try {
+        const [me, permissions, routers] = await Promise.all([getMe(), getPermissions(), getRouters()])
+        this.me = me
+        this.permissions = new Set(Array.isArray(permissions) ? permissions : [])
+        if (Array.isArray(routers)) {
+          this.routers = routers
+        } else if (routers && Object.keys(routers).length) {
+          this.routers = [routers]
+        } else {
+          this.routers = []
+        }
+      } finally {
+        this.loading = false
+      }
+    },
+    async logout(options?: { redirect?: boolean; silent?: boolean }) {
+      const toast = useToastStore()
+      try {
+        if (!options?.silent) {
+          await logoutApi()
+        }
+      } catch (error) {
+        if (!options?.silent) {
+          toast.error('退出失败', error instanceof Error ? error.message : '请稍后重试')
+        }
+      } finally {
+        this.token = null
+        this.me = null
+        this.permissions = new Set()
+        this.routers = []
+        localStorage.removeItem(TOKEN_KEY)
+        if (options?.redirect !== false) {
+          router.replace('/login')
+        }
+      }
+    },
+    handleUnauthorized() {
+      return this.logout({ silent: true, redirect: true })
+    },
+    hasPerm(permission?: string) {
+      if (!permission) {
+        return false
+      }
+      if (this.me?.is_superuser) {
+        return true
+      }
+      return this.permissions.has(permission)
+    },
+    hasAnyPerm(perms?: string[] | string) {
+      if (!perms) {
+        return false
+      }
+      if (this.me?.is_superuser) {
+        return true
+      }
+      const list = Array.isArray(perms) ? perms : [perms]
+      return list.some((perm) => this.permissions.has(perm))
+    },
+    landingPath() {
+      const hasSystem = Array.from(this.permissions).some((perm) => perm.startsWith('system:'))
+      return hasSystem ? '/admin' : '/app'
+    },
+  },
+})

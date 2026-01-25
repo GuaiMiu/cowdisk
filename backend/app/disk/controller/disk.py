@@ -7,14 +7,10 @@
 """
 
 import mimetypes
-import re
-from urllib.parse import quote
-from email.utils import formatdate
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Request, Security, UploadFile
 from starlette.background import BackgroundTask
-from starlette.responses import FileResponse, Response, StreamingResponse
 
 from app.admin.models.response import ResponseModel
 from app.admin.models.user import User
@@ -32,16 +28,18 @@ from app.disk.schemas.disk import (
     DiskUploadInitIn,
     DiskMkdirIn,
     DiskRenameIn,
+    DiskCompressIn,
+    DiskExtractIn,
+    DiskTextReadOut,
+    DiskTextSaveIn,
     DiskUploadOut,
     DiskEntry,
     DiskTrashListOut,
     DiskTrashRestoreIn,
     DiskTrashDeleteIn,
-    DiskShareCreateIn,
-    DiskShareEntry,
-    DiskShareListOut,
 )
 from app.disk.services.disk import DiskService
+from app.disk.utils.streaming import build_file_response, build_inline_response
 
 disk_router = APIRouter(
     prefix="/disk",
@@ -49,7 +47,6 @@ disk_router = APIRouter(
     dependencies=[Depends(AuthService.get_current_user_any)],
 )
 disk_download_router = APIRouter(prefix="/disk", tags=["网盘模块"])
-share_router = APIRouter(prefix="/share", tags=["分享模块"])
 
 
 @disk_router.get(
@@ -220,6 +217,34 @@ async def rename_path(
     return ResponseModel.success(data=entry)
 
 
+@disk_router.get(
+    "/edit",
+    summary="读取可编辑文本",
+    response_model=ResponseModel[DiskTextReadOut],
+    dependencies=[Security(check_user_permission, scopes=["disk:file:download"])],
+)
+async def read_text_file(
+    path: str,
+    current_user: User = Depends(AuthService.get_current_user_any),
+):
+    data = await DiskService.read_text_file(path, current_user.id)
+    return ResponseModel.success(data=data)
+
+
+@disk_router.post(
+    "/edit",
+    summary="保存可编辑文本",
+    response_model=ResponseModel[DiskEntry],
+    dependencies=[Security(check_user_permission, scopes=["disk:file:upload"])],
+)
+async def save_text_file(
+    data: DiskTextSaveIn,
+    current_user: User = Depends(AuthService.get_current_user_any),
+):
+    entry = await DiskService.save_text_file(data.path, data.content, current_user.id)
+    return ResponseModel.success(data=entry)
+
+
 @disk_router.post(
     "/download/prepare",
     summary="打包下载准备",
@@ -232,6 +257,76 @@ async def prepare_download(
 ):
     job_id = await DiskService.create_download_job(data.path, current_user.id, redis)
     return ResponseModel.success(data={"job_id": job_id})
+
+
+@disk_router.post(
+    "/compress/prepare",
+    summary="压缩任务创建",
+    dependencies=[Security(check_user_permission, scopes=["disk:file:upload"])],
+)
+async def prepare_compress(
+    data: DiskCompressIn,
+    current_user: User = Depends(AuthService.get_current_user_any),
+    redis=Depends(get_async_redis),
+):
+    job_id = await DiskService.create_compress_job(
+        data.path, current_user.id, data.name, redis
+    )
+    return ResponseModel.success(data={"job_id": job_id})
+
+
+@disk_router.get(
+    "/compress/status",
+    summary="压缩任务状态",
+    dependencies=[Security(check_user_permission, scopes=["disk:file:upload"])],
+)
+async def compress_status(
+    job_id: str,
+    current_user: User = Depends(AuthService.get_current_user_any),
+    redis=Depends(get_async_redis),
+    db: AsyncSession = Depends(get_async_session),
+):
+    status = await DiskService.get_compress_job_status(job_id, current_user.id, redis)
+    await _refresh_usage_if_needed(
+        status, current_user.id, f"disk:compress:{job_id}", redis, db
+    )
+    return ResponseModel.success(
+        data={"status": status.get("status"), "message": status.get("message", "")}
+    )
+
+
+@disk_router.post(
+    "/extract/prepare",
+    summary="解压任务创建",
+    dependencies=[Security(check_user_permission, scopes=["disk:file:upload"])],
+)
+async def prepare_extract(
+    data: DiskExtractIn,
+    current_user: User = Depends(AuthService.get_current_user_any),
+    redis=Depends(get_async_redis),
+):
+    job_id = await DiskService.create_extract_job(data.path, current_user.id, redis)
+    return ResponseModel.success(data={"job_id": job_id})
+
+
+@disk_router.get(
+    "/extract/status",
+    summary="解压任务状态",
+    dependencies=[Security(check_user_permission, scopes=["disk:file:upload"])],
+)
+async def extract_status(
+    job_id: str,
+    current_user: User = Depends(AuthService.get_current_user_any),
+    redis=Depends(get_async_redis),
+    db: AsyncSession = Depends(get_async_session),
+):
+    status = await DiskService.get_extract_job_status(job_id, current_user.id, redis)
+    await _refresh_usage_if_needed(
+        status, current_user.id, f"disk:extract:{job_id}", redis, db
+    )
+    return ResponseModel.success(
+        data={"status": status.get("status"), "message": status.get("message", "")}
+    )
 
 
 @disk_router.get(
@@ -289,50 +384,6 @@ async def clear_trash(
 
 
 @disk_router.post(
-    "/share",
-    summary="创建分享",
-    response_model=ResponseModel[DiskShareEntry],
-    dependencies=[Security(check_user_permission, scopes=["disk:file:download"])],
-)
-async def create_share(
-    data: DiskShareCreateIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
-):
-    entry = await DiskService.create_share(
-        path=data.path,
-        user_id=current_user.id,
-        expires_hours=data.expires_hours,
-    )
-    return ResponseModel.success(data=entry)
-
-
-@disk_router.get(
-    "/share",
-    summary="分享列表",
-    response_model=ResponseModel[DiskShareListOut],
-    dependencies=[Security(check_user_permission, scopes=["disk:file:download"])],
-)
-async def list_share(
-    current_user: User = Depends(AuthService.get_current_user_any),
-):
-    data = await DiskService.list_shares(current_user.id)
-    return ResponseModel.success(data=data)
-
-
-@disk_router.delete(
-    "/share/{share_id}",
-    summary="撤销分享",
-    dependencies=[Security(check_user_permission, scopes=["disk:file:download"])],
-)
-async def revoke_share(
-    share_id: str,
-    current_user: User = Depends(AuthService.get_current_user_any),
-):
-    ok = await DiskService.revoke_share(share_id, current_user.id)
-    return ResponseModel.success(data=ok)
-
-
-@disk_router.post(
     "/download/token",
     summary="生成下载令牌",
     dependencies=[Security(check_user_permission, scopes=["disk:file:download"])],
@@ -384,7 +435,7 @@ async def download_token_file(
         info.get("path", ""), user_id
     )
     background = BackgroundTask(_cleanup_file, file_path) if cleanup else None
-    return _build_file_response(
+    return build_file_response(
         request=request,
         file_path=file_path,
         filename=filename,
@@ -411,7 +462,7 @@ async def download_token_job(
         info.get("job_id", ""), user_id, redis
     )
     job_key = f"disk:download:{info.get('job_id', '')}"
-    return _build_file_response(
+    return build_file_response(
         request=request,
         file_path=file_path,
         filename=filename,
@@ -419,8 +470,9 @@ async def download_token_job(
     )
 
 
-@disk_download_router.get(
+@disk_download_router.api_route(
     "/preview",
+    methods=["GET", "HEAD"],
     summary="预览文件",
 )
 async def preview_file(
@@ -439,190 +491,13 @@ async def preview_file(
     )
     media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     background = BackgroundTask(_cleanup_file, file_path) if cleanup else None
-    return _build_inline_response(
+    return build_inline_response(
         request=request,
         file_path=file_path,
         filename=filename,
         media_type=media_type,
         background=background,
     )
-
-
-@share_router.get(
-    "",
-    summary="分享下载",
-)
-async def share_download(
-    request: Request,
-    token: str,
-    preview: bool = False,
-):
-    user_id, entry = await DiskService.resolve_share(token)
-    file_path, filename, cleanup = await DiskService.prepare_download(
-        entry.path, user_id
-    )
-    background = BackgroundTask(_cleanup_file, file_path) if cleanup else None
-    if preview:
-        media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-        return _build_inline_response(
-            request=request,
-            file_path=file_path,
-            filename=filename,
-            media_type=media_type,
-            background=background,
-        )
-    return _build_file_response(
-        request=request,
-        file_path=file_path,
-        filename=filename,
-        background=background,
-    )
-
-
-def _build_file_response(
-    request: Request,
-    file_path: Path,
-    filename: str,
-    background: BackgroundTask | None,
-) -> Response:
-    range_header = request.headers.get("range")
-    stat = file_path.stat()
-    size = stat.st_size
-    mtime = int(stat.st_mtime)
-    last_modified = formatdate(mtime, usegmt=True)
-    etag = f'W/"{size}-{mtime}"'
-    if not range_header:
-        return FileResponse(
-            file_path,
-            filename=filename,
-            background=background,
-            headers={
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(size),
-                "Content-Encoding": "identity",
-                "ETag": etag,
-                "Last-Modified": last_modified,
-            },
-        )
-
-    match = re.match(r"bytes=(\d*)-(\d*)", range_header)
-    if not match:
-        return Response(
-            status_code=416, headers={"Content-Range": f"bytes */{size}"}
-        )
-    start_str, end_str = match.groups()
-    start = int(start_str) if start_str else 0
-    end = int(end_str) if end_str else size - 1
-    if start >= size or end < start:
-        return Response(
-            status_code=416, headers={"Content-Range": f"bytes */{size}"}
-        )
-
-    response = StreamingResponse(
-        _iter_file_range(file_path, start, end),
-        status_code=206,
-        headers={
-            "Content-Range": f"bytes {start}-{end}/{size}",
-            "Accept-Ranges": "bytes",
-            "Content-Length": str(end - start + 1),
-            "Content-Disposition": _content_disposition(filename, inline=False),
-            "Content-Encoding": "identity",
-            "ETag": etag,
-            "Last-Modified": last_modified,
-        },
-        media_type="application/octet-stream",
-        background=background,
-    )
-    return response
-
-
-def _build_inline_response(
-    request: Request,
-    file_path: Path,
-    filename: str,
-    media_type: str,
-    background: BackgroundTask | None,
-) -> Response:
-    range_header = request.headers.get("range")
-    stat = file_path.stat()
-    size = stat.st_size
-    mtime = int(stat.st_mtime)
-    last_modified = formatdate(mtime, usegmt=True)
-    etag = f'W/"{size}-{mtime}"'
-    if not range_header:
-        return FileResponse(
-            file_path,
-            filename=filename,
-            background=background,
-            media_type=media_type,
-            headers={
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(size),
-                "Content-Encoding": "identity",
-                "ETag": etag,
-                "Last-Modified": last_modified,
-                "Content-Disposition": _content_disposition(filename, inline=True),
-            },
-        )
-
-    match = re.match(r"bytes=(\d*)-(\d*)", range_header)
-    if not match:
-        return Response(
-            status_code=416, headers={"Content-Range": f"bytes */{size}"}
-        )
-    start_str, end_str = match.groups()
-    start = int(start_str) if start_str else 0
-    end = int(end_str) if end_str else size - 1
-    if start >= size or end < start:
-        return Response(
-            status_code=416, headers={"Content-Range": f"bytes */{size}"}
-        )
-
-    response = StreamingResponse(
-        _iter_file_range(file_path, start, end),
-        status_code=206,
-        headers={
-            "Content-Range": f"bytes {start}-{end}/{size}",
-            "Accept-Ranges": "bytes",
-            "Content-Length": str(end - start + 1),
-            "Content-Disposition": _content_disposition(filename, inline=True),
-            "Content-Encoding": "identity",
-            "ETag": etag,
-            "Last-Modified": last_modified,
-        },
-        media_type=media_type,
-        background=background,
-    )
-    return response
-
-
-def _content_disposition(filename: str, inline: bool) -> str:
-    disposition = "inline" if inline else "attachment"
-    try:
-        filename.encode("latin-1")
-        return f'{disposition}; filename="{filename}"'
-    except UnicodeEncodeError:
-        fallback = "".join(
-            char if ord(char) < 128 and char not in {'"', "\\"} else "_"
-            for char in filename
-        )
-        quoted = quote(filename)
-        return (
-            f'{disposition}; filename="{fallback}"; filename*=UTF-8\'\'{quoted}'
-        )
-
-
-def _iter_file_range(file_path: Path, start: int, end: int, chunk_size: int = 8192):
-    with file_path.open("rb") as handle:
-        handle.seek(start)
-        remaining = end - start + 1
-        while remaining > 0:
-            read_size = min(chunk_size, remaining)
-            data = handle.read(read_size)
-            if not data:
-                break
-            remaining -= len(data)
-            yield data
 
 
 def _cleanup_file(file_path: Path):
@@ -642,3 +517,13 @@ async def _cleanup_job(file_path: Path, job_key: str, redis):
             await redis.delete(job_key)
         except Exception:
             return
+
+
+async def _refresh_usage_if_needed(
+    status: dict, user_id: int, job_key: str, redis, db: AsyncSession
+) -> None:
+    if status.get("status") == "ready" and status.get("usage_updated") != "1":
+        await DiskService.refresh_used_space(user_id, db)
+        await redis.hset(job_key, mapping={"usage_updated": "1"})
+        await redis.expire(job_key, 10800)
+        status["usage_updated"] = "1"

@@ -170,3 +170,40 @@ class DiskDownloadTokenIn(BaseModel):
 
     path: str | None = None
     job_id: str | None = None
+
+
+class DiskCompressIn(BaseModel):
+    """
+    压缩输入模型
+    """
+
+    path: str
+    name: str | None = None
+
+
+class DiskExtractIn(BaseModel):
+    """
+    解压输入模型
+    """
+
+    path: str
+
+
+class DiskTextReadOut(BaseModel):
+    """
+    文本读取输出模型
+    """
+
+    path: str
+    content: str
+    size: int
+    modified_time: datetime | None = None
+
+
+class DiskTextSaveIn(BaseModel):
+    """
+    文本保存输入模型
+    """
+
+    path: str
+    content: str

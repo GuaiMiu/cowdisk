@@ -10,7 +10,7 @@ import asyncio
 import json
 import shutil
 import zipfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from pathlib import PurePosixPath
 from uuid import uuid4
@@ -30,8 +30,6 @@ from app.disk.schemas.disk import (
     DiskUploadOut,
     DiskTrashEntry,
     DiskTrashListOut,
-    DiskShareEntry,
-    DiskShareListOut,
 )
 
 
@@ -67,6 +65,21 @@ class DiskService:
             raise ServiceException(msg="非法路径")
         return resolved
 
+    @staticmethod
+    def _ensure_exists(target: Path, msg: str) -> None:
+        if not target.exists():
+            raise ServiceException(msg=msg)
+
+    @staticmethod
+    def _ensure_is_dir(target: Path, msg: str) -> None:
+        if not target.is_dir():
+            raise ServiceException(msg=msg)
+
+    @staticmethod
+    def _ensure_is_file(target: Path, msg: str) -> None:
+        if not target.is_file():
+            raise ServiceException(msg=msg)
+
     @classmethod
     def _relative_path(cls, path: Path, user_id: int) -> str:
         root = cls._get_user_root(user_id)
@@ -90,21 +103,9 @@ class DiskService:
     def _get_trash_index(cls, user_id: int) -> Path:
         return cls._get_trash_dir(user_id) / "index.json"
 
-    @classmethod
-    def _get_share_root(cls) -> Path:
-        root = cls._get_root() / ".share"
-        root.mkdir(parents=True, exist_ok=True)
-        return root
-
-    @classmethod
-    def _get_share_dir(cls, user_id: int) -> Path:
-        share_dir = cls._get_share_root() / str(user_id)
-        share_dir.mkdir(parents=True, exist_ok=True)
-        return share_dir
-
-    @classmethod
-    def _get_share_index(cls) -> Path:
-        return cls._get_share_root() / "index.json"
+    @staticmethod
+    def _to_ms(dt: datetime) -> int:
+        return int(dt.timestamp() * 1000)
 
     @staticmethod
     def _load_json(path: Path, default):
@@ -121,6 +122,21 @@ class DiskService:
         temp = path.with_suffix(".tmp")
         temp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         temp.replace(path)
+
+    @classmethod
+    def _load_trash_items(cls, user_id: int) -> list[dict]:
+        return cls._load_json(cls._get_trash_index(user_id), [])
+
+    @classmethod
+    def _save_trash_items(cls, user_id: int, items: list[dict]) -> None:
+        cls._save_json(cls._get_trash_index(user_id), items)
+
+    @staticmethod
+    def _find_trash_item(items: list[dict], trash_id: str) -> dict | None:
+        for item in items:
+            if item.get("id") == trash_id:
+                return item
+        return None
 
     @staticmethod
     def _parse_datetime(value: str | None) -> datetime:
@@ -139,10 +155,34 @@ class DiskService:
         suffix = desired.suffix
         base = desired.parent
         for idx in range(1, 1000):
-            candidate = base / f"{stem} (restored{'' if idx == 1 else f' {idx}'}){suffix}"
+            candidate = (
+                base / f"{stem} (restored{'' if idx == 1 else f' {idx}'}){suffix}"
+            )
             if not candidate.exists():
                 return candidate
         raise ServiceException(msg="无法恢复，目标路径冲突")
+
+    @staticmethod
+    def _unique_path(desired: Path) -> Path:
+        if not desired.exists():
+            return desired
+        stem = desired.stem
+        suffix = desired.suffix
+        base = desired.parent
+        for idx in range(1, 1000):
+            candidate = base / f"{stem} ({idx}){suffix}"
+            if not candidate.exists():
+                return candidate
+        raise ServiceException(msg="目标路径冲突")
+
+    @staticmethod
+    def _safe_archive_target(base_dir: Path, rel: Path) -> Path:
+        if rel.is_absolute() or ".." in rel.parts:
+            raise ServiceException(msg="压缩包包含非法路径")
+        target = (base_dir / rel).resolve()
+        if not target.is_relative_to(base_dir):
+            raise ServiceException(msg="压缩包包含非法路径")
+        return target
 
     @classmethod
     def _to_entry(cls, path: Path, user_id: int) -> DiskEntry:
@@ -158,10 +198,8 @@ class DiskService:
     @classmethod
     async def list_dir(cls, path: str, user_id: int) -> DiskListOut:
         target = cls._resolve_path(path, user_id)
-        if not target.exists():
-            raise ServiceException(msg="目录不存在")
-        if not target.is_dir():
-            raise ServiceException(msg="目标不是目录")
+        cls._ensure_exists(target, "目录不存在")
+        cls._ensure_is_dir(target, "目标不是目录")
         items = [cls._to_entry(child, user_id) for child in target.iterdir()]
         items.sort(key=lambda entry: (not entry.is_dir, entry.name.lower()))
         return DiskListOut(
@@ -211,21 +249,35 @@ class DiskService:
         base_dir.mkdir(parents=True, exist_ok=True)
         if not base_dir.is_dir():
             raise ServiceException(msg="目标不是目录")
-        if not filename:
-            raise ServiceException(msg="文件名不能为空")
-        normalized = filename.replace("\\", "/").lstrip("/")
-        rel = PurePosixPath(normalized)
-        if rel.is_absolute() or ".." in rel.parts:
-            raise ServiceException(msg="非法文件名")
-        safe_name = rel.name
-        if not safe_name:
-            raise ServiceException(msg="文件名不能为空")
+        rel = cls._normalize_upload_name(path, filename)
+        base_tail = PurePosixPath(path.replace("\\", "/").strip("/")).name
+        if base_tail and len(rel.parts) > 1 and rel.parts[0] == base_tail:
+            rel = PurePosixPath(*rel.parts[1:])
+        cls._ensure_safe_relpath(rel)
+        safe_name = cls._ensure_filename(rel.name)
         rel_dir = Path(*rel.parts[:-1]) if len(rel.parts) > 1 else Path()
         target_dir = (base_dir / rel_dir).resolve()
         user_root = cls._get_user_root(user_id)
         if not target_dir.is_relative_to(user_root):
             raise ServiceException(msg="非法路径")
         return target_dir, safe_name
+
+    @staticmethod
+    def _ensure_filename(name: str) -> str:
+        if not name:
+            raise ServiceException(msg="文件名不能为空")
+        return name
+
+    @staticmethod
+    def _ensure_safe_relpath(rel: PurePosixPath) -> None:
+        if rel.is_absolute() or ".." in rel.parts:
+            raise ServiceException(msg="非法文件名")
+
+    @classmethod
+    def _normalize_upload_name(cls, path: str, filename: str) -> PurePosixPath:
+        cls._ensure_filename(filename)
+        normalized = filename.replace("\\", "/").lstrip("/")
+        return PurePosixPath(normalized)
 
     @classmethod
     async def init_chunk_upload(
@@ -271,12 +323,7 @@ class DiskService:
         redis,
     ) -> None:
         key = f"disk:upload:{upload_id}"
-        data = await redis.hgetall(key)
-        if not data:
-            raise ServiceException(msg="上传任务不存在")
-        info = cls._decode_redis_hash(data)
-        if info.get("user_id") != str(user_id):
-            raise ServiceException(msg="无权访问该任务")
+        info = await cls._get_upload_meta(key, user_id, redis)
         total_chunks = int(info.get("total_chunks", "0"))
         if index < 0 or index >= total_chunks:
             raise ServiceException(msg="分片索引不合法")
@@ -295,12 +342,7 @@ class DiskService:
         cls, upload_id: str, user_id: int, redis
     ) -> DiskEntry:
         key = f"disk:upload:{upload_id}"
-        data = await redis.hgetall(key)
-        if not data:
-            raise ServiceException(msg="上传任务不存在")
-        info = cls._decode_redis_hash(data)
-        if info.get("user_id") != str(user_id):
-            raise ServiceException(msg="无权访问该任务")
+        info = await cls._get_upload_meta(key, user_id, redis)
         total_chunks = int(info.get("total_chunks", "0"))
         filename = info.get("filename", "")
         if not filename:
@@ -331,22 +373,86 @@ class DiskService:
     @classmethod
     async def get_file_path(cls, path: str, user_id: int) -> Path:
         target = cls._resolve_path(path, user_id)
-        if not target.exists():
-            raise ServiceException(msg="文件不存在")
-        if not target.is_file():
-            raise ServiceException(msg="目标不是文件")
+        cls._ensure_exists(target, "文件不存在")
+        cls._ensure_is_file(target, "目标不是文件")
         return target
+
+    @classmethod
+    async def read_text_file(cls, path: str, user_id: int) -> dict:
+        target = cls._resolve_path(path, user_id)
+        cls._ensure_exists(target, "文件不存在")
+        cls._ensure_is_file(target, "目标不是文件")
+        try:
+            content = target.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            raise ServiceException(msg=str(exc)) from exc
+        stat = target.stat()
+        return {
+            "path": cls._relative_path(target, user_id),
+            "content": content,
+            "size": stat.st_size,
+            "modified_time": datetime.fromtimestamp(stat.st_mtime),
+        }
+
+    @classmethod
+    async def save_text_file(cls, path: str, content: str, user_id: int) -> DiskEntry:
+        target = cls._resolve_path(path, user_id)
+        if target == cls._get_user_root(user_id):
+            raise ServiceException(msg="目标不是文件")
+        if target.exists():
+            cls._ensure_is_file(target, "目标不是文件")
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.parent.is_dir():
+                raise ServiceException(msg="目标不是目录")
+        try:
+            target.write_text(content, encoding="utf-8")
+        except OSError as exc:
+            raise ServiceException(msg=str(exc)) from exc
+        return cls._to_entry(target, user_id)
 
     @classmethod
     async def prepare_download(cls, path: str, user_id: int) -> tuple[Path, str, bool]:
         target = cls._resolve_path(path, user_id)
-        if not target.exists():
-            raise ServiceException(msg="文件或目录不存在")
+        cls._ensure_exists(target, "文件或目录不存在")
         if target.is_file():
             return target, target.name, False
         zip_path = await cls._zip_dir(target, user_id)
         zip_name = f"{(target.name or 'root')}.zip"
         return zip_path, zip_name, True
+
+    @classmethod
+    async def compress(cls, path: str, user_id: int, name: str | None) -> DiskEntry:
+        target = cls._resolve_path(path, user_id)
+        cls._ensure_exists(target, "文件或目录不存在")
+        if target == cls._get_user_root(user_id):
+            target_name = name or "root"
+            parent = target
+        else:
+            target_name = name or (target.stem if target.is_file() else target.name)
+            parent = target.parent
+        if not target_name:
+            target_name = "root"
+        safe_name = target_name.replace("\\", "/").strip()
+        if "/" in safe_name or ".." in safe_name:
+            raise ServiceException(msg="非法文件名")
+        if not safe_name.lower().endswith(".zip"):
+            safe_name = f"{safe_name}.zip"
+        zip_path = cls._unique_path(parent / safe_name)
+        await asyncio.to_thread(cls._zip_path_sync, target, zip_path)
+        return cls._to_entry(zip_path, user_id)
+
+    @classmethod
+    async def extract(cls, path: str, user_id: int) -> DiskEntry:
+        target = cls._resolve_path(path, user_id)
+        cls._ensure_exists(target, "文件不存在")
+        cls._ensure_is_file(target, "目标不是文件")
+        if target.suffix.lower() != ".zip":
+            raise ServiceException(msg="仅支持 ZIP 文件解压")
+        dest_base = target.parent / (target.stem or "archive")
+        dest_path = cls._unique_path(dest_base)
+        await asyncio.to_thread(cls._extract_zip_sync, target, dest_path)
+        return cls._to_entry(dest_path, user_id)
 
     @classmethod
     async def _zip_dir(cls, target: Path, user_id: int) -> Path:
@@ -368,6 +474,44 @@ class DiskService:
                         arcname = item.relative_to(target).as_posix().rstrip("/") + "/"
                         zf.writestr(arcname, "")
         return zip_path
+
+    @staticmethod
+    def _zip_path_sync(target: Path, zip_path: Path) -> None:
+        root_name = target.name or "root"
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            if target.is_file():
+                zf.write(target, arcname=target.name)
+                return
+            if not any(target.iterdir()):
+                zf.writestr(f"{root_name}/", "")
+                return
+            for item in target.rglob("*"):
+                if item == zip_path:
+                    continue
+                rel = item.relative_to(target).as_posix()
+                arcname = f"{root_name}/{rel}" if rel else root_name
+                if item.is_file():
+                    zf.write(item, arcname)
+                elif item.is_dir():
+                    if not any(item.iterdir()):
+                        zf.writestr(arcname.rstrip("/") + "/", "")
+
+    @staticmethod
+    def _extract_zip_sync(zip_path: Path, dest_path: Path) -> None:
+        dest_path.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            for info in zf.infolist():
+                name = info.filename
+                if not name:
+                    continue
+                rel = Path(name)
+                target = cls._safe_archive_target(dest_path, rel)
+                if info.is_dir():
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info, "r") as src, target.open("wb") as dst:
+                    shutil.copyfileobj(src, dst)
 
     @classmethod
     async def compute_used_space(cls, user_id: int) -> int:
@@ -397,7 +541,6 @@ class DiskService:
             await db.refresh(user)
         return total
 
-
     @classmethod
     async def delete(cls, data: DiskDeleteIn, user_id: int) -> DiskDeleteOut:
         await cls.move_to_trash(data, user_id)
@@ -426,8 +569,7 @@ class DiskService:
             size=size,
             deleted_at=datetime.utcnow(),
         )
-        index_path = cls._get_trash_index(user_id)
-        items = cls._load_json(index_path, [])
+        items = cls._load_trash_items(user_id)
         items.append(
             {
                 "id": entry.id,
@@ -438,13 +580,12 @@ class DiskService:
                 "deleted_at": entry.deleted_at.isoformat(),
             }
         )
-        cls._save_json(index_path, items)
+        cls._save_trash_items(user_id, items)
         return entry
 
     @classmethod
     async def list_trash(cls, user_id: int) -> DiskTrashListOut:
-        index_path = cls._get_trash_index(user_id)
-        items = cls._load_json(index_path, [])
+        items = cls._load_trash_items(user_id)
         trash_dir = cls._get_trash_dir(user_id)
         entries: list[DiskTrashEntry] = []
         valid_items = []
@@ -465,43 +606,33 @@ class DiskService:
             entries.append(entry)
             valid_items.append(item)
         if len(valid_items) != len(items):
-            cls._save_json(index_path, valid_items)
+            cls._save_trash_items(user_id, valid_items)
         return DiskTrashListOut(items=entries)
 
     @classmethod
     async def restore_trash(cls, trash_id: str, user_id: int) -> DiskEntry:
-        index_path = cls._get_trash_index(user_id)
-        items = cls._load_json(index_path, [])
-        target_item = None
-        for item in items:
-            if item.get("id") == trash_id:
-                target_item = item
-                break
+        items = cls._load_trash_items(user_id)
+        target_item = cls._find_trash_item(items, trash_id)
         if not target_item:
             raise ServiceException(msg="回收站条目不存在")
         trash_dir = cls._get_trash_dir(user_id)
         trash_path = trash_dir / trash_id
         if not trash_path.exists():
             items = [item for item in items if item.get("id") != trash_id]
-            cls._save_json(index_path, items)
+            cls._save_trash_items(user_id, items)
             raise ServiceException(msg="回收站条目已丢失")
         desired = cls._resolve_path(target_item.get("path", ""), user_id)
         dest = cls._unique_restore_path(desired)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(trash_path), dest)
         items = [item for item in items if item.get("id") != trash_id]
-        cls._save_json(index_path, items)
+        cls._save_trash_items(user_id, items)
         return cls._to_entry(dest, user_id)
 
     @classmethod
     async def delete_trash(cls, trash_id: str, user_id: int) -> bool:
-        index_path = cls._get_trash_index(user_id)
-        items = cls._load_json(index_path, [])
-        target_item = None
-        for item in items:
-            if item.get("id") == trash_id:
-                target_item = item
-                break
+        items = cls._load_trash_items(user_id)
+        target_item = cls._find_trash_item(items, trash_id)
         if not target_item:
             raise ServiceException(msg="回收站条目不存在")
         trash_dir = cls._get_trash_dir(user_id)
@@ -512,13 +643,12 @@ class DiskService:
             else:
                 trash_path.unlink(missing_ok=True)
         items = [item for item in items if item.get("id") != trash_id]
-        cls._save_json(index_path, items)
+        cls._save_trash_items(user_id, items)
         return True
 
     @classmethod
     async def clear_trash(cls, user_id: int) -> int:
-        index_path = cls._get_trash_index(user_id)
-        items = cls._load_json(index_path, [])
+        items = cls._load_trash_items(user_id)
         trash_dir = cls._get_trash_dir(user_id)
         count = 0
         for item in items:
@@ -532,132 +662,8 @@ class DiskService:
                 else:
                     trash_path.unlink(missing_ok=True)
                 count += 1
-        cls._save_json(index_path, [])
+        cls._save_trash_items(user_id, [])
         return count
-
-    @classmethod
-    async def create_share(
-        cls, path: str, user_id: int, expires_hours: int | None
-    ) -> DiskShareEntry:
-        target = cls._resolve_path(path, user_id)
-        if not target.exists():
-            raise ServiceException(msg="文件或目录不存在")
-        now = datetime.utcnow()
-        expires_at = (
-            now + timedelta(hours=expires_hours)
-            if expires_hours and expires_hours > 0
-            else None
-        )
-        share_id = uuid4().hex
-        entry = DiskShareEntry(
-            id=share_id,
-            name=target.name or "",
-            path=cls._relative_path(target, user_id),
-            is_dir=target.is_dir(),
-            created_at=now,
-            expires_at=expires_at,
-        )
-        user_path = cls._get_share_dir(user_id) / "shares.json"
-        shares = cls._load_json(user_path, [])
-        shares.append(
-            {
-                "id": entry.id,
-                "name": entry.name,
-                "path": entry.path,
-                "is_dir": entry.is_dir,
-                "created_at": entry.created_at.isoformat(),
-                "expires_at": entry.expires_at.isoformat() if entry.expires_at else None,
-            }
-        )
-        cls._save_json(user_path, shares)
-        index_path = cls._get_share_index()
-        index = cls._load_json(index_path, {})
-        index[share_id] = user_id
-        cls._save_json(index_path, index)
-        return entry
-
-    @classmethod
-    async def list_shares(cls, user_id: int) -> DiskShareListOut:
-        user_path = cls._get_share_dir(user_id) / "shares.json"
-        shares = cls._load_json(user_path, [])
-        now = datetime.utcnow()
-        entries: list[DiskShareEntry] = []
-        valid_items = []
-        expired_ids: list[str] = []
-        for item in shares:
-            share_id = item.get("id")
-            if not share_id:
-                continue
-            expires_at = item.get("expires_at")
-            if expires_at:
-                expire_dt = cls._parse_datetime(expires_at)
-                if expire_dt < now:
-                    expired_ids.append(share_id)
-                    continue
-            entry = DiskShareEntry(
-                id=share_id,
-                name=item.get("name", ""),
-                path=item.get("path", ""),
-                is_dir=bool(item.get("is_dir", False)),
-                created_at=cls._parse_datetime(item.get("created_at")),
-                expires_at=cls._parse_datetime(expires_at) if expires_at else None,
-            )
-            entries.append(entry)
-            valid_items.append(item)
-        if expired_ids:
-            index_path = cls._get_share_index()
-            index = cls._load_json(index_path, {})
-            for share_id in expired_ids:
-                index.pop(share_id, None)
-            cls._save_json(index_path, index)
-        if len(valid_items) != len(shares):
-            cls._save_json(user_path, valid_items)
-        return DiskShareListOut(items=entries)
-
-    @classmethod
-    async def revoke_share(cls, share_id: str, user_id: int) -> bool:
-        user_path = cls._get_share_dir(user_id) / "shares.json"
-        shares = cls._load_json(user_path, [])
-        next_shares = [item for item in shares if item.get("id") != share_id]
-        if len(next_shares) == len(shares):
-            raise ServiceException(msg="分享不存在")
-        cls._save_json(user_path, next_shares)
-        index_path = cls._get_share_index()
-        index = cls._load_json(index_path, {})
-        index.pop(share_id, None)
-        cls._save_json(index_path, index)
-        return True
-
-    @classmethod
-    async def resolve_share(cls, share_id: str) -> tuple[int, DiskShareEntry]:
-        index_path = cls._get_share_index()
-        index = cls._load_json(index_path, {})
-        user_id = index.get(share_id)
-        if not user_id:
-            raise ServiceException(msg="分享不存在或已失效")
-        user_path = cls._get_share_dir(int(user_id)) / "shares.json"
-        shares = cls._load_json(user_path, [])
-        now = datetime.utcnow()
-        for item in shares:
-            if item.get("id") != share_id:
-                continue
-            expires_at = item.get("expires_at")
-            if expires_at:
-                expire_dt = cls._parse_datetime(expires_at)
-                if expire_dt < now:
-                    await cls.revoke_share(share_id, int(user_id))
-                    raise ServiceException(msg="分享已过期")
-            entry = DiskShareEntry(
-                id=share_id,
-                name=item.get("name", ""),
-                path=item.get("path", ""),
-                is_dir=bool(item.get("is_dir", False)),
-                created_at=cls._parse_datetime(item.get("created_at")),
-                expires_at=cls._parse_datetime(expires_at) if expires_at else None,
-            )
-            return int(user_id), entry
-        await cls.revoke_share(share_id, int(user_id))
-        raise ServiceException(msg="分享不存在或已失效")
 
     @classmethod
     async def rename(cls, data: DiskRenameIn, user_id: int) -> DiskEntry:
@@ -683,8 +689,7 @@ class DiskService:
     @classmethod
     async def create_download_job(cls, path: str, user_id: int, redis) -> str:
         target = cls._resolve_path(path, user_id)
-        if not target.exists():
-            raise ServiceException(msg="文件或目录不存在")
+        cls._ensure_exists(target, "文件或目录不存在")
         if target.is_file():
             raise ServiceException(msg="文件无需打包")
         job_id = uuid4().hex
@@ -701,6 +706,50 @@ class DiskService:
         asyncio.create_task(cls._run_zip_job(job_id, target, user_id, redis))
         return job_id
 
+    @classmethod
+    async def create_compress_job(
+        cls, path: str, user_id: int, name: str | None, redis
+    ) -> str:
+        target = cls._resolve_path(path, user_id)
+        cls._ensure_exists(target, "文件或目录不存在")
+        job_id = uuid4().hex
+        key = f"disk:compress:{job_id}"
+        await redis.hset(
+            key,
+            mapping={
+                "status": "pending",
+                "user_id": str(user_id),
+                "path": cls._relative_path(target, user_id),
+                "name": name or "",
+                "usage_updated": "0",
+            },
+        )
+        await redis.expire(key, 10800)
+        asyncio.create_task(cls._run_compress_job(job_id, target, user_id, name, redis))
+        return job_id
+
+    @classmethod
+    async def create_extract_job(cls, path: str, user_id: int, redis) -> str:
+        target = cls._resolve_path(path, user_id)
+        cls._ensure_exists(target, "文件不存在")
+        cls._ensure_is_file(target, "目标不是文件")
+        if target.suffix.lower() != ".zip":
+            raise ServiceException(msg="仅支持 ZIP 文件解压")
+        job_id = uuid4().hex
+        key = f"disk:extract:{job_id}"
+        await redis.hset(
+            key,
+            mapping={
+                "status": "pending",
+                "user_id": str(user_id),
+                "path": cls._relative_path(target, user_id),
+                "usage_updated": "0",
+            },
+        )
+        await redis.expire(key, 10800)
+        asyncio.create_task(cls._run_extract_job(job_id, target, user_id, redis))
+        return job_id
+
     @staticmethod
     def _decode_redis_hash(data: dict) -> dict:
         decoded: dict[str, str] = {}
@@ -713,16 +762,41 @@ class DiskService:
         return decoded
 
     @classmethod
-    async def get_download_job_status(
-        cls, job_id: str, user_id: int, redis
+    async def _get_job_data(
+        cls, key: str, user_id: int, redis, not_found_msg: str
     ) -> dict:
-        key = f"disk:download:{job_id}"
         data = await redis.hgetall(key)
         if not data:
-            raise ServiceException(msg="下载任务不存在")
-        decoded = DiskService._decode_redis_hash(data)
+            raise ServiceException(msg=not_found_msg)
+        decoded = cls._decode_redis_hash(data)
         if decoded.get("user_id") != str(user_id):
             raise ServiceException(msg="无权访问该任务")
+        return decoded
+
+    @classmethod
+    async def _get_upload_meta(cls, key: str, user_id: int, redis) -> dict:
+        data = await redis.hgetall(key)
+        if not data:
+            raise ServiceException(msg="上传任务不存在")
+        decoded = cls._decode_redis_hash(data)
+        if decoded.get("user_id") != str(user_id):
+            raise ServiceException(msg="无权访问该任务")
+        return decoded
+
+    @staticmethod
+    async def _set_job_ready(key: str, redis, mapping: dict, ttl: int = 10800) -> None:
+        await redis.hset(key, mapping=mapping)
+        await redis.expire(key, ttl)
+
+    @staticmethod
+    async def _set_job_error(key: str, redis, exc: Exception, ttl: int = 600) -> None:
+        await redis.hset(key, mapping={"status": "error", "error": str(exc)})
+        await redis.expire(key, ttl)
+
+    @classmethod
+    async def get_download_job_status(cls, job_id: str, user_id: int, redis) -> dict:
+        key = f"disk:download:{job_id}"
+        decoded = await cls._get_job_data(key, user_id, redis, "下载任务不存在")
         return {
             "status": decoded.get("status", "pending"),
             "message": decoded.get("error", ""),
@@ -730,16 +804,33 @@ class DiskService:
         }
 
     @classmethod
+    async def get_compress_job_status(cls, job_id: str, user_id: int, redis) -> dict:
+        key = f"disk:compress:{job_id}"
+        decoded = await cls._get_job_data(key, user_id, redis, "压缩任务不存在")
+        return {
+            "status": decoded.get("status", "pending"),
+            "message": decoded.get("error", ""),
+            "output_path": decoded.get("output_path", ""),
+            "usage_updated": decoded.get("usage_updated", "0"),
+        }
+
+    @classmethod
+    async def get_extract_job_status(cls, job_id: str, user_id: int, redis) -> dict:
+        key = f"disk:extract:{job_id}"
+        decoded = await cls._get_job_data(key, user_id, redis, "解压任务不存在")
+        return {
+            "status": decoded.get("status", "pending"),
+            "message": decoded.get("error", ""),
+            "output_path": decoded.get("output_path", ""),
+            "usage_updated": decoded.get("usage_updated", "0"),
+        }
+
+    @classmethod
     async def get_download_job_file(
         cls, job_id: str, user_id: int, redis
     ) -> tuple[Path, str]:
         key = f"disk:download:{job_id}"
-        data = await redis.hgetall(key)
-        if not data:
-            raise ServiceException(msg="下载任务不存在")
-        decoded = DiskService._decode_redis_hash(data)
-        if decoded.get("user_id") != str(user_id):
-            raise ServiceException(msg="无权访问该任务")
+        decoded = await cls._get_job_data(key, user_id, redis, "下载任务不存在")
         if decoded.get("status") != "ready":
             raise ServiceException(msg="任务尚未完成")
         file_path = Path(decoded.get("file_path", ""))
@@ -772,12 +863,7 @@ class DiskService:
             }
         else:
             key = f"disk:download:{job_id}"
-            data = await redis.hgetall(key)
-            if not data:
-                raise ServiceException(msg="下载任务不存在")
-            decoded = cls._decode_redis_hash(data)
-            if decoded.get("user_id") != str(user_id):
-                raise ServiceException(msg="无权访问该任务")
+            decoded = await cls._get_job_data(key, user_id, redis, "下载任务不存在")
             if decoded.get("status") != "ready":
                 raise ServiceException(msg="任务尚未完成")
             payload = {"type": "job", "user_id": str(user_id), "job_id": job_id}
@@ -796,29 +882,68 @@ class DiskService:
         return cls._decode_redis_hash(data)
 
     @classmethod
-    async def _run_zip_job(
-        cls, job_id: str, target: Path, user_id: int, redis
-    ) -> None:
+    async def _run_zip_job(cls, job_id: str, target: Path, user_id: int, redis) -> None:
         key = f"disk:download:{job_id}"
         try:
             zip_path = await cls._zip_dir(target, user_id)
             filename = f"{(target.name or 'root')}.zip"
-            await redis.hset(
+            await cls._set_job_ready(
                 key,
-                mapping={
+                redis,
+                {
                     "status": "ready",
                     "file_path": str(zip_path),
                     "filename": filename,
                 },
             )
-            await redis.expire(key, 10800)
             asyncio.create_task(cls._cleanup_job_file(zip_path, key, redis, 10800))
         except Exception as exc:
-            await redis.hset(
-                key,
-                mapping={"status": "error", "error": str(exc)},
+            await cls._set_job_error(key, redis, exc)
+
+    @classmethod
+    async def _run_compress_job(
+        cls,
+        job_id: str,
+        target: Path,
+        user_id: int,
+        name: str | None,
+        redis,
+    ) -> None:
+        key = f"disk:compress:{job_id}"
+        try:
+            entry = await cls.compress(
+                cls._relative_path(target, user_id), user_id, name
             )
-            await redis.expire(key, 600)
+            await cls._set_job_ready(
+                key,
+                redis,
+                {
+                    "status": "ready",
+                    "output_path": entry.path,
+                    "usage_updated": "0",
+                },
+            )
+        except Exception as exc:
+            await cls._set_job_error(key, redis, exc)
+
+    @classmethod
+    async def _run_extract_job(
+        cls, job_id: str, target: Path, user_id: int, redis
+    ) -> None:
+        key = f"disk:extract:{job_id}"
+        try:
+            entry = await cls.extract(cls._relative_path(target, user_id), user_id)
+            await cls._set_job_ready(
+                key,
+                redis,
+                {
+                    "status": "ready",
+                    "output_path": entry.path,
+                    "usage_updated": "0",
+                },
+            )
+        except Exception as exc:
+            await cls._set_job_error(key, redis, exc)
 
     @classmethod
     async def _cleanup_job_file(
