@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Check, Download, MoreHorizontal, Trash2, X } from 'lucide-vue-next'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { ComponentPublicInstance, VNodeRef } from 'vue'
 import type { DiskEntry } from '@/types/disk'
 import { formatBytes, formatTime } from '@/utils/format'
@@ -32,6 +33,8 @@ const emit = defineEmits<{
   (event: 'rename-confirm', payload: { entry: DiskEntry; name: string }): void
   (event: 'rename-cancel'): void
 }>()
+
+const { t } = useI18n({ useScope: 'global' })
 
 const createName = ref('')
 const renameValue = ref('')
@@ -66,7 +69,9 @@ watch(
   [() => props.creatingFolder, () => props.creatingText],
   ([creatingFolder, creatingText]) => {
     if (creatingFolder || creatingText) {
-      createName.value = creatingFolder ? '新建文件夹' : '新建文本文档.txt'
+      createName.value = creatingFolder
+        ? t('fileTable.createFolderName')
+        : t('fileTable.createTextFileName')
       void nextTick(() => {
         createInputRef.value?.focus()
         createInputRef.value?.select()
@@ -210,12 +215,12 @@ const onRowLeave = (entry: DiskEntry) => {
 
 const formatEntryType = (entry: DiskEntry) => {
   if (entry.is_dir) {
-    return '文件夹'
+    return t('common.folder')
   }
   const name = entry.name || ''
   const parts = name.split('.')
   const ext = parts.length > 1 ? parts[parts.length - 1] : ''
-  return ext ? ext.toUpperCase() : '文件'
+  return ext ? ext.toUpperCase() : t('common.file')
 }
 
 const onNameClick = (entry: DiskEntry) => {
@@ -284,10 +289,10 @@ onBeforeUnmount(() => {
           @change="toggleAll"
         />
       </label>
-      <div class="table__cell">名称</div>
-      <div class="table__cell table__cell--size">大小</div>
-      <div class="table__cell table__cell--type">类型</div>
-      <div class="table__cell table__cell--time">更新时间</div>
+      <div class="table__cell">{{ t('fileTable.headers.name') }}</div>
+      <div class="table__cell table__cell--size">{{ t('fileTable.headers.size') }}</div>
+      <div class="table__cell table__cell--type">{{ t('fileTable.headers.type') }}</div>
+      <div class="table__cell table__cell--time">{{ t('fileTable.headers.updatedAt') }}</div>
     </div>
     <div
       v-if="items.length || creatingFolder || creatingText"
@@ -308,22 +313,22 @@ onBeforeUnmount(() => {
                 v-model="createName"
                 ref="createInputRef"
                 class="name__input"
-                placeholder="新建文件夹"
+                :placeholder="t('fileTable.placeholders.newFolder')"
                 autofocus
                 @keydown="onCreateKey"
               />
               <div class="name__actions">
-                <IconButton size="sm" variant="secondary" aria-label="确认" @click="confirmCreate">
+                <IconButton size="sm" variant="secondary" :aria-label="t('fileTable.aria.confirm')" @click="confirmCreate">
                   <Check :size="14" />
                 </IconButton>
-                <IconButton size="sm" variant="ghost" aria-label="取消" @click="emit('create-cancel')">
+                <IconButton size="sm" variant="ghost" :aria-label="t('fileTable.aria.cancel')" @click="emit('create-cancel')">
                   <X :size="14" />
                 </IconButton>
               </div>
             </div>
           </div>
           <div class="table__cell table__cell--size">-</div>
-          <div class="table__cell table__cell--type">文件夹</div>
+          <div class="table__cell table__cell--type">{{ t('common.folder') }}</div>
           <div class="table__cell table__cell--time">-</div>
         </div>
 
@@ -348,15 +353,15 @@ onBeforeUnmount(() => {
               v-model="renameValue"
               :ref="setRenameInputRef(item)"
               class="name__input"
-              placeholder="输入新名称"
+              :placeholder="t('fileTable.placeholders.rename')"
               autofocus
               @keydown="(event) => onRenameKey(event, item)"
             />
             <div class="name__actions">
-              <IconButton size="sm" variant="secondary" aria-label="确认" @click="confirmRename(item)">
+              <IconButton size="sm" variant="secondary" :aria-label="t('fileTable.aria.confirm')" @click="confirmRename(item)">
                 <Check :size="14" />
               </IconButton>
-              <IconButton size="sm" variant="ghost" aria-label="取消" @click="emit('rename-cancel')">
+              <IconButton size="sm" variant="ghost" :aria-label="t('fileTable.aria.cancel')" @click="emit('rename-cancel')">
                 <X :size="14" />
               </IconButton>
             </div>
@@ -373,7 +378,7 @@ onBeforeUnmount(() => {
             <IconButton
               size="sm"
               variant="ghost"
-              aria-label="下载"
+              :aria-label="t('fileTable.aria.download')"
               v-permission="'disk:file:download'"
               @click="emit('action', { entry: item, action: 'download' })"
             >
@@ -382,7 +387,7 @@ onBeforeUnmount(() => {
             <IconButton
               size="sm"
               variant="ghost"
-              aria-label="删除"
+              :aria-label="t('fileTable.aria.delete')"
               v-permission="'disk:file:delete'"
               @click="emit('action', { entry: item, action: 'delete' })"
             >
@@ -391,7 +396,7 @@ onBeforeUnmount(() => {
             <IconButton
               size="sm"
               variant="ghost"
-              aria-label="更多"
+              :aria-label="t('fileTable.aria.more')"
               @mouseenter="openMoreMenu($event, item)"
               @click="openMoreMenu($event, item)"
             >
@@ -408,7 +413,7 @@ onBeforeUnmount(() => {
         ></div>
       </div>
     </div>
-    <div v-else class="table__empty">暂无文件</div>
+    <div v-else class="table__empty">{{ t('fileTable.empty') }}</div>
 
     <div
       v-if="contextMenu.open && contextMenu.entry"
@@ -423,7 +428,7 @@ onBeforeUnmount(() => {
         type="button"
         @click="emit('action', { entry: contextMenu.entry, action: 'detail' }); closeContextMenu()"
       >
-        详情
+        {{ t('fileTable.actions.details') }}
       </button>
       <button
         class="context-menu__item"
@@ -431,7 +436,7 @@ onBeforeUnmount(() => {
         v-permission="'disk:file:download'"
         @click="emit('action', { entry: contextMenu.entry, action: 'preview' }); closeContextMenu()"
       >
-        预览
+        {{ t('fileTable.actions.preview') }}
       </button>
       <button
         v-if="contextMenu.entry?.is_dir"
@@ -440,7 +445,7 @@ onBeforeUnmount(() => {
         v-permission="'disk:file:list'"
         @click="emit('action', { entry: contextMenu.entry, action: 'edit' }); closeContextMenu()"
       >
-        编辑器打开
+        {{ t('fileTable.actions.openEditor') }}
       </button>
       <button
         v-else-if="isEditableFile(contextMenu.entry)"
@@ -449,7 +454,7 @@ onBeforeUnmount(() => {
         v-permission="'disk:file:download'"
         @click="emit('action', { entry: contextMenu.entry, action: 'edit' }); closeContextMenu()"
       >
-        编辑
+        {{ t('fileTable.actions.edit') }}
       </button>
       <button
         v-if="contextMenu.mode === 'full'"
@@ -458,7 +463,7 @@ onBeforeUnmount(() => {
         v-permission="'disk:file:download'"
         @click="emit('action', { entry: contextMenu.entry, action: 'download' }); closeContextMenu()"
       >
-        下载
+        {{ t('fileTable.actions.download') }}
       </button>
       <button
         class="context-menu__item"
@@ -466,7 +471,7 @@ onBeforeUnmount(() => {
         v-permission="'disk:file:rename'"
         @click="emit('action', { entry: contextMenu.entry, action: 'rename' }); closeContextMenu()"
       >
-        重命名
+        {{ t('fileTable.actions.rename') }}
       </button>
       <button
         class="context-menu__item"
@@ -474,7 +479,7 @@ onBeforeUnmount(() => {
         v-permission="'disk:file:rename'"
         @click="emit('action', { entry: contextMenu.entry, action: 'move' }); closeContextMenu()"
       >
-        移动
+        {{ t('fileTable.actions.move') }}
       </button>
       <button
         class="context-menu__item"
@@ -482,7 +487,7 @@ onBeforeUnmount(() => {
         v-permission="'disk:file:download'"
         @click="emit('action', { entry: contextMenu.entry, action: 'share' }); closeContextMenu()"
       >
-        分享
+        {{ t('fileTable.actions.share') }}
       </button>
       <button
         v-if="contextMenu.mode === 'full'"
@@ -491,7 +496,7 @@ onBeforeUnmount(() => {
         v-permission="'disk:file:delete'"
         @click="emit('action', { entry: contextMenu.entry, action: 'delete' }); closeContextMenu()"
       >
-        删除
+        {{ t('fileTable.actions.delete') }}
       </button>
     </div>
   </div>

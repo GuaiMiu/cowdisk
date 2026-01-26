@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
 
@@ -18,14 +19,16 @@ const emit = defineEmits<{
   (event: 'update:modelValue', value: ShareFormValue): void
 }>()
 
-const baseOptions = [
-  { label: '永久', value: 'permanent' },
-  { label: '1 天', value: '1' },
-  { label: '7 天', value: '7' },
-  { label: '30 天', value: '30' },
-  { label: '90 天', value: '90' },
-  { label: '自定义', value: 'custom' },
-]
+const { t } = useI18n({ useScope: 'global' })
+
+const baseOptions = computed(() => [
+  { label: t('shareForm.expiresOptions.permanent'), value: 'permanent' },
+  { label: t('shareForm.expiresOptions.days1'), value: '1' },
+  { label: t('shareForm.expiresOptions.days7'), value: '7' },
+  { label: t('shareForm.expiresOptions.days30'), value: '30' },
+  { label: t('shareForm.expiresOptions.days90'), value: '90' },
+  { label: t('shareForm.expiresOptions.custom'), value: 'custom' },
+])
 
 const resolvedDays = computed(() => {
   if (props.modelValue.expiresAt) {
@@ -42,7 +45,7 @@ const resolvedDays = computed(() => {
   return 'custom'
 })
 
-const options = computed(() => baseOptions)
+const options = computed(() => baseOptions.value)
 
 const toLocalInputValue = (date: Date) => {
   const pad = (num: number) => String(num).padStart(2, '0')
@@ -112,7 +115,7 @@ watch(
     <div class="share-form__row">
       <Select
         size="sm"
-        label="有效期"
+        :label="t('shareForm.labels.expiresIn')"
         :model-value="resolvedDays"
         :options="options"
         @update:modelValue="updateExpires"
@@ -120,15 +123,15 @@ watch(
       <Input
         v-if="resolvedDays === 'custom'"
         type="datetime-local"
-        label="到期时间"
+        :label="t('shareForm.labels.expiresAt')"
         :model-value="customDateTime"
         @update:modelValue="updateCustomDate"
       />
     </div>
     <Input
-      label="提取码"
+      :label="t('shareForm.labels.code')"
       :model-value="modelValue.code"
-      placeholder="可选，4 位数字"
+      :placeholder="t('shareForm.labels.codePlaceholder')"
       :disabled="!modelValue.requiresCode"
       @update:modelValue="updateCode"
     />
@@ -138,7 +141,7 @@ watch(
         :checked="modelValue.requiresCode"
         @change="updateRequiresCode(($event.target as HTMLInputElement).checked)"
       />
-      <span>需要提取码</span>
+      <span>{{ t('shareForm.labels.requireCode') }}</span>
     </label>
   </div>
 </template>

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
+import { HardDrive, MenuSquare, Settings, Shield, Users } from 'lucide-vue-next'
 import type { MenuRoutersOut } from '@/types/menu'
 import { buildFullPath } from '@/router/menu'
 
@@ -18,13 +20,58 @@ const props = withDefaults(
 )
 
 const normalizedItems = computed(() => props.items || [])
+const { t } = useI18n({ useScope: 'global' })
+
+const iconMap: Record<string, typeof Users> = {
+  system: Settings,
+  users: Users,
+  roles: Shield,
+  menus: MenuSquare,
+  disk: HardDrive,
+}
+
+const resolveKey = (item: MenuRoutersOut) => {
+  const path = item.router_path?.trim().toLowerCase() || ''
+  if (path === '/system') {
+    return 'system'
+  }
+  if (path === '/user') {
+    return 'users'
+  }
+  if (path === '/role') {
+    return 'roles'
+  }
+  if (path === '/menu') {
+    return 'menus'
+  }
+  if (path === '/disk') {
+    return 'disk'
+  }
+  return ''
+}
+
+const getLabel = (item: MenuRoutersOut) => {
+  const key = resolveKey(item)
+  if (key) {
+    return t(`admin.nav.${key}`)
+  }
+  return item.name || ''
+}
+
+const getIcon = (item: MenuRoutersOut) => {
+  const key = resolveKey(item)
+  return key ? iconMap[key] : null
+}
 </script>
 
 <template>
   <ul class="menu">
     <li v-for="item in normalizedItems" :key="item.id ?? item.name">
       <div v-if="item.type === 1" class="menu__group">
-        <div class="menu__group-title">{{ item.name }}</div>
+        <div class="menu__group-title">
+          <component :is="getIcon(item)" v-if="getIcon(item)" class="menu__icon" :size="14" />
+          <span>{{ getLabel(item) }}</span>
+        </div>
         <MenuTree
           v-if="item.children?.length"
           :items="item.children"
@@ -33,7 +80,8 @@ const normalizedItems = computed(() => props.items || [])
         />
       </div>
       <RouterLink v-else class="menu__item" :to="buildFullPath(item, parentPath, basePath)">
-        {{ item.name }}
+        <component :is="getIcon(item)" v-if="getIcon(item)" class="menu__icon" :size="16" />
+        <span>{{ getLabel(item) }}</span>
       </RouterLink>
     </li>
   </ul>
@@ -51,11 +99,18 @@ const normalizedItems = computed(() => props.items || [])
 }
 
 .menu__group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--color-muted);
   margin-top: var(--space-2);
+}
+
+.menu__icon {
+  color: var(--color-muted);
 }
 
 .menu__item {

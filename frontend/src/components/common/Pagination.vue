@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import Button from './Button.vue'
 import Select from './Select.vue'
 
@@ -24,6 +25,8 @@ const emit = defineEmits<{
   (event: 'update:pageSize', value: number): void
 }>()
 
+const { t } = useI18n({ useScope: 'global' })
+
 const totalPages = () => Math.max(1, Math.ceil(props.total / props.pageSize))
 
 const go = (page: number) => {
@@ -32,15 +35,18 @@ const go = (page: number) => {
 }
 
 const sizeOptions = () =>
-  props.pageSizeOptions.map((size) => ({ label: `${size} / 页`, value: String(size) }))
+  props.pageSizeOptions.map((size) => ({
+    label: t('pagination.sizeOption', { size }),
+    value: String(size),
+  }))
 </script>
 
 <template>
   <div class="pagination">
     <div class="pagination__left">
-      <span class="pagination__info">共 {{ total }} 条，{{ totalPages() }} 页</span>
+      <span class="pagination__info">{{ t('pagination.info', { total, pages: totalPages() }) }}</span>
       <div v-if="showPageSize" class="pagination__size">
-        <span class="pagination__size-label">每页</span>
+        <span class="pagination__size-label">{{ t('pagination.perPage') }}</span>
         <Select
           size="sm"
           :model-value="String(pageSize)"
@@ -51,7 +57,7 @@ const sizeOptions = () =>
     </div>
     <div class="pagination__actions">
       <Button variant="secondary" size="sm" :disabled="currentPage <= 1" @click="go(1)">
-        首页
+        {{ t('pagination.first') }}
       </Button>
       <Button
         variant="secondary"
@@ -59,7 +65,7 @@ const sizeOptions = () =>
         :disabled="currentPage <= 1"
         @click="go(currentPage - 1)"
       >
-        上一页
+        {{ t('pagination.prev') }}
       </Button>
       <span class="pagination__page">{{ currentPage }}</span>
       <Button
@@ -68,7 +74,7 @@ const sizeOptions = () =>
         :disabled="currentPage >= totalPages()"
         @click="go(currentPage + 1)"
       >
-        下一页
+        {{ t('pagination.next') }}
       </Button>
       <Button
         variant="secondary"
@@ -76,7 +82,7 @@ const sizeOptions = () =>
         :disabled="currentPage >= totalPages()"
         @click="go(totalPages())"
       >
-        末页
+        {{ t('pagination.last') }}
       </Button>
     </div>
   </div>

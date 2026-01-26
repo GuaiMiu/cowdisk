@@ -8,6 +8,7 @@ export const useAdminMenus = () => {
     create: addMenu,
     update: editMenu,
     remove: deleteMenu,
+    initialSize: 100,
     messages: {
       listFail: '加载菜单失败',
       createSuccess: '菜单已创建',

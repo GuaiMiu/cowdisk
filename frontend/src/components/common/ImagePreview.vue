@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   ChevronLeft,
   ChevronRight,
@@ -34,6 +35,8 @@ const emit = defineEmits<{
 const items = computed<ImageItem[]>(() =>
   props.images.map((item) => (typeof item === 'string' ? { src: item } : item)),
 )
+
+const { t } = useI18n({ useScope: 'global' })
 
 const index = ref(0)
 const scale = ref(1)
@@ -175,9 +178,9 @@ const imageStyle = computed(() => ({
     <transition name="preview-fade">
       <div v-if="open" class="preview" @click.self="close">
         <div class="preview__top">
-          <div class="preview__title">{{ current?.name || '图片预览' }}</div>
+          <div class="preview__title">{{ current?.name || t('preview.imageTitle') }}</div>
           <div class="preview__top-actions">
-            <button type="button" class="preview__top-btn" title="关闭" @click="close">
+            <button type="button" class="preview__top-btn" :title="t('common.close')" @click="close">
               <X :size="18" />
             </button>
           </div>
@@ -191,7 +194,7 @@ const imageStyle = computed(() => ({
           v-if="canNavigate"
           type="button"
           class="preview__arrow preview__arrow--left"
-          title="上一张"
+          :title="t('preview.previous')"
           @click="setIndex(index - 1)"
         >
           <ChevronLeft :size="26" />
@@ -200,7 +203,7 @@ const imageStyle = computed(() => ({
           v-if="canNavigate"
           type="button"
           class="preview__arrow preview__arrow--right"
-          title="下一张"
+          :title="t('preview.next')"
           @click="setIndex(index + 1)"
         >
           <ChevronRight :size="26" />
@@ -220,29 +223,29 @@ const imageStyle = computed(() => ({
             @pointerup="onPointerUp"
             @pointerleave="onPointerUp"
           />
-          <div v-else class="preview__placeholder">加载中...</div>
+          <div v-else class="preview__placeholder">{{ t('common.loadingEllipsis') }}</div>
         </div>
 
         <div class="preview__toolbar">
-          <button type="button" class="preview__tool" title="缩小" @click="zoomBy(-0.2)">
+          <button type="button" class="preview__tool" :title="t('preview.zoomOut')" @click="zoomBy(-0.2)">
             <ZoomOut :size="16" />
           </button>
-          <button type="button" class="preview__tool" title="放大" @click="zoomBy(0.2)">
+          <button type="button" class="preview__tool" :title="t('preview.zoomIn')" @click="zoomBy(0.2)">
             <ZoomIn :size="16" />
           </button>
-          <button type="button" class="preview__tool" title="还原" @click="resetTransform">
+          <button type="button" class="preview__tool" :title="t('preview.reset')" @click="resetTransform">
             <RefreshCcw :size="16" />
           </button>
-          <button type="button" class="preview__tool" title="左旋" @click="rotateBy(-90)">
+          <button type="button" class="preview__tool" :title="t('preview.rotateLeft')" @click="rotateBy(-90)">
             <RotateCcw :size="16" />
           </button>
-          <button type="button" class="preview__tool" title="右旋" @click="rotateBy(90)">
+          <button type="button" class="preview__tool" :title="t('preview.rotateRight')" @click="rotateBy(90)">
             <RotateCw :size="16" />
           </button>
           <button
             type="button"
             class="preview__tool"
-            title="下载"
+            :title="t('common.download')"
             :disabled="!current?.src"
             @click="downloadCurrent"
           >

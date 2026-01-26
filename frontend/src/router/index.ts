@@ -15,6 +15,11 @@ const router = createRouter({
       component: () => import('@/views/login/LoginView.vue'),
     },
     {
+      path: '/register',
+      name: 'register',
+      component: () => import('@/views/login/RegisterView.vue'),
+    },
+    {
       path: '/403',
       name: 'forbidden',
       component: () => import('@/views/403.vue'),
@@ -55,6 +60,12 @@ const router = createRouter({
           name: 'app-shares',
           component: () => import('@/views/app/SharesView.vue'),
           meta: { requiresAuth: true, permissions: ['disk:file:download'] },
+        },
+        {
+          path: 'settings',
+          name: 'app-settings',
+          component: () => import('@/views/app/SettingsView.vue'),
+          meta: { requiresAuth: true },
         },
       ],
     },

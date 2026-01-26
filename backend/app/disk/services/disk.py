@@ -147,30 +147,19 @@ class DiskService:
         except ValueError:
             return datetime.utcnow()
 
-    @classmethod
-    def _unique_restore_path(cls, desired: Path) -> Path:
-        if not desired.exists():
-            return desired
-        stem = desired.stem
-        suffix = desired.suffix
-        base = desired.parent
-        for idx in range(1, 1000):
-            candidate = (
-                base / f"{stem} (restored{'' if idx == 1 else f' {idx}'}){suffix}"
-            )
-            if not candidate.exists():
-                return candidate
-        raise ServiceException(msg="无法恢复，目标路径冲突")
-
     @staticmethod
-    def _unique_path(desired: Path) -> Path:
+    def _unique_path(desired: Path, label: str | None = None) -> Path:
         if not desired.exists():
             return desired
         stem = desired.stem
         suffix = desired.suffix
         base = desired.parent
         for idx in range(1, 1000):
-            candidate = base / f"{stem} ({idx}){suffix}"
+            if label:
+                tag = label if idx == 1 else f"{label} {idx}"
+                candidate = base / f"{stem} ({tag}){suffix}"
+            else:
+                candidate = base / f"{stem} ({idx}){suffix}"
             if not candidate.exists():
                 return candidate
         raise ServiceException(msg="目标路径冲突")
@@ -249,7 +238,7 @@ class DiskService:
         base_dir.mkdir(parents=True, exist_ok=True)
         if not base_dir.is_dir():
             raise ServiceException(msg="目标不是目录")
-        rel = cls._normalize_upload_name(path, filename)
+        rel = cls._normalize_upload_name(filename)
         base_tail = PurePosixPath(path.replace("\\", "/").strip("/")).name
         if base_tail and len(rel.parts) > 1 and rel.parts[0] == base_tail:
             rel = PurePosixPath(*rel.parts[1:])
@@ -274,7 +263,7 @@ class DiskService:
             raise ServiceException(msg="非法文件名")
 
     @classmethod
-    def _normalize_upload_name(cls, path: str, filename: str) -> PurePosixPath:
+    def _normalize_upload_name(cls, filename: str) -> PurePosixPath:
         cls._ensure_filename(filename)
         normalized = filename.replace("\\", "/").lstrip("/")
         return PurePosixPath(normalized)
@@ -379,9 +368,7 @@ class DiskService:
 
     @classmethod
     async def read_text_file(cls, path: str, user_id: int) -> dict:
-        target = cls._resolve_path(path, user_id)
-        cls._ensure_exists(target, "文件不存在")
-        cls._ensure_is_file(target, "目标不是文件")
+        target = await cls.get_file_path(path, user_id)
         try:
             content = target.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
@@ -622,7 +609,7 @@ class DiskService:
             cls._save_trash_items(user_id, items)
             raise ServiceException(msg="回收站条目已丢失")
         desired = cls._resolve_path(target_item.get("path", ""), user_id)
-        dest = cls._unique_restore_path(desired)
+        dest = cls._unique_path(desired, "restored")
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(trash_path), dest)
         items = [item for item in items if item.get("id") != trash_id]

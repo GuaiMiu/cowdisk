@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { Download, ExternalLink, X } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import 'vidstack/player'
 import 'vidstack/player/ui'
 import 'vidstack/player/layouts/default'
@@ -16,9 +17,17 @@ const props = withDefaults(
     type?: string | null
   }>(),
   {
-    name: '视频预览',
+    name: '',
   },
 )
+
+const { locale, messages, t } = useI18n({ useScope: 'global' })
+const vidstackTranslations = computed(() => {
+  const currentMessages = messages.value?.[locale.value] as
+    | { vidstack?: Record<string, string> }
+    | undefined
+  return currentMessages?.vidstack ?? {}
+})
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
@@ -70,21 +79,21 @@ onBeforeUnmount(() => {
     <transition name="preview-fade">
       <div v-if="open" class="video-preview" @click.self="close">
         <div class="video-preview__top">
-          <div class="video-preview__title">{{ name || '视频预览' }}</div>
+          <div class="video-preview__title">{{ name || t('preview.videoTitle') }}</div>
           <div class="video-preview__top-actions">
-            <button type="button" class="video-preview__top-btn" title="新窗口打开" @click="openInNewTab">
+            <button type="button" class="video-preview__top-btn" :title="t('common.openInNewTab')" @click="openInNewTab">
               <ExternalLink :size="18" />
             </button>
             <button
               type="button"
               class="video-preview__top-btn"
-              title="下载"
+              :title="t('common.download')"
               :disabled="!src"
               @click="downloadCurrent"
             >
               <Download :size="18" />
             </button>
-            <button type="button" class="video-preview__top-btn" title="关闭" @click="close">
+            <button type="button" class="video-preview__top-btn" :title="t('common.close')" @click="close">
               <X :size="18" />
             </button>
           </div>
@@ -95,9 +104,9 @@ onBeforeUnmount(() => {
             <media-provider>
               <source v-if="src" :src="src" :type="type || undefined" />
             </media-provider>
-            <media-video-layout></media-video-layout>
+            <media-video-layout :translations="vidstackTranslations"></media-video-layout>
           </media-player>
-          <div v-if="!src" class="video-preview__placeholder">加载中...</div>
+          <div v-if="!src" class="video-preview__placeholder">{{ t('common.loadingEllipsis') }}</div>
         </div>
       </div>
     </transition>

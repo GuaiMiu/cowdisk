@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import * as monaco from 'monaco-editor'
 import 'monaco-editor/min/vs/editor/editor.main.css'
+import { loadMonacoLocale } from '@/i18n/monaco'
 
 const props = withDefaults(
   defineProps<{
@@ -34,6 +36,7 @@ const emit = defineEmits<{
 const rootRef = ref<HTMLDivElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 let lastValue = ''
+const { locale } = useI18n({ useScope: 'global' })
 
 const syncValue = (value: string) => {
   if (!editor) {
@@ -46,12 +49,18 @@ const syncValue = (value: string) => {
   editor.setValue(value)
 }
 
-onMounted(() => {
+const disposeEditor = () => {
+  editor?.dispose()
+  editor = null
+}
+
+const createEditor = async (value: string) => {
   if (!rootRef.value) {
     return
   }
+  await loadMonacoLocale(locale.value)
   editor = monaco.editor.create(rootRef.value, {
-    value: props.modelValue || '',
+    value,
     language: props.language,
     readOnly: props.readOnly,
     theme: props.theme,
@@ -63,7 +72,7 @@ onMounted(() => {
     lineNumbers: props.lineNumbers ? 'on' : 'off',
     guides: { indentation: props.indentGuides },
   })
-  lastValue = props.modelValue || ''
+  lastValue = value
   editor.onDidChangeModelContent(() => {
     if (!editor) {
       return
@@ -75,11 +84,14 @@ onMounted(() => {
     lastValue = value
     emit('update:modelValue', value)
   })
+}
+
+onMounted(() => {
+  void createEditor(props.modelValue || '')
 })
 
 onBeforeUnmount(() => {
-  editor?.dispose()
-  editor = null
+  disposeEditor()
 })
 
 watch(
@@ -87,6 +99,18 @@ watch(
   (value) => {
     lastValue = value
     syncValue(value)
+  },
+)
+
+watch(
+  locale,
+  async () => {
+    if (!rootRef.value) {
+      return
+    }
+    const currentValue = editor?.getValue() ?? props.modelValue ?? ''
+    disposeEditor()
+    await createEditor(currentValue)
   },
 )
 

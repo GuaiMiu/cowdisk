@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Modal from '@/components/common/Modal.vue'
 import Button from '@/components/common/Button.vue'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
@@ -27,8 +28,10 @@ const emit = defineEmits<{
   (event: 'confirm', targetPath: string): void
 }>()
 
+const { t, locale } = useI18n({ useScope: 'global' })
+
 const rootNode = ref<TreeNode>({
-  name: '我的网盘',
+  name: '',
   path: '',
   children: [],
   expanded: true,
@@ -38,6 +41,7 @@ const rootNode = ref<TreeNode>({
 const selectedPath = ref('')
 
 const normalizedCurrentPath = computed(() => toRelativePath(props.currentPath || '/'))
+const rootName = computed(() => t('files.rootName'))
 
 const buildNode = (entry: DiskEntry): TreeNode => ({
   name: entry.name,
@@ -93,21 +97,21 @@ const flatNodes = computed(() => {
 
 const invalidReason = computed(() => {
   if (!props.entries.length) {
-    return '未选择文件'
+    return t('fileMoveDialog.noneSelected')
   }
   const target = selectedPath.value
   const current = normalizedCurrentPath.value
   if (target === current) {
-    return '已在当前目录'
+    return t('fileMoveDialog.sameFolder')
   }
   for (const entry of props.entries) {
     if (entry.is_dir) {
       const selfPath = entry.path
       if (target === selfPath) {
-        return '不能移动到自身'
+        return t('fileMoveDialog.moveToSelf')
       }
       if (selfPath && target.startsWith(`${selfPath}/`)) {
-        return '不能移动到子目录'
+        return t('fileMoveDialog.moveToChild')
       }
     }
   }
@@ -124,7 +128,7 @@ watch(
     }
     selectedPath.value = normalizedCurrentPath.value
     rootNode.value = {
-      name: '我的网盘',
+      name: rootName.value,
       path: '',
       children: [],
       expanded: true,
@@ -134,12 +138,18 @@ watch(
     void loadChildren(rootNode.value)
   },
 )
+
+watch(locale, () => {
+  if (rootNode.value.path === '') {
+    rootNode.value.name = rootName.value
+  }
+})
 </script>
 
 <template>
-  <Modal :open="open" title="移动到" @close="emit('close')">
+  <Modal :open="open" :title="t('fileMoveDialog.title')" @close="emit('close')">
     <div class="move">
-      <div class="move__meta">已选 {{ props.entries.length }} 项</div>
+      <div class="move__meta">{{ t('fileMoveDialog.selectedCount', { count: props.entries.length }) }}</div>
       <div class="move__tree">
         <div
           v-for="{ node, level } in flatNodes"
@@ -162,14 +172,14 @@ watch(
             <FileTypeIcon :is-dir="true" />
             <span class="move__name" :title="node.name">{{ node.name }}</span>
           </div>
-          <span v-if="node.loading" class="move__loading">加载中...</span>
+          <span v-if="node.loading" class="move__loading">{{ t('fileMoveDialog.loading') }}</span>
         </div>
       </div>
       <div v-if="invalidReason" class="move__hint">{{ invalidReason }}</div>
     </div>
     <template #footer>
-      <Button variant="ghost" @click="emit('close')">取消</Button>
-      <Button :disabled="!canSubmit" @click="emit('confirm', selectedPath)">移动</Button>
+      <Button variant="ghost" @click="emit('close')">{{ t('fileMoveDialog.cancel') }}</Button>
+      <Button :disabled="!canSubmit" @click="emit('confirm', selectedPath)">{{ t('fileMoveDialog.move') }}</Button>
     </template>
   </Modal>
 </template>

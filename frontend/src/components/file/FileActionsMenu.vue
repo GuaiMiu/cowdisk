@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import Dropdown from '@/components/common/Dropdown.vue'
 import Button from '@/components/common/Button.vue'
 import type { DiskEntry } from '@/types/disk'
@@ -10,22 +11,24 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'action', action: 'download' | 'rename' | 'delete' | 'share'): void
 }>()
+
+const { t } = useI18n({ useScope: 'global' })
 </script>
 
 <template>
   <Dropdown align="right" :width="160">
     <template #trigger>
       <slot>
-        <Button variant="ghost" size="sm">更多</Button>
+        <Button variant="ghost" size="sm">{{ t('fileActionsMenu.more') }}</Button>
       </slot>
     </template>
     <template #content>
       <div class="menu">
         <button class="menu__item" type="button" v-permission="'disk:file:rename'" @click="emit('action', 'rename')">
-          重命名
+          {{ t('fileActionsMenu.rename') }}
         </button>
         <button class="menu__item" type="button" v-permission="'disk:file:download'" @click="emit('action', 'share')">
-          分享
+          {{ t('fileActionsMenu.share') }}
         </button>
       </div>
     </template>

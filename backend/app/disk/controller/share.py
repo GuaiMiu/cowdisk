@@ -36,7 +36,7 @@ from app.disk.services.share import ShareService
 share_manage_router = APIRouter(
     prefix="/shares",
     tags=["分享管理"],
-    dependencies=[Depends(AuthService.get_current_user_any)],
+    dependencies=[Depends(AuthService.get_current_user)],
 )
 
 share_public_router = APIRouter(prefix="/public/shares", tags=["公开分享"])
@@ -140,7 +140,7 @@ def _build_response(
 )
 async def create_share(
     data: ShareCreateIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     share = await ShareService.create_share(
@@ -166,7 +166,7 @@ async def list_shares(
     status: str | None = None,
     page: int = 1,
     size: int = 20,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     items, total, pages, page_size = await ShareService.list_shares(
@@ -189,7 +189,7 @@ async def list_shares(
 )
 async def revoke_share(
     share_id: str,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     await ShareService.revoke_share(current_user.id, share_id, db)
@@ -204,7 +204,7 @@ async def revoke_share(
 async def update_share(
     share_id: str,
     data: ShareUpdateIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     share = await ShareService.update_share(
@@ -226,7 +226,7 @@ async def update_share(
 )
 async def delete_share(
     share_id: str,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     await ShareService.delete_share(current_user.id, share_id, db)
@@ -380,7 +380,7 @@ async def preview_share(
 async def save_share(
     token: str,
     data: ShareSaveIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     owner_id, share = await ShareService.resolve_share(token, db)

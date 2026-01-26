@@ -211,6 +211,8 @@ class AuthService:
 
         menu_map = defaultdict(list)
         for menu in all_menu:
+            if menu.type == 3:
+                continue
             menu_map[menu.pid].append(menu)
 
         def recursive_build(pid):
@@ -263,6 +265,12 @@ class AuthService:
         if not user:
             logger.warning("用户不存在，请重新登录")
             raise AuthException(msg="用户不存在，请重新登录")
+        if user.is_deleted:
+            logger.warning("用户已删除，请重新登录")
+            raise AuthException(msg="用户已被删除，请重新登录")
+        if not user.status:
+            logger.warning("用户已被禁用，请重新登录")
+            raise AuthException(msg="用户已被禁用，请重新登录")
         return user
 
     @classmethod
@@ -279,26 +287,6 @@ class AuthService:
         :param redis:
         :return:
         """
-        return await cls._get_user_from_token(token, db, redis)
-
-    @classmethod
-    async def get_current_user_any(
-        cls,
-        request: Request,
-        db: AsyncSession = Depends(get_async_session),
-        redis: aioredis.Redis = Depends(get_async_redis),
-    ):
-        auth_header = request.headers.get("authorization", "")
-        token = ""
-        if auth_header.lower().startswith("bearer "):
-            token = auth_header.split(" ", 1)[1].strip()
-        if not token:
-            session_id = request.cookies.get("session_id")
-            if session_id:
-                redis_token = await redis.get(
-                    f"{RedisInitKeyEnum.ACCESS_TOKEN.key}:{session_id}"
-                )
-                token = cls._normalize_token(redis_token)
         return await cls._get_user_from_token(token, db, redis)
 
     @classmethod
@@ -348,7 +336,7 @@ class AuthService:
 
 
 async def get_user_roles(
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
 ) -> list[Role]:
     """
     获取用户角色
@@ -358,7 +346,7 @@ async def get_user_roles(
 
 
 async def get_user_permissions(
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     current_roles: list[Role] = Depends(get_user_roles),
 ) -> list[str]:
     """
@@ -382,7 +370,7 @@ async def get_user_permissions(
 
 async def check_user_permission(
     permissions: SecurityScopes,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     user_permissions: list = Depends(get_user_permissions),
 ):
     """

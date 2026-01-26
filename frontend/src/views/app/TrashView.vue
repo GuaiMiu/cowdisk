@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
 import Table from '@/components/common/Table.vue'
@@ -17,12 +18,14 @@ const currentEntry = ref<DiskTrashEntry | null>(null)
 const page = ref(1)
 const pageSize = ref(20)
 
-const columns = [
-  { key: 'name', label: '名称', width: 'minmax(240px, 1fr)' },
-  { key: 'size', label: '大小', width: '110px' },
-  { key: 'deleted_at', label: '删除时间', width: '140px' },
-  { key: 'actions', label: '操作', width: 'minmax(96px, 0.35fr)' },
-]
+const { t } = useI18n({ useScope: 'global' })
+
+const columns = computed(() => [
+  { key: 'name', label: t('trash.columns.name'), width: 'minmax(240px, 1fr)' },
+  { key: 'size', label: t('trash.columns.size'), width: '110px' },
+  { key: 'deleted_at', label: t('trash.columns.deletedAt'), width: '140px' },
+  { key: 'actions', label: t('trash.columns.actions'), width: '126px' },
+])
 
 const requestDelete = (entry: DiskTrashEntry) => {
   currentEntry.value = entry
@@ -65,15 +68,15 @@ onMounted(() => {
 
 <template>
   <section class="page">
-    <PageHeader title="回收站" subtitle="可恢复被删除的文件">
+    <PageHeader :title="t('trash.title')" :subtitle="t('trash.subtitle')">
       <template #actions>
         <Button variant="secondary" v-permission="'disk:file:delete'" @click="clearConfirm = true">
-          清空回收站
+          {{ t('trash.clear') }}
         </Button>
       </template>
     </PageHeader>
 
-    <div class="table-wrap">
+    <div class="table-wrap trash-table">
       <Table :columns="columns" :rows="pagedItems" :min-rows="pageSize" scrollable fill>
         <template #cell-name="{ row }">
           <div class="name">
@@ -96,7 +99,7 @@ onMounted(() => {
               v-permission="'disk:file:delete'"
               @click="trash.restore(asTrash(row))"
             >
-              恢复
+              {{ t('trash.restore') }}
             </Button>
             <Button
               size="sm"
@@ -105,7 +108,7 @@ onMounted(() => {
               v-permission="'disk:file:delete'"
               @click="requestDelete(asTrash(row))"
             >
-              彻底删除
+              {{ t('trash.deleteForever') }}
             </Button>
           </div>
         </template>
@@ -123,16 +126,16 @@ onMounted(() => {
 
   <ConfirmDialog
     :open="clearConfirm"
-    title="确认清空回收站"
-    message="清空后不可恢复，是否继续？"
+    :title="t('trash.confirmClearTitle')"
+    :message="t('trash.confirmClearMessage')"
     @close="clearConfirm = false"
     @confirm="confirmClear"
   />
 
   <ConfirmDialog
     :open="deleteConfirm"
-    title="确认删除"
-    message="删除后无法恢复，是否继续？"
+    :title="t('trash.confirmDeleteTitle')"
+    :message="t('trash.confirmDeleteMessage')"
     @close="deleteConfirm = false"
     @confirm="confirmDelete"
   />
@@ -157,9 +160,9 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  justify-content: flex-end;
+  justify-content: flex-start;
   white-space: nowrap;
-  justify-self: end;
+  justify-self: start;
 }
 
 .actions--group {
@@ -209,5 +212,16 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .trash-table :deep(.table) {
+    --table-columns: minmax(180px, 1fr) 96px;
+  }
+
+  .trash-table :deep(.table__cell:nth-child(2)),
+  .trash-table :deep(.table__cell:nth-child(3)) {
+    display: none;
+  }
 }
 </style>

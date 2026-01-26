@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Modal from '@/components/common/Modal.vue'
 import Button from '@/components/common/Button.vue'
 import TextEditor from '@/components/common/TextEditor.vue'
@@ -33,7 +34,7 @@ const props = withDefaults(
     saving?: boolean
   }>(),
   {
-    rootName: '我的网盘',
+    rootName: '',
     activePath: null,
     language: 'plaintext',
     loading: false,
@@ -48,8 +49,10 @@ const emit = defineEmits<{
   (event: 'close'): void
 }>()
 
+const { t } = useI18n({ useScope: 'global' })
+
 const rootNode = ref<TreeNode>({
-  name: props.rootName || '我的网盘',
+  name: props.rootName || t('files.rootName'),
   path: '',
   isDir: true,
   children: [],
@@ -61,7 +64,7 @@ const rootNode = ref<TreeNode>({
 
 const normalizedRootPath = computed(() => toRelativePath(props.rootPath || '/'))
 
-const rootLabel = computed(() => props.rootName || '我的网盘')
+const rootLabel = computed(() => props.rootName || t('files.rootName'))
 const sidebarOpen = ref(true)
 const searchQuery = ref('')
 const theme = ref<'vs' | 'vs-dark'>('vs')
@@ -199,6 +202,12 @@ watch(
     void loadChildren(rootNode.value)
   },
 )
+
+watch(rootLabel, (value) => {
+  if (rootNode.value.path === normalizedRootPath.value) {
+    rootNode.value.name = value
+  }
+})
 </script>
 
 <template>
@@ -213,7 +222,7 @@ watch(
             v-model="searchQuery"
             class="editor__search"
             type="text"
-            placeholder="搜索文件"
+            :placeholder="t('fileEditorDialog.searchPlaceholder')"
           />
         </div>
         <div class="editor__tree">
@@ -242,7 +251,7 @@ watch(
             </button>
             <FileTypeIcon :name="node.name" :is-dir="node.isDir" />
             <span class="editor__name" :title="node.name">{{ node.name }}</span>
-            <span v-if="node.loading" class="editor__loading">加载中</span>
+            <span v-if="node.loading" class="editor__loading">{{ t('fileEditorDialog.loading') }}</span>
           </div>
         </div>
       </aside>
@@ -256,31 +265,31 @@ watch(
             </button>
             <label class="editor__switch">
               <input v-model="wordWrap" type="checkbox" />
-              <span>自动换行</span>
+              <span>{{ t('fileEditorDialog.wordWrap') }}</span>
             </label>
             <label class="editor__switch">
               <input v-model="lineNumbers" type="checkbox" />
-              <span>行号</span>
+              <span>{{ t('fileEditorDialog.lineNumbers') }}</span>
             </label>
             <label class="editor__switch">
               <input v-model="indentGuides" type="checkbox" />
-              <span>缩进线</span>
+              <span>{{ t('fileEditorDialog.indentGuides') }}</span>
             </label>
             <label class="editor__switch">
               <input v-model="minimap" type="checkbox" />
-              <span>Minimap</span>
+              <span>{{ t('fileEditorDialog.minimap') }}</span>
             </label>
           </div>
           <div class="editor__group">
             <label class="editor__select">
-              <span>主题</span>
+              <span>{{ t('fileEditorDialog.theme') }}</span>
               <select v-model="theme">
-                <option value="vs">亮色</option>
-                <option value="vs-dark">暗色</option>
+                <option value="vs">{{ t('fileEditorDialog.themeLight') }}</option>
+                <option value="vs-dark">{{ t('fileEditorDialog.themeDark') }}</option>
               </select>
             </label>
             <label class="editor__select">
-              <span>字号</span>
+              <span>{{ t('fileEditorDialog.fontSize') }}</span>
               <select v-model.number="fontSize">
                 <option v-for="size in fontSizes" :key="size" :value="size">{{ size }}</option>
               </select>
@@ -288,8 +297,8 @@ watch(
           </div>
         </div>
 
-        <div v-if="!activePath" class="editor__placeholder">选择一个文本文件进行编辑</div>
-        <div v-else-if="loading" class="editor__placeholder">加载中...</div>
+        <div v-if="!activePath" class="editor__placeholder">{{ t('fileEditorDialog.placeholderSelect') }}</div>
+        <div v-else-if="loading" class="editor__placeholder">{{ t('fileEditorDialog.placeholderLoading') }}</div>
         <TextEditor
           v-else
           class="editor__body"
@@ -307,8 +316,8 @@ watch(
     </div>
 
     <template #footer>
-      <Button variant="ghost" @click="emit('close')">取消</Button>
-      <Button :loading="saving" :disabled="!activePath" @click="emit('save')">保存</Button>
+      <Button variant="ghost" @click="emit('close')">{{ t('fileEditorDialog.cancel') }}</Button>
+      <Button :loading="saving" :disabled="!activePath" @click="emit('save')">{{ t('fileEditorDialog.save') }}</Button>
     </template>
   </Modal>
 </template>

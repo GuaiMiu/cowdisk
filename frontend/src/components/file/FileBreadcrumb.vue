@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { getSegments, joinPath } from '@/utils/path'
 
 const props = defineProps<{
@@ -10,9 +11,11 @@ const emit = defineEmits<{
   (event: 'navigate', path: string): void
 }>()
 
+const { t } = useI18n({ useScope: 'global' })
+
 const crumbs = computed(() => {
   const segments = getSegments(props.path)
-  const items = [{ label: '根目录', path: '/' }]
+  const items = [{ label: t('fileBreadcrumb.root'), path: '/' }]
   let current = ''
   segments.forEach((segment) => {
     current = joinPath(current || '/', segment)

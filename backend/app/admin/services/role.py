@@ -53,7 +53,7 @@ class RoleService:
         :return:
         """
         await cls.is_role_exist(db, role)
-        menu_ids = role.menus
+        menu_ids = role.menus or []
         del role.menus
         role = Role.model_validate(role)
         role.menus = await menu_curd.get_all_by_ids(db=db, ids=menu_ids)
@@ -78,7 +78,8 @@ class RoleService:
                 msg=f"角色 {role_data.name} 不存在",
             )
         await cls.is_role_exist(db, role_data)
-        db_role.menus = await menu_curd.get_all_by_ids(db=db, ids=role_data.menus)
+        menu_ids = role_data.menus or []
+        db_role.menus = await menu_curd.get_all_by_ids(db=db, ids=menu_ids)
         role_data = role_data.model_dump(exclude_unset=True)
         db_role = db_role.sqlmodel_update(role_data)
         db_role.update_by = current_user.username

@@ -1,4 +1,5 @@
 import type { RoleOut } from './role'
+import type { MenuRoutersOut } from './menu'
 
 export type TokenOut = {
   access_token: string
@@ -22,4 +23,6 @@ export type UserOut = {
   last_login_time?: string | null
   avatar_path?: string | null
   roles?: RoleOut[] | null
+  permissions?: string[] | null
+  routers?: MenuRoutersOut[] | null
 }

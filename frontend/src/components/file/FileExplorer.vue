@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import FileToolbar from './FileToolbar.vue'
 import FileBreadcrumb from './FileBreadcrumb.vue'
 import FileTable from './FileTable.vue'
@@ -27,6 +28,9 @@ import { copyToClipboard } from '@/utils/clipboard'
 import { formatBytes, formatTime } from '@/utils/format'
 import { getFileKind } from '@/utils/fileType'
 import { joinPath, toRelativePath } from '@/utils/path'
+
+const { t, locale } = useI18n({ useScope: 'global' })
+const rootName = computed(() => t('files.rootName'))
 
 const explorer = useDiskExplorer()
 const selection = useSelection(() => explorer.items.value)
@@ -63,7 +67,7 @@ const videoName = ref<string>('')
 const videoType = ref<string | null>(null)
 const editorOpen = ref(false)
 const editorRootPath = ref('/')
-const editorRootName = ref('我的网盘')
+const editorRootName = ref(rootName.value)
 const editorFilePath = ref<string | null>(null)
 const editorFileName = ref('')
 const editorContent = ref('')
@@ -148,9 +152,9 @@ const submitShare = async () => {
 const handleCopyLink = async () => {
   const ok = await copyToClipboard(shareLink.value)
   if (ok) {
-    toast.success('链接已复制')
+    toast.success(t('fileExplorer.toasts.linkCopied'))
   } else {
-    toast.error('复制失败', '请手动复制链接')
+    toast.error(t('fileExplorer.toasts.copyFailTitle'), t('fileExplorer.toasts.copyFailMessage'))
   }
 }
 
@@ -240,7 +244,7 @@ const handleAction = async (payload: { entry: DiskEntry; action: 'download' | 'r
       await openEditorForFile(payload.entry)
       return
     }
-    toast.warning('该文件不支持编辑')
+    toast.warning(t('fileExplorer.toasts.notEditable'))
   }
 }
 
@@ -280,7 +284,7 @@ const clearVideoPreview = () => {
 const clearEditor = () => {
   editorOpen.value = false
   editorRootPath.value = '/'
-  editorRootName.value = '我的网盘'
+  editorRootName.value = rootName.value
   editorFilePath.value = null
   editorFileName.value = ''
   editorContent.value = ''
@@ -306,7 +310,7 @@ const getVideoMime = (name: string) => {
 
 const openPreview = async (entry: DiskEntry) => {
   if (entry.is_dir) {
-    toast.warning('该文件夹不支持预览')
+    toast.warning(t('fileExplorer.toasts.folderNoPreview'))
     return
   }
   if (isImageEntry(entry)) {
@@ -325,7 +329,7 @@ const openPreview = async (entry: DiskEntry) => {
     await openEditorForFile(entry)
     return
   }
-  toast.warning('暂不支持该文件预览')
+  toast.warning(t('fileExplorer.toasts.fileNoPreview'))
 }
 
 const openImagePreview = async (entry: DiskEntry) => {
@@ -343,7 +347,10 @@ const openImagePreview = async (entry: DiskEntry) => {
     await ensurePreview(currentIndex)
     await Promise.all([ensurePreview(currentIndex - 1), ensurePreview(currentIndex + 1)])
   } catch (error) {
-    toast.error('预览失败', error instanceof Error ? error.message : '请稍后重试')
+    toast.error(
+      t('fileExplorer.toasts.previewFailedTitle'),
+      error instanceof Error ? error.message : t('fileExplorer.toasts.previewFailedMessage'),
+    )
     clearPreview()
   }
 }
@@ -356,10 +363,13 @@ const openPdfPreview = async (entry: DiskEntry) => {
     const url = URL.createObjectURL(result.blob)
     pdfUrls.value = [url]
     pdfSrc.value = url
-    pdfName.value = entry.name || 'PDF 预览'
+    pdfName.value = entry.name || t('fileExplorer.pdfPreviewDefault')
     pdfOpen.value = true
   } catch (error) {
-    toast.error('预览失败', error instanceof Error ? error.message : '请稍后重试')
+    toast.error(
+      t('fileExplorer.toasts.previewFailedTitle'),
+      error instanceof Error ? error.message : t('fileExplorer.toasts.previewFailedMessage'),
+    )
     clearPdfPreview()
   }
 }
@@ -369,11 +379,14 @@ const openVideoPreview = async (entry: DiskEntry) => {
     clearVideoPreview()
     const token = await createDownloadToken({ path: entry.path })
     videoSrc.value = getPreviewFileUrl(token.token)
-    videoName.value = entry.name || '视频预览'
+    videoName.value = entry.name || t('fileExplorer.videoPreviewDefault')
     videoType.value = getVideoMime(entry.name || '')
     videoOpen.value = true
   } catch (error) {
-    toast.error('预览失败', error instanceof Error ? error.message : '请稍后重试')
+    toast.error(
+      t('fileExplorer.toasts.previewFailedTitle'),
+      error instanceof Error ? error.message : t('fileExplorer.toasts.previewFailedMessage'),
+    )
     clearVideoPreview()
   }
 }
@@ -447,7 +460,7 @@ const getParentPath = (path: string) => {
 const openEditorForFolder = async (entry: DiskEntry) => {
   clearEditor()
   editorRootPath.value = entry.path ? `/${entry.path}` : '/'
-  editorRootName.value = entry.name || '我的网盘'
+  editorRootName.value = entry.name || rootName.value
   editorOpen.value = true
 }
 
@@ -457,8 +470,8 @@ const openEditorForFile = async (entry: DiskEntry) => {
     editorRootPath.value = getParentPath(entry.path)
     editorRootName.value =
       editorRootPath.value === '/'
-        ? '我的网盘'
-        : editorRootPath.value.split('/').pop() || '我的网盘'
+        ? rootName.value
+        : editorRootPath.value.split('/').pop() || rootName.value
     editorFilePath.value = entry.path
     editorFileName.value = entry.name || ''
     editorLanguage.value = getTextLanguage(entry.name || '')
@@ -467,7 +480,10 @@ const openEditorForFile = async (entry: DiskEntry) => {
     const data = await readEditFile(entry.path)
     editorContent.value = data.content || ''
   } catch (error) {
-    toast.error('读取失败', error instanceof Error ? error.message : '请稍后重试')
+    toast.error(
+      t('fileExplorer.toasts.readFailedTitle'),
+      error instanceof Error ? error.message : t('fileExplorer.toasts.readFailedMessage'),
+    )
     clearEditor()
   } finally {
     editorLoading.value = false
@@ -483,7 +499,10 @@ const selectEditorFile = async (payload: { path: string; name: string }) => {
     const data = await readEditFile(payload.path)
     editorContent.value = data.content || ''
   } catch (error) {
-    toast.error('读取失败', error instanceof Error ? error.message : '请稍后重试')
+    toast.error(
+      t('fileExplorer.toasts.readFailedTitle'),
+      error instanceof Error ? error.message : t('fileExplorer.toasts.readFailedMessage'),
+    )
   } finally {
     editorLoading.value = false
   }
@@ -496,10 +515,13 @@ const saveEditor = async () => {
   editorSaving.value = true
   try {
     await saveEditFile({ path: editorFilePath.value, content: editorContent.value })
-    toast.success('保存成功')
+    toast.success(t('fileExplorer.toasts.saveSuccess'))
     await explorer.refresh()
   } catch (error) {
-    toast.error('保存失败', error instanceof Error ? error.message : '请稍后重试')
+    toast.error(
+      t('fileExplorer.toasts.saveFailedTitle'),
+      error instanceof Error ? error.message : t('fileExplorer.toasts.saveFailedMessage'),
+    )
   } finally {
     editorSaving.value = false
   }
@@ -555,17 +577,20 @@ const cancelCreateInline = () => {
 const handleCreateTextInline = async (name: string) => {
   const filename = name.trim()
   if (!filename) {
-    toast.warning('请输入文档名称')
+    toast.warning(t('fileExplorer.toasts.docNameRequired'))
     return
   }
   const path = toRelativePath(joinPath(explorer.path.value, filename))
   try {
     await saveEditFile({ path, content: '' })
-    toast.success('文档已创建')
+    toast.success(t('fileExplorer.toasts.docCreated'))
     creatingText.value = false
     await explorer.refresh()
   } catch (error) {
-    toast.error('创建失败', error instanceof Error ? error.message : '请稍后重试')
+    toast.error(
+      t('fileExplorer.toasts.createFailedTitle'),
+      error instanceof Error ? error.message : t('fileExplorer.toasts.createFailedMessage'),
+    )
   }
 }
 const handleRenameInline = async (payload: { entry: DiskEntry; name: string }) => {
@@ -611,6 +636,12 @@ watch(
     }
   },
 )
+
+watch(locale, () => {
+  if (editorRootPath.value === '/') {
+    editorRootName.value = rootName.value
+  }
+})
 
 watch(
   () =>
@@ -663,7 +694,7 @@ watch(
     />
     <div class="explorer__bar">
       <FileBreadcrumb :path="explorer.path.value" @navigate="explorer.load" />
-      <div class="explorer__count">共 {{ explorer.items.value.length }} 项</div>
+      <div class="explorer__count">{{ t('files.itemsCount', { count: explorer.items.value.length }) }}</div>
     </div>
     <div class="explorer__table">
       <FileTable
@@ -691,47 +722,47 @@ watch(
 
   <UploadQueueDrawer :open="queueOpen" @close="queueOpen = false" />
 
-  <Modal :open="shareModal" title="创建分享" @close="shareModal = false">
+  <Modal :open="shareModal" :title="t('fileExplorer.modals.shareTitle')" @close="shareModal = false">
     <ShareForm v-model="shareForm" />
     <div v-if="shareResult" class="share__result">
-      <Input :model-value="shareLink" label="分享地址" :readonly="true" />
+      <Input :model-value="shareLink" :label="t('fileExplorer.modals.shareLinkLabel')" :readonly="true" />
       <Button variant="secondary" @click="handleCopyLink">
-        复制链接
+        {{ t('common.copyLink') }}
       </Button>
     </div>
     <template #footer>
-      <Button variant="ghost" @click="shareModal = false">取消</Button>
-      <Button :loading="shareSubmitting" @click="submitShare">生成分享</Button>
+      <Button variant="ghost" @click="shareModal = false">{{ t('common.cancel') }}</Button>
+      <Button :loading="shareSubmitting" @click="submitShare">{{ t('fileExplorer.modals.shareGenerate') }}</Button>
     </template>
   </Modal>
 
-  <Modal :open="detailModal" title="文件详情" @close="detailModal = false">
+  <Modal :open="detailModal" :title="t('fileExplorer.modals.detailTitle')" @close="detailModal = false">
     <div v-if="detailEntry" class="detail">
       <div class="detail__row">
-        <span class="detail__label">名称</span>
+        <span class="detail__label">{{ t('fileExplorer.modals.detailName') }}</span>
         <span class="detail__value">{{ detailEntry.name }}</span>
       </div>
       <div class="detail__row">
-        <span class="detail__label">类型</span>
-        <span class="detail__value">{{ detailEntry.is_dir ? '文件夹' : '文件' }}</span>
+        <span class="detail__label">{{ t('fileExplorer.modals.detailType') }}</span>
+        <span class="detail__value">{{ detailEntry.is_dir ? t('common.folder') : t('common.file') }}</span>
       </div>
       <div class="detail__row">
-        <span class="detail__label">路径</span>
+        <span class="detail__label">{{ t('fileExplorer.modals.detailPath') }}</span>
         <span class="detail__value">{{ detailEntry.path }}</span>
       </div>
       <div class="detail__row">
-        <span class="detail__label">大小</span>
+        <span class="detail__label">{{ t('fileExplorer.modals.detailSize') }}</span>
         <span class="detail__value">
           {{ detailEntry.is_dir ? '-' : formatBytes(detailEntry.size) }}
         </span>
       </div>
       <div class="detail__row">
-        <span class="detail__label">更新时间</span>
+        <span class="detail__label">{{ t('fileExplorer.modals.detailUpdatedAt') }}</span>
         <span class="detail__value">{{ formatTime(detailEntry.modified_time) }}</span>
       </div>
     </div>
     <template #footer>
-      <Button variant="ghost" @click="detailModal = false">关闭</Button>
+      <Button variant="ghost" @click="detailModal = false">{{ t('common.close') }}</Button>
     </template>
   </Modal>
 
@@ -786,8 +817,8 @@ watch(
 
   <ConfirmDialog
     :open="deleteConfirm"
-    title="确认删除"
-    message="删除后文件将进入回收站，是否继续？"
+    :title="t('fileExplorer.modals.confirmDeleteTitle')"
+    :message="t('fileExplorer.modals.confirmDeleteMessage')"
     @close="deleteConfirm = false"
     @confirm="confirmDelete"
   />

@@ -47,7 +47,7 @@ class UserService:
         添加用户
         """
         await cls.is_user_exist(db, user)
-        role_ids = user.roles
+        role_ids = user.roles or []
         del user.roles
         user = User.model_validate(user)
         user.roles = await role_curd.get_all_by_ids(db=db, ids=role_ids)
@@ -67,10 +67,15 @@ class UserService:
             )
 
         await cls.is_user_exist(db, user)
-        db_user.roles = await role_curd.get_all_by_ids(db=db, ids=user.roles)
+        if user.roles is None:
+            db_user.roles = []
+        else:
+            db_user.roles = await role_curd.get_all_by_ids(db=db, ids=user.roles)
 
-        user = user.model_dump(exclude_unset=True)
-        db_user = db_user.sqlmodel_update(user)
+        payload = user.model_dump(exclude_unset=True)
+        if not payload.get("password"):
+            payload.pop("password", None)
+        db_user = db_user.sqlmodel_update(payload)
         db_user.update_by = current_user.username
         user = await user_crud.update(db, db_user)
         return user

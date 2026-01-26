@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Pencil, Trash2 } from 'lucide-vue-next'
 import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
@@ -21,22 +22,24 @@ import { useToastStore } from '@/stores/toast'
 const shareActions = useShareActions()
 const toast = useToastStore()
 
-const columns = [
-  { key: 'name', label: '分享名称', width: 'minmax(240px, 1fr)' },
-  { key: 'status', label: '状态', width: '90px' },
-  { key: 'resourceType', label: '类型', width: '80px' },
-  { key: 'createdAt', label: '创建时间', width: '130px' },
-  { key: 'expiresAt', label: '有效期', width: '130px' },
-  { key: 'actions', label: '操作', width: '88px' },
-]
+const { t } = useI18n({ useScope: 'global' })
+
+const columns = computed(() => [
+  { key: 'name', label: t('shares.columns.name'), width: 'minmax(240px, 1fr)' },
+  { key: 'status', label: t('shares.columns.status'), width: '90px' },
+  { key: 'resourceType', label: t('shares.columns.resourceType'), width: '80px' },
+  { key: 'createdAt', label: t('shares.columns.createdAt'), width: '130px' },
+  { key: 'expiresAt', label: t('shares.columns.expiresAt'), width: '130px' },
+  { key: 'actions', label: t('shares.columns.actions'), width: '88px' },
+])
 
 const formatResourceType = (value: string) => {
   const normalized = value?.toLowerCase()
   if (normalized === 'folder' || normalized === 'dir') {
-    return '文件夹'
+    return t('shares.resourceType.folder')
   }
   if (normalized === 'file') {
-    return '文件'
+    return t('shares.resourceType.file')
   }
   return value
 }
@@ -81,9 +84,9 @@ const copyShareLink = async (share: Share) => {
   const link = `${window.location.origin}/public/shares/${share.token}`
   const ok = await copyToClipboard(link)
   if (ok) {
-    toast.success('链接已复制')
+    toast.success(t('shares.toasts.copySuccess'))
   } else {
-    toast.error('复制失败', '请手动复制链接')
+    toast.error(t('shares.toasts.copyFailTitle'), t('shares.toasts.copyFailMessage'))
   }
 }
 
@@ -122,9 +125,9 @@ const toggleStatus = async (row: Share, next: boolean) => {
 const copyLink = async () => {
   const ok = await copyToClipboard(editShareLink.value)
   if (ok) {
-    toast.success('链接已复制')
+    toast.success(t('shares.toasts.copySuccess'))
   } else {
-    toast.error('复制失败', '请手动复制链接')
+    toast.error(t('shares.toasts.copyFailTitle'), t('shares.toasts.copyFailMessage'))
   }
 }
 
@@ -148,15 +151,15 @@ onMounted(() => {
 
 <template>
   <section class="page">
-    <PageHeader title="分享管理" subtitle="统一管理对外分享链接">
+    <PageHeader :title="t('shares.title')" :subtitle="t('shares.subtitle')">
       <template #actions>
         <Button variant="secondary" @click="shareActions.fetchShares(shareActions.currentPage.value)">
-          刷新
+          {{ t('shares.refresh') }}
         </Button>
       </template>
     </PageHeader>
 
-    <div class="table-wrap">
+    <div class="table-wrap shares-table">
       <Table
         :columns="columns"
         :rows="shareActions.items.value"
@@ -191,14 +194,14 @@ onMounted(() => {
           {{ formatTime(asShare(row).createdAt as number) }}
         </template>
         <template #cell-expiresAt="{ row }">
-          {{ asShare(row).expiresAt ? formatTime(asShare(row).expiresAt as number) : '永久' }}
+          {{ asShare(row).expiresAt ? formatTime(asShare(row).expiresAt as number) : t('shares.permanent') }}
         </template>
         <template #cell-actions="{ row }">
           <div class="actions">
             <IconButton
               size="sm"
               variant="ghost"
-              aria-label="编辑分享"
+              :aria-label="t('shares.aria.edit')"
               @click="openEdit(asShare(row))"
             >
               <Pencil :size="16" />
@@ -206,7 +209,7 @@ onMounted(() => {
             <IconButton
               size="sm"
               variant="ghost"
-              aria-label="删除分享"
+              :aria-label="t('shares.aria.delete')"
               @click="requestDelete(asShare(row))"
             >
               <Trash2 :size="16" />
@@ -225,24 +228,24 @@ onMounted(() => {
     />
   </section>
 
-  <Modal :open="editModal" title="编辑分享" @close="editModal = false">
+  <Modal :open="editModal" :title="t('shares.edit.title')" @close="editModal = false">
     <ShareForm v-model="editForm" />
     <div class="share-link">
-      <Input :model-value="editShareLink" label="分享地址" :readonly="true" />
+      <Input :model-value="editShareLink" :label="t('shares.edit.linkLabel')" :readonly="true" />
       <Button variant="secondary" @click="copyLink">
-        复制链接
+        {{ t('shares.edit.copyLink') }}
       </Button>
     </div>
     <template #footer>
-      <Button variant="ghost" @click="editModal = false">取消</Button>
-      <Button :loading="editSubmitting" @click="submitEdit">保存</Button>
+      <Button variant="ghost" @click="editModal = false">{{ t('shares.edit.cancel') }}</Button>
+      <Button :loading="editSubmitting" @click="submitEdit">{{ t('shares.edit.save') }}</Button>
     </template>
   </Modal>
 
   <ConfirmDialog
     :open="deleteConfirm"
-    title="确认删除分享"
-    message="删除后分享链接将失效，是否继续？"
+    :title="t('shares.confirmDeleteTitle')"
+    :message="t('shares.confirmDeleteMessage')"
     @close="deleteConfirm = false"
     @confirm="confirmDelete"
   />
@@ -266,7 +269,7 @@ onMounted(() => {
 .actions {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--space-2);
   white-space: nowrap;
   height: 100%;
@@ -351,5 +354,18 @@ onMounted(() => {
 .status-switch.is-disabled {
   opacity: 0.6;
   pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .shares-table :deep(.table) {
+    --table-columns: minmax(180px, 1fr) 88px;
+  }
+
+  .shares-table :deep(.table__cell:nth-child(2)),
+  .shares-table :deep(.table__cell:nth-child(3)),
+  .shares-table :deep(.table__cell:nth-child(4)),
+  .shares-table :deep(.table__cell:nth-child(5)) {
+    display: none;
+  }
 }
 </style>

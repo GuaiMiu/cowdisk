@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import Table from '@/components/common/Table.vue'
@@ -17,15 +18,16 @@ const unlockCode = ref('')
 const redirectCount = ref(5)
 let redirectTimer: number | null = null
 const asEntry = (row: unknown) => row as DiskEntry
+const { t } = useI18n({ useScope: 'global' })
 const goHome = () => {
   window.location.href = '/'
 }
 
-const columns = [
-  { key: 'name', label: '名称' },
-  { key: 'size', label: '大小' },
-  { key: 'actions', label: '操作' },
-]
+const columns = computed(() => [
+  { key: 'name', label: t('sharePublic.columns.name') },
+  { key: 'size', label: t('sharePublic.columns.size') },
+  { key: 'actions', label: t('sharePublic.columns.actions') },
+])
 
 onMounted(() => {
   void share.loadShare()
@@ -76,66 +78,72 @@ onBeforeUnmount(() => {
   >
     <div v-if="share.errorMessage.value" class="notice">
       <div class="notice__card">
-        <div class="notice__title">分享不可用</div>
+        <div class="notice__title">{{ t('sharePublic.unavailable.title') }}</div>
         <div class="notice__desc">{{ share.errorMessage.value }}</div>
-        <div class="notice__hint">{{ redirectCount }} 秒后返回首页</div>
-        <Button variant="secondary" @click="goHome">返回首页</Button>
+        <div class="notice__hint">{{ t('sharePublic.unavailable.redirectHint', { count: redirectCount }) }}</div>
+        <Button variant="secondary" @click="goHome">{{ t('sharePublic.unavailable.backHome') }}</Button>
       </div>
     </div>
     <div v-else-if="share.locked.value" class="unlock">
       <div class="unlock__card">
-        <div class="unlock__title">需要提取码</div>
-        <div class="unlock__subtitle">输入分享提取码以访问内容</div>
+        <div class="unlock__title">{{ t('sharePublic.unlock.title') }}</div>
+        <div class="unlock__subtitle">{{ t('sharePublic.unlock.subtitle') }}</div>
         <div class="unlock__meta">
-          <span>分享人：{{ (share.share.value as any)?.ownerName || '-' }}</span>
+          <span>{{ t('sharePublic.labels.owner') }}：{{ (share.share.value as any)?.ownerName || '-' }}</span>
           <span>
-            有效期：{{
+            {{ t('sharePublic.labels.expires') }}：{{
               (share.share.value as any)?.expiresAt
                 ? formatTime((share.share.value as any)?.expiresAt)
-                : '永久'
+                : t('sharePublic.permanent')
             }}
           </span>
         </div>
         <div class="unlock__form">
-          <Input v-model="unlockCode" label="提取码" placeholder="请输入 4 位提取码" />
-          <Button :loading="share.loading.value" @click="share.unlock(unlockCode)">解锁</Button>
+          <Input
+            v-model="unlockCode"
+            :label="t('sharePublic.unlock.codeLabel')"
+            :placeholder="t('sharePublic.unlock.codePlaceholder')"
+          />
+          <Button :loading="share.loading.value" @click="share.unlock(unlockCode)">
+            {{ t('sharePublic.unlock.button') }}
+          </Button>
         </div>
         <div v-if="share.unlockError.value" class="unlock__error">{{ share.unlockError.value }}</div>
-        <div class="unlock__hint">若无法获取提取码，请联系分享者</div>
+        <div class="unlock__hint">{{ t('sharePublic.unlock.hint') }}</div>
       </div>
     </div>
 
     <div v-else-if="share.isFile.value" class="file-card">
       <div class="file-card__title">{{ (share.share.value as any)?.name }}</div>
       <div class="file-card__meta">
-        <span>大小：{{ share.fileMeta.value?.size ? formatBytes(share.fileMeta.value.size) : '-' }}</span>
-        <span>类型：{{ share.fileMeta.value?.mime || '-' }}</span>
-        <span>分享人：{{ (share.share.value as any)?.ownerName || '-' }}</span>
+        <span>{{ t('sharePublic.labels.size') }}：{{ share.fileMeta.value?.size ? formatBytes(share.fileMeta.value.size) : '-' }}</span>
+        <span>{{ t('sharePublic.labels.type') }}：{{ share.fileMeta.value?.mime || '-' }}</span>
+        <span>{{ t('sharePublic.labels.owner') }}：{{ (share.share.value as any)?.ownerName || '-' }}</span>
         <span>
-          有效期：{{
+          {{ t('sharePublic.labels.expires') }}：{{
             (share.share.value as any)?.expiresAt
               ? formatTime((share.share.value as any)?.expiresAt)
-              : '永久'
+              : t('sharePublic.permanent')
           }}
         </span>
       </div>
       <div class="file-card__actions">
-        <Button variant="secondary" @click="share.preview()">预览</Button>
-        <Button @click="share.download()">下载</Button>
+        <Button variant="secondary" @click="share.preview()">{{ t('sharePublic.actions.preview') }}</Button>
+        <Button @click="share.download()">{{ t('sharePublic.actions.download') }}</Button>
       </div>
     </div>
 
     <div v-else class="share__body">
       <div class="share__panel">
         <div class="share__bar">
-          <div class="share__title">{{ (share.share.value as any)?.name || '分享内容' }}</div>
+          <div class="share__title">{{ (share.share.value as any)?.name || t('sharePublic.list.title') }}</div>
           <div class="share__meta">
-            <span>分享人：{{ (share.share.value as any)?.ownerName || '-' }}</span>
+            <span>{{ t('sharePublic.labels.owner') }}：{{ (share.share.value as any)?.ownerName || '-' }}</span>
             <span>
-              有效期：{{
+              {{ t('sharePublic.labels.expires') }}：{{
                 (share.share.value as any)?.expiresAt
                   ? formatTime((share.share.value as any)?.expiresAt)
-                  : '永久'
+                  : t('sharePublic.permanent')
               }}
             </span>
           </div>
@@ -172,10 +180,15 @@ onBeforeUnmount(() => {
                 variant="secondary"
                 @click="share.download(asEntry(row).path as string)"
               >
-                下载
+                {{ t('sharePublic.table.download') }}
               </Button>
-              <Button v-if="!asEntry(row).is_dir" size="sm" variant="ghost" @click="share.preview(asEntry(row).path as string)">
-                预览
+              <Button
+                v-if="!asEntry(row).is_dir"
+                size="sm"
+                variant="ghost"
+                @click="share.preview(asEntry(row).path as string)"
+              >
+                {{ t('sharePublic.table.preview') }}
               </Button>
             </div>
           </template>

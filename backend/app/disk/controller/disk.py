@@ -44,7 +44,7 @@ from app.disk.utils.streaming import build_file_response, build_inline_response
 disk_router = APIRouter(
     prefix="/disk",
     tags=["网盘模块"],
-    dependencies=[Depends(AuthService.get_current_user_any)],
+    dependencies=[Depends(AuthService.get_current_user)],
 )
 disk_download_router = APIRouter(prefix="/disk", tags=["网盘模块"])
 
@@ -57,7 +57,7 @@ disk_download_router = APIRouter(prefix="/disk", tags=["网盘模块"])
 )
 async def list_dir(
     path: str = "",
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
 ):
     """
     获取目录列表
@@ -74,7 +74,7 @@ async def list_dir(
 )
 async def mkdir(
     data: DiskMkdirIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
 ):
     """
     创建目录
@@ -93,7 +93,7 @@ async def upload_files(
     files: list[UploadFile] = File(...),
     path: str = Form(""),
     overwrite: bool = Form(False),
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     """
@@ -117,7 +117,7 @@ async def upload_files(
 )
 async def upload_init(
     data: DiskUploadInitIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     redis=Depends(get_async_redis),
     db: AsyncSession = Depends(get_async_session),
 ):
@@ -143,7 +143,7 @@ async def upload_chunk(
     upload_id: str = Form(...),
     index: int = Form(...),
     chunk: UploadFile = File(...),
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     redis=Depends(get_async_redis),
 ):
     await DiskService.upload_chunk(
@@ -164,7 +164,7 @@ async def upload_chunk(
 )
 async def upload_complete(
     data: DiskUploadCompleteIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     redis=Depends(get_async_redis),
     db: AsyncSession = Depends(get_async_session),
 ):
@@ -186,7 +186,7 @@ async def upload_complete(
 async def delete_path(
     path: str,
     recursive: bool = False,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     """
@@ -208,7 +208,7 @@ async def delete_path(
 )
 async def rename_path(
     data: DiskRenameIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
 ):
     """
     重命名或移动文件
@@ -225,7 +225,7 @@ async def rename_path(
 )
 async def read_text_file(
     path: str,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
 ):
     data = await DiskService.read_text_file(path, current_user.id)
     return ResponseModel.success(data=data)
@@ -239,7 +239,7 @@ async def read_text_file(
 )
 async def save_text_file(
     data: DiskTextSaveIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
 ):
     entry = await DiskService.save_text_file(data.path, data.content, current_user.id)
     return ResponseModel.success(data=entry)
@@ -252,7 +252,7 @@ async def save_text_file(
 )
 async def prepare_download(
     data: DiskMkdirIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     redis=Depends(get_async_redis),
 ):
     job_id = await DiskService.create_download_job(data.path, current_user.id, redis)
@@ -266,7 +266,7 @@ async def prepare_download(
 )
 async def prepare_compress(
     data: DiskCompressIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     redis=Depends(get_async_redis),
 ):
     job_id = await DiskService.create_compress_job(
@@ -282,7 +282,7 @@ async def prepare_compress(
 )
 async def compress_status(
     job_id: str,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     redis=Depends(get_async_redis),
     db: AsyncSession = Depends(get_async_session),
 ):
@@ -302,7 +302,7 @@ async def compress_status(
 )
 async def prepare_extract(
     data: DiskExtractIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     redis=Depends(get_async_redis),
 ):
     job_id = await DiskService.create_extract_job(data.path, current_user.id, redis)
@@ -316,7 +316,7 @@ async def prepare_extract(
 )
 async def extract_status(
     job_id: str,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     redis=Depends(get_async_redis),
     db: AsyncSession = Depends(get_async_session),
 ):
@@ -336,7 +336,7 @@ async def extract_status(
     dependencies=[Security(check_user_permission, scopes=["disk:file:delete"])],
 )
 async def list_trash(
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
 ):
     data = await DiskService.list_trash(current_user.id)
     return ResponseModel.success(data=data)
@@ -350,7 +350,7 @@ async def list_trash(
 )
 async def restore_trash(
     data: DiskTrashRestoreIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     entry = await DiskService.restore_trash(data.id, current_user.id)
@@ -365,7 +365,7 @@ async def restore_trash(
 )
 async def delete_trash(
     data: DiskTrashDeleteIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
 ):
     ok = await DiskService.delete_trash(data.id, current_user.id)
     return ResponseModel.success(data=ok)
@@ -377,7 +377,7 @@ async def delete_trash(
     dependencies=[Security(check_user_permission, scopes=["disk:file:delete"])],
 )
 async def clear_trash(
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
 ):
     count = await DiskService.clear_trash(current_user.id)
     return ResponseModel.success(data={"cleared": count})
@@ -390,7 +390,7 @@ async def clear_trash(
 )
 async def create_download_token(
     data: DiskDownloadTokenIn,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     redis=Depends(get_async_redis),
 ):
     token = await DiskService.create_download_token(
@@ -409,7 +409,7 @@ async def create_download_token(
 )
 async def download_status(
     job_id: str,
-    current_user: User = Depends(AuthService.get_current_user_any),
+    current_user: User = Depends(AuthService.get_current_user),
     redis=Depends(get_async_redis),
 ):
     status = await DiskService.get_download_job_status(job_id, current_user.id, redis)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import IconButton from '@/components/common/IconButton.vue'
 import Dropdown from '@/components/common/Dropdown.vue'
@@ -18,6 +19,8 @@ const emit = defineEmits<{
   (event: 'delete-selected'): void
   (event: 'move-selected'): void
 }>()
+
+const { t } = useI18n({ useScope: 'global' })
 </script>
 
 <template>
@@ -27,17 +30,17 @@ const emit = defineEmits<{
         <template #trigger>
           <Button variant="secondary">
             <FolderPlus :size="16" />
-            新建
+            {{ t('fileToolbar.new') }}
             <ChevronDown :size="14" />
           </Button>
         </template>
         <template #content="{ close }">
           <div class="menu">
             <button class="menu__item" type="button" v-permission="'disk:file:mkdir'" @click="emit('new-folder'); close()">
-              文件夹
+              {{ t('fileToolbar.folder') }}
             </button>
             <button class="menu__item" type="button" v-permission="'disk:file:upload'" @click="emit('new-text'); close()">
-              文本文档
+              {{ t('fileToolbar.textFile') }}
             </button>
           </div>
         </template>
@@ -46,14 +49,18 @@ const emit = defineEmits<{
         <template #trigger>
           <Button v-permission="'disk:file:upload'">
             <UploadCloud :size="16" />
-            上传
+            {{ t('fileToolbar.upload') }}
             <ChevronDown :size="14" />
           </Button>
         </template>
         <template #content>
           <div class="menu">
-            <button class="menu__item" type="button" @click="emit('upload')">文件</button>
-            <button class="menu__item" type="button" @click="emit('upload-folder')">目录</button>
+            <button class="menu__item" type="button" @click="emit('upload')">
+              {{ t('fileToolbar.uploadFile') }}
+            </button>
+            <button class="menu__item" type="button" @click="emit('upload-folder')">
+              {{ t('fileToolbar.uploadDirectory') }}
+            </button>
           </div>
         </template>
       </Dropdown>
@@ -64,7 +71,7 @@ const emit = defineEmits<{
         @click="emit('move-selected')"
       >
         <FolderInput :size="16" />
-        移动选中 ({{ selectedCount }})
+        {{ t('fileToolbar.moveSelected', { count: selectedCount }) }}
       </Button>
       <Button
         v-if="selectedCount > 0"
@@ -72,14 +79,14 @@ const emit = defineEmits<{
         v-permission="'disk:file:delete'"
         @click="emit('delete-selected')"
       >
-        删除选中 ({{ selectedCount }})
+        {{ t('fileToolbar.deleteSelected', { count: selectedCount }) }}
       </Button>
     </div>
     <div class="toolbar__right">
-      <IconButton aria-label="上传队列" variant="secondary" @click="emit('toggle-queue')">
+      <IconButton :aria-label="t('fileToolbar.uploadQueue')" variant="secondary" @click="emit('toggle-queue')">
         <ListChecks :size="18" />
       </IconButton>
-      <IconButton aria-label="刷新" variant="secondary" @click="emit('refresh')">
+      <IconButton :aria-label="t('fileToolbar.refresh')" variant="secondary" @click="emit('refresh')">
         <RefreshCw :size="18" />
       </IconButton>
     </div>

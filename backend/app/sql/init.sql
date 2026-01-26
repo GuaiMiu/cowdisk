@@ -25,3 +25,39 @@ INSERT INTO `backend`.`BN_SYSMENU` (`name`, `route_name`, `pid`, `icon`, `type`,
 INSERT INTO `backend`.`BN_SYSMENU` (`name`, `route_name`, `pid`, `icon`, `type`, `permission_char`, `sort`, `redirect`, `router_path`, `keep_alive`, `component_path`, `status`, `is_frame`, `description`, `id`, `is_deleted`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES ('创建目录', NULL, 17, NULL, 3, 'disk:file:mkdir', 4, NULL, NULL, 1, NULL, 1, 0, '创建目录权限', 21, 0, 'superadmin', '2025-04-15 17:00:00', 'superadmin', '2025-04-15 17:00:00');
 INSERT INTO `backend`.`BN_SYSMENU` (`name`, `route_name`, `pid`, `icon`, `type`, `permission_char`, `sort`, `redirect`, `router_path`, `keep_alive`, `component_path`, `status`, `is_frame`, `description`, `id`, `is_deleted`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES ('删除文件', NULL, 17, NULL, 3, 'disk:file:delete', 5, NULL, NULL, 1, NULL, 1, 0, '删除文件权限', 22, 0, 'superadmin', '2025-04-15 17:00:00', 'superadmin', '2025-04-15 17:00:00');
 INSERT INTO `backend`.`BN_SYSMENU` (`name`, `route_name`, `pid`, `icon`, `type`, `permission_char`, `sort`, `redirect`, `router_path`, `keep_alive`, `component_path`, `status`, `is_frame`, `description`, `id`, `is_deleted`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES ('重命名文件', NULL, 17, NULL, 3, 'disk:file:rename', 6, NULL, NULL, 1, NULL, 1, 0, '重命名文件权限', 23, 0, 'superadmin', '2025-04-15 17:00:00', 'superadmin', '2025-04-15 17:00:00');
+
+-- 初始化角色数据
+INSERT INTO `backend`.`BN_SYSROLE` (`name`, `permission_char`, `status`, `description`, `id`, `is_deleted`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES ('管理员', 'admin', 1, '系统管理员', 1, 0, 'superadmin', '2025-04-15 17:10:00', 'superadmin', '2025-04-15 17:10:00');
+INSERT INTO `backend`.`BN_SYSROLE` (`name`, `permission_char`, `status`, `description`, `id`, `is_deleted`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES ('普通用户', 'user', 1, '普通用户', 2, 0, 'superadmin', '2025-04-15 17:10:00', 'superadmin', '2025-04-15 17:10:00');
+
+-- 初始化角色权限关联
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 1);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 2);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 3);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 4);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 5);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 6);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 7);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 8);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 9);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 10);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 11);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 12);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 13);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 14);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 15);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 16);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 17);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 18);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 19);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 20);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 21);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 22);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (1, 23);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (2, 17);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (2, 18);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (2, 19);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (2, 20);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (2, 21);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (2, 22);
+INSERT INTO `backend`.`BN_SYSROLE_MENU` (`role_id`, `menu_id`) VALUES (2, 23);

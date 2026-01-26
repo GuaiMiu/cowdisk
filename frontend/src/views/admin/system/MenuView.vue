@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
 import Table from '@/components/common/Table.vue'
@@ -9,34 +10,36 @@ import Modal from '@/components/common/Modal.vue'
 import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import Switch from '@/components/common/Switch.vue'
 import { useAdminMenus } from '@/composables/useAdminMenus'
 import type { MenuOut } from '@/types/menu'
 
 const menuStore = useAdminMenus()
-const columns = [
-  { key: 'name', label: '菜单名称' },
-  { key: 'type', label: '类型' },
-  { key: 'router_path', label: '路径' },
-  { key: 'permission_char', label: '权限标识' },
-  { key: 'status', label: '状态' },
-  { key: 'actions', label: '操作' },
-]
+const { t } = useI18n({ useScope: 'global' })
+const columns = computed(() => [
+  { key: 'name', label: t('admin.menu.columns.name') },
+  { key: 'type', label: t('admin.menu.columns.type') },
+  { key: 'router_path', label: t('admin.menu.columns.path') },
+  { key: 'permission_char', label: t('admin.menu.columns.permission') },
+  { key: 'status', label: t('admin.menu.columns.status') },
+  { key: 'actions', label: t('admin.menu.columns.actions') },
+])
 
-const typeOptions = [
-  { label: '目录', value: '1' },
-  { label: '菜单', value: '2' },
-  { label: '按钮', value: '3' },
-]
+const typeOptions = computed(() => [
+  { label: t('admin.menu.typeOptions.directory'), value: '1' },
+  { label: t('admin.menu.typeOptions.menu'), value: '2' },
+  { label: t('admin.menu.typeOptions.button'), value: '3' },
+])
 
-const statusOptions = [
-  { label: '启用', value: 'true' },
-  { label: '停用', value: 'false' },
-]
+const statusOptions = computed(() => [
+  { label: t('admin.menu.statusOptions.enabled'), value: 'true' },
+  { label: t('admin.menu.statusOptions.disabled'), value: 'false' },
+])
 
-const boolOptions = [
-  { label: '否', value: 'false' },
-  { label: '是', value: 'true' },
-]
+const boolOptions = computed(() => [
+  { label: t('admin.menu.boolOptions.no'), value: 'false' },
+  { label: t('admin.menu.boolOptions.yes'), value: 'true' },
+])
 
 const formOpen = ref(false)
 const deleteConfirm = ref(false)
@@ -44,6 +47,7 @@ const currentMenu = ref<MenuOut | null>(null)
 const keyword = ref('')
 const statusFilter = ref('all')
 const typeFilter = ref('all')
+const toggling = ref(new Set<number>())
 
 const form = reactive({
   id: 0,
@@ -69,9 +73,9 @@ const errors = reactive({
 })
 
 const parentOptions = computed(() => [
-  { label: '无', value: '0' },
+  { label: t('admin.menu.parentNone'), value: '0' },
   ...menuStore.items.value.map((item) => ({
-    label: item.name || '未命名菜单',
+    label: item.name || t('admin.menu.unnamedMenu'),
     value: String(item.id || 0),
   })),
 ])
@@ -242,7 +246,7 @@ const submitForm = async () => {
   errors.name = ''
   errors.type = ''
   if (!form.name) {
-    errors.name = '请输入菜单名称'
+    errors.name = t('admin.menu.errors.nameRequired')
     return
   }
   const payload = {
@@ -262,7 +266,7 @@ const submitForm = async () => {
     description: form.description || null,
   }
   if (Number.isNaN(payload.type)) {
-    errors.type = '请选择菜单类型'
+    errors.type = t('admin.menu.errors.typeRequired')
     return
   }
   if (form.id) {
@@ -286,6 +290,38 @@ const confirmDelete = async () => {
   currentMenu.value = null
 }
 
+const isToggling = (id?: number) => (id ? toggling.value.has(id) : false)
+
+const toggleStatus = async (row: MenuOut, next: boolean) => {
+  if (!row.id || toggling.value.has(row.id)) {
+    return
+  }
+  toggling.value = new Set(toggling.value).add(row.id)
+  try {
+    await menuStore.updateMenu({
+      id: row.id,
+      name: row.name || '',
+      type: Number(row.type ?? 2),
+      pid: row.pid ?? null,
+      route_name: row.route_name ?? null,
+      router_path: row.router_path ?? null,
+      permission_char: row.permission_char ?? null,
+      sort: row.sort ?? 0,
+      status: next,
+      keep_alive: row.keep_alive ?? true,
+      is_frame: row.is_frame ?? false,
+      redirect: row.redirect ?? null,
+      component_path: row.component_path ?? null,
+      icon: row.icon ?? null,
+      description: row.description ?? null,
+    })
+  } finally {
+    const nextSet = new Set(toggling.value)
+    nextSet.delete(row.id)
+    toggling.value = nextSet
+  }
+}
+
 onMounted(() => {
   void menuStore.fetchMenus()
 })
@@ -293,32 +329,34 @@ onMounted(() => {
 
 <template>
   <section class="page">
-    <PageHeader title="菜单权限" subtitle="维护菜单与按钮权限点">
+    <PageHeader :title="t('admin.menu.title')" :subtitle="t('admin.menu.subtitle')">
       <template #actions>
-        <Button variant="secondary" @click="menuStore.fetchMenus(menuStore.page.value)">刷新</Button>
-        <Button v-permission="'system:menu:add'" @click="openCreate">新增菜单</Button>
+        <Button variant="secondary" @click="menuStore.fetchMenus(menuStore.page.value)">
+          {{ t('admin.menu.refresh') }}
+        </Button>
+        <Button v-permission="'system:menu:add'" @click="openCreate">{{ t('admin.menu.add') }}</Button>
       </template>
     </PageHeader>
 
     <div class="filters">
-      <Input v-model="keyword" label="搜索" placeholder="菜单名称 / 权限标识 / 路径" />
+      <Input v-model="keyword" :label="t('admin.menu.searchLabel')" :placeholder="t('admin.menu.searchPlaceholder')" />
       <Select
         v-model="typeFilter"
-        label="类型"
+        :label="t('admin.menu.typeLabel')"
         :options="[
-          { label: '全部', value: 'all' },
-          { label: '目录', value: '1' },
-          { label: '菜单', value: '2' },
-          { label: '按钮', value: '3' },
+          { label: t('admin.menu.typeOptions.all'), value: 'all' },
+          { label: t('admin.menu.typeOptions.directory'), value: '1' },
+          { label: t('admin.menu.typeOptions.menu'), value: '2' },
+          { label: t('admin.menu.typeOptions.button'), value: '3' },
         ]"
       />
       <Select
         v-model="statusFilter"
-        label="状态"
+        :label="t('admin.menu.statusLabel')"
         :options="[
-          { label: '全部', value: 'all' },
-          { label: '启用', value: 'true' },
-          { label: '停用', value: 'false' },
+          { label: t('admin.menu.statusOptions.all'), value: 'all' },
+          { label: t('admin.menu.statusOptions.enabled'), value: 'true' },
+          { label: t('admin.menu.statusOptions.disabled'), value: 'false' },
         ]"
       />
     </div>
@@ -339,18 +377,26 @@ onMounted(() => {
           </span>
         </template>
         <template #cell-type="{ row }">
-          <Tag tone="warning">{{ row.type === 1 ? '目录' : row.type === 2 ? '菜单' : '按钮' }}</Tag>
+          <Tag tone="warning">
+            {{
+              row.type === 1
+                ? t('admin.menu.tags.directory')
+                : row.type === 2
+                  ? t('admin.menu.tags.menu')
+                  : t('admin.menu.tags.button')
+            }}
+          </Tag>
         </template>
         <template #cell-status="{ row }">
-          <Tag :tone="row.status ? 'success' : 'warning'">{{ row.status ? '启用' : '停用' }}</Tag>
+          <Switch :model-value="!!row.status" :disabled="isToggling(row.id)" @update:modelValue="toggleStatus(row, $event)" />
         </template>
         <template #cell-actions="{ row }">
           <div class="actions">
             <Button size="sm" variant="secondary" v-permission="'system:menu:edit'" @click="openEdit(row)">
-              编辑
+              {{ t('common.edit') }}
             </Button>
             <Button size="sm" variant="ghost" v-permission="'system:menu:delete'" @click="requestDelete(row)">
-              删除
+              {{ t('common.delete') }}
             </Button>
           </div>
         </template>
@@ -366,33 +412,54 @@ onMounted(() => {
     />
   </section>
 
-  <Modal :open="formOpen" :title="form.id ? '编辑菜单' : '新增菜单'" @close="formOpen = false">
+  <Modal
+    :open="formOpen"
+    :title="form.id ? t('admin.menu.modal.editTitle') : t('admin.menu.modal.createTitle')"
+    @close="formOpen = false"
+  >
     <div class="form">
-      <Input v-model="form.name" label="菜单名称" placeholder="请输入菜单名称" :error="errors.name" />
-      <Select v-model="form.type" label="类型" :options="typeOptions" :error="errors.type" />
-      <Select v-model="form.pid" label="父级菜单" :options="parentOptions" />
-      <Input v-model="form.route_name" label="路由名称" placeholder="可选" />
-      <Input v-model="form.router_path" label="路由路径" placeholder="/admin/system/user" />
-      <Input v-model="form.permission_char" label="权限标识" placeholder="system:menu:list" />
-      <Input v-model="form.sort" label="排序" placeholder="0" />
-      <Select v-model="form.status" label="状态" :options="statusOptions" />
-      <Select v-model="form.keep_alive" label="Keep Alive" :options="boolOptions" />
-      <Select v-model="form.is_frame" label="外链" :options="boolOptions" />
-      <Input v-model="form.redirect" label="重定向" placeholder="可选" />
-      <Input v-model="form.component_path" label="组件路径" placeholder="可选" />
-      <Input v-model="form.icon" label="图标" placeholder="可选" />
-      <Input v-model="form.description" label="描述" placeholder="可选" />
+      <Input
+        v-model="form.name"
+        :label="t('admin.menu.form.name')"
+        :placeholder="t('admin.menu.placeholders.name')"
+        :error="errors.name"
+      />
+      <Select v-model="form.type" :label="t('admin.menu.form.type')" :options="typeOptions" :error="errors.type" />
+      <Select v-model="form.pid" :label="t('admin.menu.form.parent')" :options="parentOptions" />
+      <Input v-model="form.route_name" :label="t('admin.menu.form.routeName')" :placeholder="t('admin.common.optional')" />
+      <Input
+        v-model="form.router_path"
+        :label="t('admin.menu.form.routerPath')"
+        :placeholder="t('admin.menu.placeholders.routerPath')"
+      />
+      <Input
+        v-model="form.permission_char"
+        :label="t('admin.menu.form.permission')"
+        :placeholder="t('admin.menu.placeholders.permission')"
+      />
+      <Input
+        v-model="form.sort"
+        :label="t('admin.menu.form.sort')"
+        :placeholder="t('admin.menu.placeholders.sort')"
+      />
+      <Select v-model="form.status" :label="t('admin.menu.form.status')" :options="statusOptions" />
+      <Select v-model="form.keep_alive" :label="t('admin.menu.form.keepAlive')" :options="boolOptions" />
+      <Select v-model="form.is_frame" :label="t('admin.menu.form.isFrame')" :options="boolOptions" />
+      <Input v-model="form.redirect" :label="t('admin.menu.form.redirect')" :placeholder="t('admin.common.optional')" />
+      <Input v-model="form.component_path" :label="t('admin.menu.form.componentPath')" :placeholder="t('admin.common.optional')" />
+      <Input v-model="form.icon" :label="t('admin.menu.form.icon')" :placeholder="t('admin.common.optional')" />
+      <Input v-model="form.description" :label="t('admin.menu.form.description')" :placeholder="t('admin.common.optional')" />
     </div>
     <template #footer>
-      <Button variant="secondary" @click="formOpen = false">取消</Button>
-      <Button @click="submitForm">保存</Button>
+      <Button variant="secondary" @click="formOpen = false">{{ t('common.cancel') }}</Button>
+      <Button @click="submitForm">{{ t('common.save') }}</Button>
     </template>
   </Modal>
 
   <ConfirmDialog
     :open="deleteConfirm"
-    title="确认删除菜单"
-    message="删除后菜单权限将失效，是否继续？"
+    :title="t('admin.menu.confirmDeleteTitle')"
+    :message="t('admin.menu.confirmDeleteMessage')"
     @close="deleteConfirm = false"
     @confirm="confirmDelete"
   />
@@ -411,6 +478,7 @@ onMounted(() => {
 .table-wrap {
   overflow: auto;
   min-height: 0;
+  height: 100%;
 }
 
 .actions {
@@ -418,6 +486,7 @@ onMounted(() => {
   justify-content: flex-end;
   gap: var(--space-2);
 }
+
 
 .form {
   display: grid;

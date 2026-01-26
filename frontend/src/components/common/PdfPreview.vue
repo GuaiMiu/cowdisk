@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Download, ExternalLink, X } from 'lucide-vue-next'
 
 const props = withDefaults(
@@ -9,7 +10,7 @@ const props = withDefaults(
     name?: string
   }>(),
   {
-    name: 'PDF 预览',
+    name: '',
   },
 )
 
@@ -17,6 +18,8 @@ const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
   (event: 'close'): void
 }>()
+
+const { t } = useI18n({ useScope: 'global' })
 
 const close = () => {
   emit('update:open', false)
@@ -63,21 +66,21 @@ onBeforeUnmount(() => {
     <transition name="preview-fade">
       <div v-if="open" class="pdf-preview" @click.self="close">
         <div class="pdf-preview__top">
-          <div class="pdf-preview__title">{{ name || 'PDF 预览' }}</div>
+          <div class="pdf-preview__title">{{ name || t('preview.pdfTitle') }}</div>
           <div class="pdf-preview__top-actions">
-            <button type="button" class="pdf-preview__top-btn" title="新窗口打开" @click="openInNewTab">
+            <button type="button" class="pdf-preview__top-btn" :title="t('common.openInNewTab')" @click="openInNewTab">
               <ExternalLink :size="18" />
             </button>
             <button
               type="button"
               class="pdf-preview__top-btn"
-              title="下载"
+              :title="t('common.download')"
               :disabled="!src"
               @click="downloadCurrent"
             >
               <Download :size="18" />
             </button>
-            <button type="button" class="pdf-preview__top-btn" title="关闭" @click="close">
+            <button type="button" class="pdf-preview__top-btn" :title="t('common.close')" @click="close">
               <X :size="18" />
             </button>
           </div>
@@ -90,7 +93,7 @@ onBeforeUnmount(() => {
             :src="src"
             title="PDF Preview"
           ></iframe>
-          <div v-else class="pdf-preview__placeholder">加载中...</div>
+          <div v-else class="pdf-preview__placeholder">{{ t('common.loadingEllipsis') }}</div>
         </div>
       </div>
     </transition>

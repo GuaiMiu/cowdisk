@@ -9,5 +9,6 @@ import { setupApp } from './app/setupApp'
 
 const app = createApp(App)
 
-setupApp(app)
-app.mount('#app')
+setupApp(app).then(() => {
+  app.mount('#app')
+})

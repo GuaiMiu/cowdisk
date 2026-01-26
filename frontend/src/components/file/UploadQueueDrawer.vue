@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import Drawer from '@/components/common/Drawer.vue'
 import Button from '@/components/common/Button.vue'
 import Progress from '@/components/common/Progress.vue'
@@ -15,11 +16,12 @@ const emit = defineEmits<{
 
 const uploadsStore = useUploadsStore()
 const { retry, cancel } = useUploader()
+const { t } = useI18n({ useScope: 'global' })
 </script>
 
 <template>
-  <Drawer :open="open" title="上传队列" :width="460" @close="emit('close')">
-    <div v-if="uploadsStore.items.length === 0" class="empty">暂无上传任务</div>
+  <Drawer :open="open" :title="t('uploadQueue.title')" :width="460" @close="emit('close')">
+    <div v-if="uploadsStore.items.length === 0" class="empty">{{ t('uploadQueue.empty') }}</div>
     <div v-else class="queue">
       <div v-for="item in uploadsStore.items" :key="item.id" class="queue__item">
         <div class="queue__meta">
@@ -29,18 +31,18 @@ const { retry, cancel } = useUploader()
         <Progress :value="item.progress" />
         <div class="queue__actions">
           <Button v-if="item.status === 'error'" size="sm" variant="secondary" @click="retry(item.id)">
-            重试
+            {{ t('uploadQueue.retry') }}
           </Button>
           <Button v-if="item.status === 'uploading' || item.status === 'queued'" size="sm" variant="ghost" @click="cancel(item.id)">
-            取消
+            {{ t('uploadQueue.cancel') }}
           </Button>
           <span v-if="item.error" class="queue__error">{{ item.error }}</span>
         </div>
       </div>
     </div>
     <template #footer>
-      <Button variant="secondary" @click="uploadsStore.clearDone()">清理已完成</Button>
-      <Button variant="ghost" @click="emit('close')">关闭</Button>
+      <Button variant="secondary" @click="uploadsStore.clearDone()">{{ t('uploadQueue.clearDone') }}</Button>
+      <Button variant="ghost" @click="emit('close')">{{ t('uploadQueue.close') }}</Button>
     </template>
   </Drawer>
 </template>

@@ -6,11 +6,14 @@ import { setTokenGetter, setUnauthorizedHandler } from '@/api/interceptors'
 import { useAuthStore } from '@/stores/auth'
 import { registerPermissionDirective } from '@/directives/permission'
 import Can from '@/components/common/Can.vue'
+import { i18n, initI18n } from '@/i18n'
 
-export function setupApp(app: App) {
+export async function setupApp(app: App) {
+  await initI18n()
   const pinia = createPinia()
   app.use(pinia)
   app.use(router)
+  app.use(i18n)
 
   const authStore = useAuthStore(pinia)
   setTokenGetter(() => authStore.token)

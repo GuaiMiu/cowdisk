@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
 import Table from '@/components/common/Table.vue'
@@ -9,25 +10,28 @@ import Modal from '@/components/common/Modal.vue'
 import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import CheckList from '@/components/common/CheckList.vue'
+import TreeCheckList from '@/components/common/TreeCheckList.vue'
+import Switch from '@/components/common/Switch.vue'
 import { useAdminRoles } from '@/composables/useAdminRoles'
 import { useMenuOptions } from '@/composables/useMenuOptions'
 import { formatTime } from '@/utils/format'
 import type { RoleOut } from '@/types/role'
+import { getRoleDetail } from '@/api/modules/adminSystem'
 
 const roleStore = useAdminRoles()
-const columns = [
-  { key: 'name', label: '角色名称' },
-  { key: 'permission_char', label: '权限标识' },
-  { key: 'status', label: '状态' },
-  { key: 'update_time', label: '更新时间' },
-  { key: 'actions', label: '操作' },
-]
+const { t } = useI18n({ useScope: 'global' })
+const columns = computed(() => [
+  { key: 'name', label: t('admin.role.columns.name') },
+  { key: 'permission_char', label: t('admin.role.columns.permission') },
+  { key: 'status', label: t('admin.role.columns.status') },
+  { key: 'update_time', label: t('admin.role.columns.updateTime') },
+  { key: 'actions', label: t('admin.role.columns.actions') },
+])
 
-const statusOptions = [
-  { label: '启用', value: 'true' },
-  { label: '禁用', value: 'false' },
-]
+const statusOptions = computed(() => [
+  { label: t('admin.role.statusOptions.enabled'), value: 'true' },
+  { label: t('admin.role.statusOptions.disabled'), value: 'false' },
+])
 
 const formOpen = ref(false)
 const deleteConfirm = ref(false)
@@ -35,6 +39,7 @@ const currentRole = ref<RoleOut | null>(null)
 const menuOptions = useMenuOptions()
 const keyword = ref('')
 const statusFilter = ref('all')
+const toggling = ref(new Set<number>())
 
 const form = reactive({
   id: 0,
@@ -78,7 +83,7 @@ const openEdit = (role: RoleOut) => {
 const submitForm = async () => {
   errors.name = ''
   if (!form.name) {
-    errors.name = '请输入角色名称'
+    errors.name = t('admin.role.errors.nameRequired')
     return
   }
   const payload = {
@@ -109,6 +114,31 @@ const confirmDelete = async () => {
   currentRole.value = null
 }
 
+const isToggling = (id?: number) => (id ? toggling.value.has(id) : false)
+
+const toggleStatus = async (row: RoleOut, next: boolean) => {
+  if (!row.id || toggling.value.has(row.id)) {
+    return
+  }
+  toggling.value = new Set(toggling.value).add(row.id)
+  try {
+    const detail = await getRoleDetail(row.id)
+    const menus = (detail.menus || row.menus || []).map((menu) => menu.id || 0).filter((id) => id > 0)
+    await roleStore.updateRole({
+      id: row.id,
+      name: row.name || '',
+      permission_char: row.permission_char || null,
+      description: row.description || null,
+      status: next,
+      menus,
+    })
+  } finally {
+    const nextSet = new Set(toggling.value)
+    nextSet.delete(row.id)
+    toggling.value = nextSet
+  }
+}
+
 const filteredRoles = computed(() => {
   const keywordValue = keyword.value.trim().toLowerCase()
   return roleStore.items.value.filter((role) => {
@@ -135,30 +165,32 @@ onMounted(() => {
 
 <template>
   <section class="page">
-    <PageHeader title="角色管理" subtitle="定义角色与授权范围">
+    <PageHeader :title="t('admin.role.title')" :subtitle="t('admin.role.subtitle')">
       <template #actions>
-        <Button variant="secondary" @click="roleStore.fetchRoles(roleStore.page.value)">刷新</Button>
-        <Button v-permission="'system:role:add'" @click="openCreate">新增角色</Button>
+        <Button variant="secondary" @click="roleStore.fetchRoles(roleStore.page.value)">
+          {{ t('admin.role.refresh') }}
+        </Button>
+        <Button v-permission="'system:role:add'" @click="openCreate">{{ t('admin.role.add') }}</Button>
       </template>
     </PageHeader>
 
     <div class="filters">
-      <Input v-model="keyword" label="搜索" placeholder="角色名称 / 权限标识" />
+      <Input v-model="keyword" :label="t('admin.role.searchLabel')" :placeholder="t('admin.role.searchPlaceholder')" />
       <Select
         v-model="statusFilter"
-        label="状态"
+        :label="t('admin.role.statusLabel')"
         :options="[
-          { label: '全部', value: 'all' },
-          { label: '启用', value: 'true' },
-          { label: '禁用', value: 'false' },
+          { label: t('admin.role.statusOptions.all'), value: 'all' },
+          { label: t('admin.role.statusOptions.enabled'), value: 'true' },
+          { label: t('admin.role.statusOptions.disabled'), value: 'false' },
         ]"
       />
     </div>
 
     <div class="table-wrap">
-      <Table :columns="columns" :rows="filteredRoles" :min-rows="roleStore.size.value">
+      <Table :columns="columns" :rows="filteredRoles" :min-rows="roleStore.size.value" scrollable fill>
         <template #cell-status="{ row }">
-          <Tag :tone="row.status ? 'success' : 'warning'">{{ row.status ? '启用' : '禁用' }}</Tag>
+          <Switch :model-value="!!row.status" :disabled="isToggling(row.id)" @update:modelValue="toggleStatus(row, $event)" />
         </template>
         <template #cell-update_time="{ row }">
           {{ formatTime(row.update_time as string) }}
@@ -166,10 +198,10 @@ onMounted(() => {
         <template #cell-actions="{ row }">
           <div class="actions">
             <Button size="sm" variant="secondary" v-permission="'system:role:edit'" @click="openEdit(row)">
-              编辑
+              {{ t('common.edit') }}
             </Button>
             <Button size="sm" variant="ghost" v-permission="'system:role:delete'" @click="requestDelete(row)">
-              删除
+              {{ t('common.delete') }}
             </Button>
           </div>
         </template>
@@ -185,27 +217,44 @@ onMounted(() => {
     />
   </section>
 
-  <Modal :open="formOpen" :title="form.id ? '编辑角色' : '新增角色'" @close="formOpen = false">
+  <Modal
+    :open="formOpen"
+    :title="form.id ? t('admin.role.modal.editTitle') : t('admin.role.modal.createTitle')"
+    @close="formOpen = false"
+  >
     <div class="form">
-      <Input v-model="form.name" label="角色名称" placeholder="请输入角色名称" :error="errors.name" />
-      <Input v-model="form.permission_char" label="权限标识" placeholder="例如 system:role" />
-      <Input v-model="form.description" label="描述" placeholder="可选" />
-      <Select v-model="form.status" label="状态" :options="statusOptions" />
+      <Input
+        v-model="form.name"
+        :label="t('admin.role.form.name')"
+        :placeholder="t('admin.role.placeholders.name')"
+        :error="errors.name"
+      />
+      <Input
+        v-model="form.permission_char"
+        :label="t('admin.role.form.permission')"
+        :placeholder="t('admin.role.placeholders.permission')"
+      />
+      <Input
+        v-model="form.description"
+        :label="t('admin.role.form.description')"
+        :placeholder="t('admin.common.optional')"
+      />
+      <Select v-model="form.status" :label="t('admin.role.form.status')" :options="statusOptions" />
       <div class="form__menus">
-        <div class="form__label">菜单权限</div>
-        <CheckList v-model="form.menus" :items="menuOptions.options.value" empty-text="暂无菜单可选" />
+        <div class="form__label">{{ t('admin.role.form.menus') }}</div>
+        <TreeCheckList v-model="form.menus" :items="menuOptions.options.value" :empty-text="t('admin.role.menusEmpty')" />
       </div>
     </div>
     <template #footer>
-      <Button variant="secondary" @click="formOpen = false">取消</Button>
-      <Button @click="submitForm">保存</Button>
+      <Button variant="secondary" @click="formOpen = false">{{ t('common.cancel') }}</Button>
+      <Button @click="submitForm">{{ t('common.save') }}</Button>
     </template>
   </Modal>
 
   <ConfirmDialog
     :open="deleteConfirm"
-    title="确认删除角色"
-    message="删除后角色权限将失效，是否继续？"
+    :title="t('admin.role.confirmDeleteTitle')"
+    :message="t('admin.role.confirmDeleteMessage')"
     @close="deleteConfirm = false"
     @confirm="confirmDelete"
   />
@@ -224,6 +273,7 @@ onMounted(() => {
 .table-wrap {
   overflow: auto;
   min-height: 0;
+  height: 100%;
 }
 
 .actions {
@@ -231,6 +281,7 @@ onMounted(() => {
   justify-content: flex-end;
   gap: var(--space-2);
 }
+
 
 .form {
   display: grid;

@@ -1,21 +1,95 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { RouterView } from 'vue-router'
-import { LayoutGrid } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { RouterView, useRouter } from 'vue-router'
+import { LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-vue-next'
 import MenuTree from '@/components/common/MenuTree.vue'
+import IconButton from '@/components/common/IconButton.vue'
+import Dropdown from '@/components/common/Dropdown.vue'
 import { useAuthStore } from '@/stores/auth'
-import { filterMenus } from '@/router/menu'
+import { getAvatar } from '@/api/modules/auth'
+import { getLocale, setLocale } from '@/i18n'
 
 const authStore = useAuthStore()
-const menus = computed(() => filterMenus(authStore.routers, authStore.permissions, !!authStore.me?.is_superuser))
+const router = useRouter()
+const menus = computed(() => authStore.routers)
+const { t } = useI18n({ useScope: 'global' })
+const sidebarOpen = ref(true)
+
+const userLabel = computed(() => authStore.me?.nickname || authStore.me?.username || '')
+const initials = computed(() => {
+  const label = userLabel.value || ''
+  if (!label) {
+    return '?'
+  }
+  return label.trim().slice(0, 1).toUpperCase()
+})
+
+const avatarFailed = ref(false)
+const avatarSrc = ref<string | null>(null)
+const hasAvatar = computed(() => !!authStore.me?.avatar_path)
+const currentLocale = computed(() => getLocale())
+
+const switchLocale = async (locale: string) => {
+  await setLocale(locale)
+}
+
+const goDrive = () => {
+  router.push('/app')
+}
+
+const goSettings = () => {
+  router.push('/app/settings')
+}
+
+const logout = () => {
+  void authStore.logout()
+}
+
+const onAvatarError = () => {
+  avatarFailed.value = true
+}
+
+const clearAvatar = () => {
+  if (avatarSrc.value) {
+    URL.revokeObjectURL(avatarSrc.value)
+  }
+  avatarSrc.value = null
+  avatarFailed.value = false
+}
+
+const loadAvatar = async () => {
+  if (!hasAvatar.value) {
+    clearAvatar()
+    return
+  }
+  try {
+    const result = await getAvatar()
+    if (avatarSrc.value) {
+      URL.revokeObjectURL(avatarSrc.value)
+    }
+    avatarSrc.value = URL.createObjectURL(result.blob)
+    avatarFailed.value = false
+  } catch {
+    clearAvatar()
+  }
+}
+
+watch([() => authStore.me?.avatar_path, () => authStore.token], () => {
+  void loadAvatar()
+})
+
+onBeforeUnmount(() => {
+  clearAvatar()
+})
 </script>
 
 <template>
-  <div class="layout">
+  <div class="layout" :class="{ 'layout--collapsed': !sidebarOpen }">
     <aside class="layout__sidebar">
       <div class="brand">
         <LayoutGrid class="brand__icon" :size="20" />
-        <span class="brand__text">系统后台</span>
+        <span class="brand__text">{{ t('admin.layout.brand') }}</span>
       </div>
       <nav class="nav">
         <MenuTree :items="menus" base-path="/admin" />
@@ -24,10 +98,62 @@ const menus = computed(() => filterMenus(authStore.routers, authStore.permission
 
     <header class="layout__toolbar">
       <div class="toolbar__left">
-        <div class="toolbar__title">系统管理</div>
-        <div class="toolbar__subtitle">权限、角色、菜单统一配置</div>
+        <IconButton
+          size="sm"
+          variant="ghost"
+          :aria-label="t('layout.sidebar.toggle')"
+          class="toolbar__toggle"
+          @click="sidebarOpen = !sidebarOpen"
+        >
+          <PanelLeftClose v-if="sidebarOpen" :size="16" />
+          <PanelLeftOpen v-else :size="16" />
+        </IconButton>
       </div>
       <div class="toolbar__actions">
+        <Dropdown v-if="userLabel" align="right" :width="220">
+          <template #trigger>
+            <button type="button" class="user-menu__trigger">
+              <span class="user-menu__avatar">
+                <img v-if="avatarSrc && !avatarFailed" :src="avatarSrc" :alt="userLabel" @error="onAvatarError" />
+                <span v-else class="user-menu__initials">{{ initials }}</span>
+              </span>
+              <span class="user-menu__name">{{ userLabel }}</span>
+            </button>
+          </template>
+          <template #content="{ close }">
+            <div class="user-menu">
+              <div class="user-menu__group">
+                <div class="user-menu__label">{{ t('layout.userMenu.language') }}</div>
+                <button
+                  type="button"
+                  class="user-menu__item"
+                  :class="{ 'is-active': currentLocale === 'zh-CN' }"
+                  @click="switchLocale('zh-CN'); close()"
+                >
+                  {{ t('layout.userMenu.langZh') }}
+                </button>
+                <button
+                  type="button"
+                  class="user-menu__item"
+                  :class="{ 'is-active': currentLocale === 'en-US' }"
+                  @click="switchLocale('en-US'); close()"
+                >
+                  {{ t('layout.userMenu.langEn') }}
+                </button>
+              </div>
+              <div class="user-menu__divider"></div>
+              <button type="button" class="user-menu__item" @click="goSettings(); close()">
+                {{ t('layout.userMenu.profile') }}
+              </button>
+              <button type="button" class="user-menu__item" @click="goDrive(); close()">
+                {{ t('layout.userMenu.backToDrive') }}
+              </button>
+              <button type="button" class="user-menu__item user-menu__item--danger" @click="logout(); close()">
+                {{ t('layout.userMenu.logout') }}
+              </button>
+            </div>
+          </template>
+        </Dropdown>
         <slot name="toolbar" />
       </div>
     </header>
@@ -35,16 +161,6 @@ const menus = computed(() => filterMenus(authStore.routers, authStore.permission
     <main class="layout__content">
       <RouterView />
     </main>
-
-    <aside class="layout__panel">
-      <slot name="panel">
-        <div class="panel-card">
-          <div class="panel-card__title">提示</div>
-          <div class="panel-card__value">后台仅用于系统管理</div>
-          <div class="panel-card__hint">不管理任何用户文件</div>
-        </div>
-      </slot>
-    </aside>
   </div>
 </template>
 
@@ -52,14 +168,27 @@ const menus = computed(() => filterMenus(authStore.routers, authStore.permission
 .layout {
   height: 100%;
   display: grid;
-  grid-template-columns: 240px 1fr 280px;
+  grid-template-columns: 240px 1fr;
   grid-template-rows: auto 1fr;
   grid-template-areas:
-    'sidebar toolbar panel'
-    'sidebar content panel';
+    'sidebar toolbar'
+    'sidebar content';
   gap: var(--space-4);
   padding: var(--space-5);
   overflow: hidden;
+}
+
+.layout--collapsed {
+  grid-template-columns: 72px 1fr;
+}
+
+.layout--collapsed .layout__sidebar {
+  opacity: 1;
+  transform: translateX(-4px);
+}
+
+.layout--collapsed .brand__text {
+  display: none;
 }
 
 .layout__sidebar {
@@ -99,14 +228,6 @@ const menus = computed(() => filterMenus(authStore.routers, authStore.permission
   height: 100%;
 }
 
-.layout__panel {
-  grid-area: panel;
-  display: grid;
-  align-content: start;
-  gap: var(--space-4);
-  overflow: auto;
-  min-height: 0;
-}
 
 .brand {
   display: flex;
@@ -140,29 +261,103 @@ const menus = computed(() => filterMenus(authStore.routers, authStore.permission
   gap: var(--space-2);
 }
 
-.panel-card {
-  background: var(--color-surface);
+.toolbar__toggle {
+  margin-right: var(--space-3);
+}
+
+.user-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 10px;
+  border-radius: 999px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+}
+
+.user-menu__trigger:hover {
+  border-color: var(--color-primary);
   box-shadow: var(--shadow-xs);
+}
+
+.user-menu__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--color-surface-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.user-menu__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-menu__initials {
+  letter-spacing: 0.02em;
+}
+
+.user-menu__name {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.user-menu {
   display: grid;
   gap: var(--space-2);
 }
 
-.panel-card__title {
+.user-menu__group {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.user-menu__label {
+  font-size: 11px;
+  color: var(--color-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.user-menu__item {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
   font-size: 13px;
-  color: var(--color-muted);
+  color: var(--color-text);
 }
 
-.panel-card__value {
-  font-size: 18px;
-  font-weight: 600;
+.user-menu__item:hover {
+  background: var(--color-surface-2);
 }
 
-.panel-card__hint {
-  font-size: 12px;
-  color: var(--color-muted);
+.user-menu__item.is-active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.user-menu__item--danger {
+  color: var(--color-danger);
+}
+
+.user-menu__divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 2px 0;
 }
 
 @media (max-width: 1280px) {
@@ -172,10 +367,6 @@ const menus = computed(() => filterMenus(authStore.routers, authStore.permission
     grid-template-areas:
       'sidebar toolbar'
       'sidebar content';
-  }
-
-  .layout__panel {
-    display: none;
   }
 }
 

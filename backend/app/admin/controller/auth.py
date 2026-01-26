@@ -267,7 +267,8 @@ async def get_me(
     获取当前用户信息
     :return:
     """
-    return Res.success(data=UserOut.model_validate(current_user))
+    data = UserOut.model_validate(current_user).model_dump(exclude={"roles"})
+    return Res.success(data=data)
 
 
 @auth_router.get(
