@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -11,23 +12,64 @@ const authStore = useAuthStore()
 const toast = useToastStore()
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n({ useScope: 'global' })
 
 const username = ref('')
 const mail = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const submitting = ref(false)
+const errors = reactive({
+  username: '',
+  mail: '',
+  password: '',
+  confirmPassword: '',
+})
 
 const canSubmit = computed(() => {
   return username.value.trim() && mail.value.trim() && password.value.trim() && confirmPassword.value.trim()
 })
 
-const onSubmit = async () => {
-  if (!canSubmit.value) {
-    return
+const isEmailValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+const isPasswordValid = (value: string) =>
+  /^[A-Za-z0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]+$/.test(value)
+
+const validate = () => {
+  errors.username = ''
+  errors.mail = ''
+  errors.password = ''
+  errors.confirmPassword = ''
+  const trimmed = username.value.trim()
+  if (!trimmed) {
+    errors.username = t('auth.register.validation.usernameRequired')
+  } else if (trimmed.length < 4 || trimmed.length > 20) {
+    errors.username = t('auth.register.validation.usernameLength')
   }
-  if (password.value !== confirmPassword.value) {
-    toast.error('注册失败', '两次输入的密码不一致')
+  const mailValue = mail.value.trim()
+  if (!mailValue) {
+    errors.mail = t('auth.register.validation.emailRequired')
+  } else if (!isEmailValid(mailValue)) {
+    errors.mail = t('auth.register.validation.emailInvalid')
+  }
+  if (!password.value) {
+    errors.password = t('auth.register.validation.passwordRequired')
+  } else if (password.value.length < 4 || password.value.length > 20) {
+    errors.password = t('auth.register.validation.passwordLength')
+  } else if (!isPasswordValid(password.value)) {
+    errors.password = t('auth.register.validation.passwordIllegal')
+  } else if (password.value === trimmed) {
+    errors.password = t('auth.register.validation.passwordSame')
+  }
+  if (!confirmPassword.value) {
+    errors.confirmPassword = t('auth.register.validation.confirmRequired')
+  } else if (confirmPassword.value !== password.value) {
+    errors.confirmPassword = t('auth.register.validation.passwordMismatch')
+  }
+  return !errors.username && !errors.mail && !errors.password && !errors.confirmPassword
+}
+
+const onSubmit = async () => {
+  if (!canSubmit.value || !validate()) {
     return
   }
   submitting.value = true
@@ -41,7 +83,10 @@ const onSubmit = async () => {
     const redirect = route.query.redirect as string | undefined
     await router.replace(redirect || authStore.landingPath())
   } catch (error) {
-    toast.error('注册失败', error instanceof Error ? error.message : '请稍后重试')
+    toast.error(
+      t('auth.register.errorTitle'),
+      error instanceof Error ? error.message : t('auth.register.errorFallback'),
+    )
   } finally {
     submitting.value = false
   }
@@ -52,17 +97,40 @@ const onSubmit = async () => {
   <div class="register">
     <div class="register__panel">
       <div class="register__brand">CowDisk</div>
-      <h1 class="register__title">创建账号</h1>
+      <h1 class="register__title">{{ t('auth.register.title') }}</h1>
       <form class="register__form" @submit.prevent="onSubmit">
-        <Input v-model="username" label="账号" placeholder="请输入账号" />
-        <Input v-model="mail" label="邮箱" type="email" placeholder="请输入邮箱" />
-        <Input v-model="password" label="密码" type="password" placeholder="请输入密码" />
-        <Input v-model="confirmPassword" label="确认密码" type="password" placeholder="请再次输入密码" />
-        <Button type="submit" block :loading="submitting">注册并登录</Button>
+        <Input
+          v-model="username"
+          :label="t('auth.register.username')"
+          :placeholder="t('auth.register.usernamePlaceholder')"
+          :error="errors.username"
+        />
+        <Input
+          v-model="mail"
+          :label="t('auth.register.email')"
+          type="email"
+          :placeholder="t('auth.register.emailPlaceholder')"
+          :error="errors.mail"
+        />
+        <Input
+          v-model="password"
+          :label="t('auth.register.password')"
+          type="password"
+          :placeholder="t('auth.register.passwordPlaceholder')"
+          :error="errors.password"
+        />
+        <Input
+          v-model="confirmPassword"
+          :label="t('auth.register.confirmPassword')"
+          type="password"
+          :placeholder="t('auth.register.confirmPasswordPlaceholder')"
+          :error="errors.confirmPassword"
+        />
+        <Button type="submit" block :loading="submitting">{{ t('auth.register.submit') }}</Button>
       </form>
       <div class="register__footer">
-        已有账号？
-        <RouterLink to="/login">去登录</RouterLink>
+        {{ t('auth.register.hasAccount') }}
+        <RouterLink to="/login">{{ t('auth.register.loginLink') }}</RouterLink>
       </div>
     </div>
   </div>

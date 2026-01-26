@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -8,13 +9,38 @@ import { useAuthStore } from '@/stores/auth'
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n({ useScope: 'global' })
 
 const username = ref('')
 const password = ref('')
 const loading = computed(() => authStore.loading)
+const errors = reactive({
+  username: '',
+  password: '',
+})
+
+const validate = () => {
+  errors.username = ''
+  errors.password = ''
+  const trimmed = username.value.trim()
+  if (!trimmed) {
+    errors.username = t('auth.login.validation.usernameRequired')
+  } else if (trimmed.length < 4 || trimmed.length > 20) {
+    errors.username = t('auth.login.validation.usernameLength')
+  }
+  if (!password.value) {
+    errors.password = t('auth.login.validation.passwordRequired')
+  } else if (password.value.length < 4 || password.value.length > 20) {
+    errors.password = t('auth.login.validation.passwordLength')
+  }
+  return !errors.username && !errors.password
+}
 
 const onSubmit = async () => {
-  await authStore.login({ username: username.value, password: password.value })
+  if (!validate()) {
+    return
+  }
+  await authStore.login({ username: username.value.trim(), password: password.value })
   const redirect = route.query.redirect as string | undefined
   await router.replace(redirect || authStore.landingPath())
 }
@@ -24,15 +50,26 @@ const onSubmit = async () => {
   <div class="login">
     <div class="login__panel">
       <div class="login__brand">CowDisk</div>
-      <h1 class="login__title">欢迎回来</h1>
+      <h1 class="login__title">{{ t('auth.login.title') }}</h1>
       <form class="login__form" @submit.prevent="onSubmit">
-        <Input v-model="username" label="账号" placeholder="请输入账号" />
-        <Input v-model="password" label="密码" type="password" placeholder="请输入密码" />
-        <Button type="submit" block :loading="loading">登录</Button>
+        <Input
+          v-model="username"
+          :label="t('auth.login.username')"
+          :placeholder="t('auth.login.usernamePlaceholder')"
+          :error="errors.username"
+        />
+        <Input
+          v-model="password"
+          :label="t('auth.login.password')"
+          type="password"
+          :placeholder="t('auth.login.passwordPlaceholder')"
+          :error="errors.password"
+        />
+        <Button type="submit" block :loading="loading">{{ t('auth.login.submit') }}</Button>
       </form>
       <div class="login__footer">
-        没有账号？
-        <RouterLink to="/register">去注册</RouterLink>
+        {{ t('auth.login.noAccount') }}
+        <RouterLink to="/register">{{ t('auth.login.registerLink') }}</RouterLink>
       </div>
     </div>
   </div>
