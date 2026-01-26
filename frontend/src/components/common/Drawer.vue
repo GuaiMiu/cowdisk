@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { X } from 'lucide-vue-next'
+
 const props = withDefaults(
   defineProps<{
     open: boolean
@@ -26,7 +28,9 @@ const emit = defineEmits<{
         <div v-show="open" class="drawer__panel" :style="{ width: `${width}px` }">
           <header class="drawer__header">
             <h3>{{ title }}</h3>
-            <button class="drawer__close" type="button" @click="emit('close')">关闭</button>
+            <button class="drawer__close" type="button" aria-label="Close" @click="emit('close')">
+              <X :size="16" />
+            </button>
           </header>
           <section class="drawer__body">
             <slot />
@@ -80,9 +84,25 @@ const emit = defineEmits<{
 }
 
 .drawer__close {
-  font-size: 13px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
   color: var(--color-muted);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color var(--transition-base), color var(--transition-base), background var(--transition-base);
+}
+
+.drawer__close:hover {
+  border-color: var(--color-border);
+  color: var(--color-text);
+  background: var(--color-surface-2);
 }
 
 .drawer__body {
