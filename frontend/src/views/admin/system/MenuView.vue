@@ -388,7 +388,11 @@ onMounted(() => {
           </Tag>
         </template>
         <template #cell-status="{ row }">
-          <Switch :model-value="!!row.status" :disabled="isToggling(row.id)" @update:modelValue="toggleStatus(row, $event)" />
+          <Switch
+            :model-value="!!row.status"
+            :disabled="isToggling(row.id)"
+            @update:modelValue="(value: boolean) => toggleStatus(row, value)"
+          />
         </template>
         <template #cell-actions="{ row }">
           <div class="actions">

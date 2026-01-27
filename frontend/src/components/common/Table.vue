@@ -1,4 +1,4 @@
-<script setup lang="ts">
+<script setup lang="ts" generic="TRow extends Record<string, unknown>">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Empty from './Empty.vue'
 import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
@@ -13,8 +13,8 @@ type Column = {
 const props = withDefaults(
   defineProps<{
     columns: Column[]
-    rows: Record<string, unknown>[]
-    rowKey?: string
+    rows: TRow[]
+    rowKey?: keyof TRow | string
     minRows?: number
     scrollable?: boolean
     fill?: boolean
@@ -75,6 +75,10 @@ const tableStyle = computed(() => ({
   ...(props.scrollable ? { '--table-row-height': `${props.rowHeight}px` } : undefined),
   '--table-columns': gridTemplate.value,
 }))
+
+defineSlots<{
+  [K in `cell-${string}`]?: (props: { row: TRow }) => unknown
+}>()
 
 let observer: ResizeObserver | null = null
 

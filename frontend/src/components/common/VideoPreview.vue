@@ -23,9 +23,8 @@ const props = withDefaults(
 
 const { locale, messages, t } = useI18n({ useScope: 'global' })
 const vidstackTranslations = computed(() => {
-  const currentMessages = messages.value?.[locale.value] as
-    | { vidstack?: Record<string, string> }
-    | undefined
+  const allMessages = messages.value as Record<string, { vidstack?: Record<string, string> }>
+  const currentMessages = allMessages?.[locale.value]
   return currentMessages?.vidstack ?? {}
 })
 

@@ -180,8 +180,8 @@ const toggleStatus = async (row: UserOut, next: boolean) => {
       mail: row.mail ?? null,
       status: next,
       is_superuser: !!row.is_superuser,
-      total_space: row.total_space ?? null,
-      used_space: row.used_space ?? null,
+      total_space: row.total_space ?? undefined,
+      used_space: row.used_space ?? undefined,
       roles,
       password: null,
     })
@@ -259,7 +259,7 @@ onMounted(() => {
           <Switch
             :model-value="!!row.status"
             :disabled="isToggling(row.id) || isSelf(row.id)"
-            @update:modelValue="toggleStatus(row, $event)"
+            @update:modelValue="(value: boolean) => toggleStatus(row, value)"
           />
         </template>
         <template #cell-create_time="{ row }">
