@@ -231,6 +231,10 @@ const onNameClick = (entry: DiskEntry) => {
   emit('action', { entry, action: 'preview' })
 }
 
+const onRowClick = (entry: DiskEntry) => {
+  props.toggle(entry)
+}
+
 const onWindowKey = (event: KeyboardEvent) => {
   if (event.key === 'Escape') {
     closeContextMenu()
@@ -336,14 +340,15 @@ onBeforeUnmount(() => {
           v-for="item in items"
           :key="item.path"
           :class="['table__row', isEditing(item) ? 'table__row--edit' : '']"
+          @click="onRowClick(item)"
           @contextmenu="openContextMenu($event, item)"
           @mouseleave="onRowLeave(item)"
         >
-          <label class="table__cell table__cell--check">
-            <input type="checkbox" :checked="isSelected(item)" @change="toggle(item)" />
+          <label class="table__cell table__cell--check" @click.stop>
+            <input type="checkbox" :checked="isSelected(item)" @click.stop @change="toggle(item)" />
           </label>
           <div class="table__cell table__cell--name">
-            <button v-if="!isEditing(item)" class="name" type="button" @click="onNameClick(item)">
+            <button v-if="!isEditing(item)" class="name" type="button" @click.stop="onNameClick(item)">
             <FileTypeIcon class="name__icon" :name="item.name" :is-dir="item.is_dir" />
             <span class="name__text" :title="item.name">{{ item.name }}</span>
           </button>
@@ -374,6 +379,7 @@ onBeforeUnmount(() => {
             v-if="!isEditing(item)"
             class="table__row-actions"
             :class="{ 'is-hovered': menuHovering && menuEntryPath === item.path }"
+            @click.stop
           >
             <IconButton
               size="sm"
@@ -613,6 +619,10 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+}
+
+.name:hover .name__text {
+  color: var(--color-primary);
 }
 
 .name__input {
