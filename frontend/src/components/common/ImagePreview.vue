@@ -45,6 +45,7 @@ const offsetX = ref(0)
 const offsetY = ref(0)
 const dragging = ref(false)
 const dragStart = ref({ x: 0, y: 0, ox: 0, oy: 0 })
+const rafId = ref<number | null>(null)
 
 const current = computed(() => items.value[index.value])
 const canNavigate = computed(() => items.value.length > 1)
@@ -113,8 +114,15 @@ const onPointerMove = (event: PointerEvent) => {
   if (!dragging.value) {
     return
   }
-  offsetX.value = dragStart.value.ox + (event.clientX - dragStart.value.x)
-  offsetY.value = dragStart.value.oy + (event.clientY - dragStart.value.y)
+  const nextX = dragStart.value.ox + (event.clientX - dragStart.value.x)
+  const nextY = dragStart.value.oy + (event.clientY - dragStart.value.y)
+  if (rafId.value) {
+    cancelAnimationFrame(rafId.value)
+  }
+  rafId.value = requestAnimationFrame(() => {
+    offsetX.value = nextX
+    offsetY.value = nextY
+  })
 }
 
 const onPointerUp = (event: PointerEvent) => {
@@ -122,6 +130,10 @@ const onPointerUp = (event: PointerEvent) => {
     return
   }
   dragging.value = false
+  if (rafId.value) {
+    cancelAnimationFrame(rafId.value)
+    rafId.value = null
+  }
   ;(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId)
 }
 
@@ -166,6 +178,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
+  if (rafId.value) {
+    cancelAnimationFrame(rafId.value)
+  }
 })
 
 const imageStyle = computed(() => ({
@@ -282,10 +297,12 @@ const imageStyle = computed(() => ({
   user-select: none;
   cursor: grab;
   transition: transform var(--transition-fast);
+  touch-action: none;
 }
 
 .preview__image.is-dragging {
   cursor: grabbing;
+  transition: none;
 }
 
 .preview__placeholder {
