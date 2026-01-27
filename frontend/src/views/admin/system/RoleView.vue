@@ -190,7 +190,11 @@ onMounted(() => {
     <div class="table-wrap">
       <Table :columns="columns" :rows="filteredRoles" :min-rows="roleStore.size.value" scrollable fill>
         <template #cell-status="{ row }">
-          <Switch :model-value="!!row.status" :disabled="isToggling(row.id)" @update:modelValue="toggleStatus(row, $event)" />
+          <Switch
+            :model-value="!!row.status"
+            :disabled="isToggling(row.id)"
+            @update:modelValue="(value: boolean) => toggleStatus(row, value)"
+          />
         </template>
         <template #cell-update_time="{ row }">
           {{ formatTime(row.update_time as string) }}
