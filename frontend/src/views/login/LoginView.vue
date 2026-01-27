@@ -5,11 +5,13 @@ import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import { useAuthStore } from '@/stores/auth'
+import { getLocale, setLocale } from '@/i18n'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
+const currentLocale = computed(() => getLocale())
 
 const username = ref('')
 const password = ref('')
@@ -44,12 +46,36 @@ const onSubmit = async () => {
   const redirect = route.query.redirect as string | undefined
   await router.replace(redirect || authStore.landingPath())
 }
+
+const switchLocale = async (locale: string) => {
+  await setLocale(locale)
+}
 </script>
 
 <template>
   <div class="login">
     <div class="login__panel">
-      <div class="login__brand">CowDisk</div>
+      <div class="login__brand-row">
+        <div class="login__brand">CowDisk</div>
+        <div class="lang-switch">
+          <button
+            type="button"
+            class="lang-switch__btn"
+            :class="{ 'is-active': currentLocale === 'zh-CN' }"
+            @click="switchLocale('zh-CN')"
+          >
+            {{ t('layout.userMenu.langZh') }}
+          </button>
+          <button
+            type="button"
+            class="lang-switch__btn"
+            :class="{ 'is-active': currentLocale === 'en-US' }"
+            @click="switchLocale('en-US')"
+          >
+            {{ t('layout.userMenu.langEn') }}
+          </button>
+        </div>
+      </div>
       <h1 class="login__title">{{ t('auth.login.title') }}</h1>
       <form class="login__form" @submit.prevent="onSubmit">
         <Input
@@ -67,9 +93,12 @@ const onSubmit = async () => {
         />
         <Button type="submit" block :loading="loading">{{ t('auth.login.submit') }}</Button>
       </form>
-      <div class="login__footer">
-        {{ t('auth.login.noAccount') }}
-        <RouterLink to="/register">{{ t('auth.login.registerLink') }}</RouterLink>
+      <div class="login__links">
+        <span>
+          {{ t('auth.login.noAccount') }}
+          <RouterLink to="/register">{{ t('auth.login.registerLink') }}</RouterLink>
+        </span>
+        <RouterLink to="/forgot-password">{{ t('auth.login.forgotPassword') }}</RouterLink>
       </div>
     </div>
   </div>
@@ -95,6 +124,13 @@ const onSubmit = async () => {
   width: min(420px, 100%);
 }
 
+.login__brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .login__brand {
   font-family: var(--font-display);
   font-weight: 700;
@@ -111,15 +147,44 @@ const onSubmit = async () => {
   margin-top: var(--space-2);
 }
 
-.login__footer {
+.login__links {
   font-size: 12px;
   color: var(--color-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
-.login__footer a {
+.login__links a {
   color: inherit;
   font-weight: 600;
   text-decoration: none;
+}
+
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.lang-switch__btn {
+  border: none;
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.lang-switch__btn.is-active {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
 }
 
 @media (max-width: 1024px) {

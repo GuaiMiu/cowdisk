@@ -70,6 +70,7 @@ export default {
       password: 'Password',
       passwordPlaceholder: 'Enter password',
       submit: 'Log in',
+      forgotPassword: 'Forgot password?',
       noAccount: "Don't have an account?",
       registerLink: 'Sign up',
       validation: {
@@ -77,6 +78,20 @@ export default {
         usernameLength: 'Username must be 4-20 characters',
         passwordRequired: 'Please enter your password',
         passwordLength: 'Password must be 4-20 characters',
+      },
+    },
+    forgot: {
+      title: 'Reset password',
+      subtitle: 'Enter your email to receive a reset link',
+      email: 'Email',
+      emailPlaceholder: 'Enter email',
+      submit: 'Send reset link',
+      backToLogin: 'Back to login',
+      unavailableTitle: 'Not available',
+      unavailableMessage: 'Please contact admin to reset your password',
+      validation: {
+        emailRequired: 'Please enter an email',
+        emailInvalid: 'Invalid email format',
       },
     },
     register: {

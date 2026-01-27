@@ -70,6 +70,7 @@ export default {
       password: '密码',
       passwordPlaceholder: '请输入密码',
       submit: '登录',
+      forgotPassword: '忘记密码？',
       noAccount: '没有账号？',
       registerLink: '去注册',
       validation: {
@@ -77,6 +78,20 @@ export default {
         usernameLength: '账号长度需为 4-20 位',
         passwordRequired: '请输入密码',
         passwordLength: '密码长度需为 4-20 位',
+      },
+    },
+    forgot: {
+      title: '找回密码',
+      subtitle: '输入注册邮箱，我们会发送重置链接',
+      email: '邮箱',
+      emailPlaceholder: '请输入邮箱',
+      submit: '发送重置链接',
+      backToLogin: '返回登录',
+      unavailableTitle: '暂未开放',
+      unavailableMessage: '请联系管理员重置密码',
+      validation: {
+        emailRequired: '请输入邮箱',
+        emailInvalid: '邮箱格式不正确',
       },
     },
     register: {

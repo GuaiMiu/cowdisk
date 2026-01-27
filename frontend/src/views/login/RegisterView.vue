@@ -7,12 +7,14 @@ import Input from '@/components/common/Input.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { register as registerApi } from '@/api/modules/auth'
+import { getLocale, setLocale } from '@/i18n'
 
 const authStore = useAuthStore()
 const toast = useToastStore()
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
+const currentLocale = computed(() => getLocale())
 
 const username = ref('')
 const mail = ref('')
@@ -91,12 +93,36 @@ const onSubmit = async () => {
     submitting.value = false
   }
 }
+
+const switchLocale = async (locale: string) => {
+  await setLocale(locale)
+}
 </script>
 
 <template>
   <div class="register">
     <div class="register__panel">
-      <div class="register__brand">CowDisk</div>
+      <div class="register__brand-row">
+        <div class="register__brand">CowDisk</div>
+        <div class="lang-switch">
+          <button
+            type="button"
+            class="lang-switch__btn"
+            :class="{ 'is-active': currentLocale === 'zh-CN' }"
+            @click="switchLocale('zh-CN')"
+          >
+            {{ t('layout.userMenu.langZh') }}
+          </button>
+          <button
+            type="button"
+            class="lang-switch__btn"
+            :class="{ 'is-active': currentLocale === 'en-US' }"
+            @click="switchLocale('en-US')"
+          >
+            {{ t('layout.userMenu.langEn') }}
+          </button>
+        </div>
+      </div>
       <h1 class="register__title">{{ t('auth.register.title') }}</h1>
       <form class="register__form" @submit.prevent="onSubmit">
         <Input
@@ -156,6 +182,13 @@ const onSubmit = async () => {
   width: min(440px, 100%);
 }
 
+.register__brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .register__brand {
   font-family: var(--font-display);
   font-weight: 700;
@@ -181,6 +214,31 @@ const onSubmit = async () => {
   color: inherit;
   font-weight: 600;
   text-decoration: none;
+}
+
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.lang-switch__btn {
+  border: none;
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.lang-switch__btn.is-active {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
 }
 
 @media (max-width: 1024px) {

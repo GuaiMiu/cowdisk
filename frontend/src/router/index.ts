@@ -20,6 +20,11 @@ const router = createRouter({
       component: () => import('@/views/login/RegisterView.vue'),
     },
     {
+      path: '/forgot-password',
+      name: 'forgot-password',
+      component: () => import('@/views/login/ForgotPasswordView.vue'),
+    },
+    {
       path: '/403',
       name: 'forbidden',
       component: () => import('@/views/403.vue'),
