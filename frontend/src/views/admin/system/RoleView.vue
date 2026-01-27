@@ -25,7 +25,7 @@ const columns = computed(() => [
   { key: 'permission_char', label: t('admin.role.columns.permission') },
   { key: 'status', label: t('admin.role.columns.status') },
   { key: 'update_time', label: t('admin.role.columns.updateTime') },
-  { key: 'actions', label: t('admin.role.columns.actions') },
+  { key: 'actions', label: t('admin.role.columns.actions'), width: '120px' },
 ])
 
 const statusOptions = computed(() => [
@@ -278,7 +278,7 @@ onMounted(() => {
 
 .actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: var(--space-2);
 }
 

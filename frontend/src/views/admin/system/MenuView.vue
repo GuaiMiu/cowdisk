@@ -22,7 +22,7 @@ const columns = computed(() => [
   { key: 'router_path', label: t('admin.menu.columns.path') },
   { key: 'permission_char', label: t('admin.menu.columns.permission') },
   { key: 'status', label: t('admin.menu.columns.status') },
-  { key: 'actions', label: t('admin.menu.columns.actions') },
+  { key: 'actions', label: t('admin.menu.columns.actions'), width: '120px' },
 ])
 
 const typeOptions = computed(() => [
@@ -483,7 +483,7 @@ onMounted(() => {
 
 .actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: var(--space-2);
 }
 
