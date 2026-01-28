@@ -2,14 +2,15 @@ import { downloadBlob, request } from '@/api/request'
 import type { AxiosRequestConfig } from 'axios'
 import type {
   DiskCompressIn,
-  DiskDeleteOut,
+  DiskDeleteBatchOut,
   DiskDownloadTokenIn,
   DiskEntry,
   DiskExtractIn,
   DiskJobStatus,
   DiskListOut,
   DiskMkdirIn,
-  DiskRenameIn,
+  DiskRenameBatchOut,
+  DiskRenameItem,
   DiskTrashDeleteIn,
   DiskTrashListOut,
   DiskTrashRestoreIn,
@@ -92,18 +93,18 @@ export const completeChunkUpload = (payload: DiskUploadCompleteIn) =>
     data: payload,
   })
 
-export const deletePath = (path: string, recursive = false) =>
-  request<DiskDeleteOut>({
+export const deletePaths = (paths: string[], recursive = false) =>
+  request<DiskDeleteBatchOut>({
     url: '/api/v1/user/disk',
     method: 'DELETE',
-    params: { path, recursive },
+    data: { paths, recursive },
   })
 
-export const renamePath = (payload: DiskRenameIn) =>
-  request<DiskEntry>({
+export const renamePaths = (items: DiskRenameItem[]) =>
+  request<DiskRenameBatchOut>({
     url: '/api/v1/user/disk/rename',
     method: 'POST',
-    data: payload,
+    data: { items },
   })
 
 export const prepareDownload = (payload: DiskMkdirIn) =>

@@ -73,7 +73,7 @@ class DiskDeleteIn(BaseModel):
     删除输入模型
     """
 
-    path: str
+    paths: list[str]
     recursive: bool = False
 
 
@@ -84,6 +84,24 @@ class DiskDeleteOut(BaseModel):
 
     path: str
     deleted: bool
+
+
+class DiskDeleteFailure(BaseModel):
+    """
+    批量删除失败条目
+    """
+
+    path: str
+    error: str
+
+
+class DiskDeleteBatchOut(BaseModel):
+    """
+    批量删除输出模型
+    """
+
+    success: list[str]
+    failed: list[DiskDeleteFailure]
 
 
 class DiskTrashEntry(BaseModel):
@@ -153,14 +171,41 @@ class DiskShareListOut(BaseModel):
     items: list[DiskShareEntry]
 
 
-class DiskRenameIn(BaseModel):
+class DiskRenameItem(BaseModel):
     """
-    重命名输入模型
+    批量重命名输入条目
     """
 
     src: str
     dst: str
     overwrite: bool = False
+
+
+class DiskRenameIn(BaseModel):
+    """
+    重命名输入模型
+    """
+
+    items: list[DiskRenameItem]
+
+
+class DiskRenameFailure(BaseModel):
+    """
+    批量重命名失败条目
+    """
+
+    src: str
+    dst: str
+    error: str
+
+
+class DiskRenameBatchOut(BaseModel):
+    """
+    批量重命名输出模型
+    """
+
+    success: list[DiskEntry]
+    failed: list[DiskRenameFailure]
 
 
 class DiskDownloadTokenIn(BaseModel):
@@ -207,3 +252,4 @@ class DiskTextSaveIn(BaseModel):
 
     path: str
     content: str
+    overwrite: bool = False

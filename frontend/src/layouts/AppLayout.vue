@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRouter } from 'vue-router'
 import { Cloud, Folder, PanelLeftClose, PanelLeftOpen, Share2, Trash2 } from 'lucide-vue-next'
@@ -10,6 +10,20 @@ import { getAvatar } from '@/api/modules/auth'
 import { getLocale, setLocale } from '@/i18n'
 
 const sidebarOpen = ref(true)
+let mobileQuery: MediaQueryList | null = null
+let compactQuery: MediaQueryList | null = null
+
+const syncSidebarWithViewport = () => {
+  if (mobileQuery?.matches) {
+    sidebarOpen.value = false
+    return
+  }
+  if (compactQuery?.matches) {
+    sidebarOpen.value = false
+    return
+  }
+  sidebarOpen.value = true
+}
 const authStore = useAuthStore()
 const userLabel = computed(() => authStore.me?.nickname || authStore.me?.username || '')
 const { t } = useI18n({ useScope: 'global' })
@@ -85,6 +99,24 @@ watch([() => authStore.me?.avatar_path, () => authStore.token], () => {
 
 onBeforeUnmount(() => {
   clearAvatar()
+  if (mobileQuery) {
+    mobileQuery.removeEventListener('change', handleViewportChange)
+  }
+  if (compactQuery) {
+    compactQuery.removeEventListener('change', handleViewportChange)
+  }
+})
+
+const handleViewportChange = () => {
+  syncSidebarWithViewport()
+}
+
+onMounted(() => {
+  mobileQuery = window.matchMedia('(max-width: 768px)')
+  compactQuery = window.matchMedia('(max-width: 1440px)')
+  syncSidebarWithViewport()
+  mobileQuery.addEventListener('change', handleViewportChange)
+  compactQuery.addEventListener('change', handleViewportChange)
 })
 </script>
 
@@ -106,15 +138,15 @@ onBeforeUnmount(() => {
       </div>
       <nav class="nav">
         <RouterLink class="nav__item" to="/app/files">
-          <Folder :size="18" />
+          <Folder class="nav__icon" />
           <span>{{ t('layout.nav.files') }}</span>
         </RouterLink>
         <RouterLink class="nav__item" to="/app/shares">
-          <Share2 :size="18" />
+          <Share2 class="nav__icon" />
           <span>{{ t('layout.nav.shares') }}</span>
         </RouterLink>
         <RouterLink class="nav__item" to="/app/trash">
-          <Trash2 :size="18" />
+          <Trash2 class="nav__icon" />
           <span>{{ t('layout.nav.trash') }}</span>
         </RouterLink>
       </nav>
@@ -210,22 +242,7 @@ onBeforeUnmount(() => {
 .layout--collapsed .layout__sidebar {
   opacity: 1;
   transform: translateX(-4px);
-}
-
-.layout__sidebar {
-  grid-area: sidebar;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-  display: grid;
-  gap: var(--space-5);
-  align-content: start;
-  grid-auto-rows: max-content;
-  box-shadow: var(--shadow-xs);
-  overflow: auto;
-  min-height: 0;
-  transition: opacity 160ms ease, transform 160ms ease;
+  padding: var(--space-5) var(--space-3);
 }
 
 .layout--collapsed .brand__text {
@@ -238,15 +255,28 @@ onBeforeUnmount(() => {
 
 .layout--collapsed .nav__item {
   justify-content: center;
-  padding: var(--space-2) var(--space-3);
-}
-
-.layout--collapsed .layout__sidebar {
-  padding: var(--space-5) var(--space-3);
+  padding: var(--space-2) 0;
 }
 
 .layout--collapsed .brand {
   justify-content: center;
+}
+
+.layout__sidebar {
+  grid-area: sidebar;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  grid-auto-rows: max-content;
+  box-shadow: var(--shadow-xs);
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  transition: opacity 160ms ease, transform 160ms ease;
 }
 
 .layout__toolbar {
@@ -277,6 +307,7 @@ onBeforeUnmount(() => {
   gap: var(--space-2);
   font-weight: 700;
   font-family: var(--font-display);
+  min-height: 32px;
 }
 
 .brand__close {
@@ -286,6 +317,10 @@ onBeforeUnmount(() => {
 
 .brand__icon {
   color: var(--color-primary);
+}
+
+.brand__text {
+  line-height: 1;
 }
 
 .nav {
@@ -298,9 +333,16 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
+  height: 48px;
   border-radius: var(--radius-sm);
   color: var(--color-muted);
   transition: background var(--transition-base), color var(--transition-base);
+}
+
+.nav__icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
 }
 
 .nav__item.router-link-active {
@@ -438,18 +480,15 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1280px) {
   .layout {
-    grid-template-columns: 220px 1fr;
+    grid-template-columns: 240px 1fr;
     grid-template-rows: auto 1fr;
     grid-template-areas:
       'sidebar toolbar'
       'sidebar content';
   }
 
-}
-
-@media (max-width: 1024px) {
-  .layout {
-    grid-template-columns: 200px 1fr;
+  .layout--collapsed {
+    grid-template-columns: 72px 1fr;
   }
 }
 

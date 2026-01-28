@@ -31,15 +31,31 @@ export type DiskMkdirIn = {
   path: string
 }
 
-export type DiskDeleteOut = {
+export type DiskDeleteFailure = {
   path: string
-  deleted: boolean
+  error: string
 }
 
-export type DiskRenameIn = {
+export type DiskDeleteBatchOut = {
+  success: string[]
+  failed: DiskDeleteFailure[]
+}
+
+export type DiskRenameItem = {
   src: string
   dst: string
   overwrite?: boolean
+}
+
+export type DiskRenameFailure = {
+  src: string
+  dst: string
+  error: string
+}
+
+export type DiskRenameBatchOut = {
+  success: DiskEntry[]
+  failed: DiskRenameFailure[]
 }
 
 export type DiskDownloadTokenIn = {
@@ -93,4 +109,5 @@ export type DiskEditReadOut = {
 export type DiskEditSaveIn = {
   path: string
   content: string
+  overwrite?: boolean
 }

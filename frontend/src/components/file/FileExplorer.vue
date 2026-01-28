@@ -25,6 +25,7 @@ import { useUploadsStore } from '@/stores/uploads'
 import type { DiskEntry } from '@/types/disk'
 import type { Share } from '@/types/share'
 import { copyToClipboard } from '@/utils/clipboard'
+import { normalizeDiskError } from '@/utils/diskError'
 import { formatBytes, formatTime } from '@/utils/format'
 import { getFileKind } from '@/utils/fileType'
 import { joinPath, toRelativePath } from '@/utils/path'
@@ -166,8 +167,13 @@ const handleDelete = (entries: DiskEntry[]) => {
 const confirmDelete = async () => {
   const targets = deleteBatch.value
   deleteConfirm.value = false
-  for (const entry of targets) {
-    await explorer.removeEntry(entry)
+  if (targets.length === 1) {
+    const [first] = targets
+    if (first) {
+      await explorer.removeEntry(first)
+    }
+  } else {
+    await explorer.removeEntries(targets)
   }
   selection.clear()
   deleteBatch.value = []
@@ -514,7 +520,7 @@ const saveEditor = async () => {
   }
   editorSaving.value = true
   try {
-    await saveEditFile({ path: editorFilePath.value, content: editorContent.value })
+    await saveEditFile({ path: editorFilePath.value, content: editorContent.value, overwrite: true })
     toast.success(t('fileExplorer.toasts.saveSuccess'))
     await explorer.refresh()
   } catch (error) {
@@ -582,14 +588,14 @@ const handleCreateTextInline = async (name: string) => {
   }
   const path = toRelativePath(joinPath(explorer.path.value, filename))
   try {
-    await saveEditFile({ path, content: '' })
+    await saveEditFile({ path, content: '', overwrite: false })
     toast.success(t('fileExplorer.toasts.docCreated'))
     creatingText.value = false
     await explorer.refresh()
   } catch (error) {
     toast.error(
       t('fileExplorer.toasts.createFailedTitle'),
-      error instanceof Error ? error.message : t('fileExplorer.toasts.createFailedMessage'),
+      normalizeDiskError(error, t('fileExplorer.toasts.createFailedMessage')),
     )
   }
 }

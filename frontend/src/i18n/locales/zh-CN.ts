@@ -355,6 +355,12 @@ export default {
       createFailedTitle: '创建失败',
       createFailedMessage: '请稍后重试',
     },
+    errors: {
+      folderExists: '目录已存在',
+      fileExists: '文件已存在',
+      targetExists: '目标已存在',
+      sameFolder: '已在当前目录',
+    },
     modals: {
       shareTitle: '创建分享',
       shareLinkLabel: '分享地址',

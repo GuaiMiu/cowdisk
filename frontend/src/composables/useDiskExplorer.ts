@@ -2,8 +2,8 @@ import { computed, ref } from 'vue'
 import {
   listDir,
   mkdir,
-  renamePath,
-  deletePath,
+  renamePaths,
+  deletePaths,
   createDownloadToken,
   getDownloadFileUrl,
   getDownloadJobUrl,
@@ -14,6 +14,7 @@ import { useToastStore } from '@/stores/toast'
 import type { DiskEntry } from '@/types/disk'
 import { joinPath, toRelativePath } from '@/utils/path'
 import { triggerDownload } from '@/utils/download'
+import { normalizeDiskError } from '@/utils/diskError'
 import { usePolling } from './usePolling'
 
 export const useDiskExplorer = () => {
@@ -47,7 +48,7 @@ export const useDiskExplorer = () => {
       if (controller.signal.aborted) {
         return
       }
-      toast.error('加载失败', error instanceof Error ? error.message : '请稍后重试')
+      toast.error('加载失败', normalizeDiskError(error, '请稍后重试'))
     } finally {
       if (listController.value === controller) {
         listController.value = null
@@ -69,7 +70,7 @@ export const useDiskExplorer = () => {
       await refresh()
       return true
     } catch (error) {
-      toast.error('创建失败', error instanceof Error ? error.message : '请稍后重试')
+      toast.error('创建失败', normalizeDiskError(error, '请稍后重试'))
       return false
     }
   }
@@ -81,12 +82,15 @@ export const useDiskExplorer = () => {
     }
     try {
       const target = toRelativePath(joinPath(path.value, nextName.trim()))
-      await renamePath({ src: entry.path, dst: target, overwrite: false })
+      const result = await renamePaths([{ src: entry.path, dst: target, overwrite: false }])
+      if (result.failed.length > 0) {
+        throw new Error(result.failed[0]?.error || '重命名失败')
+      }
       toast.success('重命名成功')
       await refresh()
       return true
     } catch (error) {
-      toast.error('重命名失败', error instanceof Error ? error.message : '请稍后重试')
+      toast.error('重命名失败', normalizeDiskError(error, '请稍后重试'))
       return false
     }
   }
@@ -99,12 +103,15 @@ export const useDiskExplorer = () => {
       return false
     }
     try {
-      await renamePath({ src: entry.path, dst: target, overwrite: false })
+      const result = await renamePaths([{ src: entry.path, dst: target, overwrite: false }])
+      if (result.failed.length > 0) {
+        throw new Error(result.failed[0]?.error || '移动失败')
+      }
       toast.success('移动成功')
       await refresh()
       return true
     } catch (error) {
-      toast.error('移动失败', error instanceof Error ? error.message : '请稍后重试')
+      toast.error('移动失败', normalizeDiskError(error, '请稍后重试'))
       return false
     }
   }
@@ -115,39 +122,66 @@ export const useDiskExplorer = () => {
       return false
     }
     const base = targetPath ? `/${targetPath}` : '/'
-    let success = 0
-    let failed = 0
-    for (const entry of entries) {
-      const target = toRelativePath(joinPath(base, entry.name))
-      if (target === entry.path) {
-        failed += 1
-        continue
+    const items = entries
+      .map((entry) => ({
+        src: entry.path,
+        dst: toRelativePath(joinPath(base, entry.name)),
+        overwrite: false,
+      }))
+      .filter((item) => item.src !== item.dst)
+    if (!items.length) {
+      toast.info('已在当前目录')
+      return false
+    }
+    try {
+      const result = await renamePaths(items)
+      if (result.failed.length === 0) {
+        toast.success('移动完成', `已移动 ${result.success.length} 项`)
+      } else if (result.success.length > 0) {
+        toast.warning('部分移动失败', `成功 ${result.success.length} 项，失败 ${result.failed.length} 项`)
+      } else {
+        toast.error('移动失败', result.failed[0]?.error || '请稍后重试')
       }
-      try {
-        await renamePath({ src: entry.path, dst: target, overwrite: false })
-        success += 1
-      } catch (error) {
-        failed += 1
+      if (result.success.length > 0) {
+        await refresh()
       }
+      return result.success.length > 0 && result.failed.length === 0
+    } catch (error) {
+      toast.error('移动失败', normalizeDiskError(error, '请稍后重试'))
+      return false
     }
-    if (success > 0) {
-      toast.success('移动完成', `已移动 ${success} 项`)
-      await refresh()
-    }
-    if (failed > 0) {
-      toast.warning('部分移动失败', `失败 ${failed} 项`)
-    }
-    return success > 0 && failed === 0
   }
 
   const removeEntry = async (entry: DiskEntry) => {
     try {
-      await deletePath(entry.path, entry.is_dir)
-      toast.success('已移入回收站')
-      await refresh()
-      return true
+      return await removeEntries([entry])
     } catch (error) {
-      toast.error('删除失败', error instanceof Error ? error.message : '请稍后重试')
+      toast.error('删除失败', normalizeDiskError(error, '请稍后重试'))
+      return false
+    }
+  }
+
+  const removeEntries = async (entries: DiskEntry[]) => {
+    if (!entries.length) {
+      return false
+    }
+    try {
+      const paths = entries.map((entry) => entry.path)
+      const recursive = entries.some((entry) => entry.is_dir)
+      const result = await deletePaths(paths, recursive)
+      if (result.failed.length === 0) {
+        toast.success('已移入回收站')
+      } else if (result.success.length > 0) {
+        toast.warning('部分删除失败', `成功 ${result.success.length} 项，失败 ${result.failed.length} 项`)
+      } else {
+        toast.error('删除失败', result.failed[0]?.error || '请稍后重试')
+      }
+      if (result.success.length > 0) {
+        await refresh()
+      }
+      return result.success.length > 0 && result.failed.length === 0
+    } catch (error) {
+      toast.error('删除失败', normalizeDiskError(error, '请稍后重试'))
       return false
     }
   }
@@ -179,7 +213,7 @@ export const useDiskExplorer = () => {
       }
       return true
     } catch (error) {
-      toast.error('下载失败', error instanceof Error ? error.message : '请稍后重试')
+      toast.error('下载失败', normalizeDiskError(error, '请稍后重试'))
       return false
     }
   }
@@ -197,6 +231,7 @@ export const useDiskExplorer = () => {
     moveEntry,
     moveEntries,
     removeEntry,
+    removeEntries,
     downloadEntry,
     canGoUp,
   }
