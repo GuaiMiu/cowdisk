@@ -21,13 +21,14 @@ from app.core.database import get_async_redis, get_async_session
 from app.core.exception import ServiceException
 from app.disk.schemas.disk import (
     DiskDeleteIn,
-    DiskDeleteOut,
+    DiskDeleteBatchOut,
     DiskListOut,
     DiskDownloadTokenIn,
     DiskUploadCompleteIn,
     DiskUploadInitIn,
     DiskMkdirIn,
     DiskRenameIn,
+    DiskRenameBatchOut,
     DiskCompressIn,
     DiskExtractIn,
     DiskTextReadOut,
@@ -180,30 +181,29 @@ async def upload_complete(
 @disk_router.delete(
     "",
     summary="删除文件或目录",
-    response_model=ResponseModel[DiskDeleteOut],
+    response_model=ResponseModel[DiskDeleteBatchOut],
     dependencies=[Security(check_user_permission, scopes=["disk:file:delete"])],
 )
 async def delete_path(
-    path: str,
-    recursive: bool = False,
+    data: DiskDeleteIn,
     current_user: User = Depends(AuthService.get_current_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     """
     删除文件或目录
     """
-    data = await DiskService.delete(
-        DiskDeleteIn(path=path, recursive=recursive),
-        current_user.id,
+    success, failed = await DiskService.delete(data, current_user.id)
+    if success:
+        await DiskService.refresh_used_space(current_user.id, db)
+    return ResponseModel.success(
+        data=DiskDeleteBatchOut(success=success, failed=failed)
     )
-    await DiskService.refresh_used_space(current_user.id, db)
-    return ResponseModel.success(data=data)
 
 
 @disk_router.post(
     "/rename",
     summary="重命名或移动文件",
-    response_model=ResponseModel[DiskEntry],
+    response_model=ResponseModel[DiskRenameBatchOut],
     dependencies=[Security(check_user_permission, scopes=["disk:file:rename"])],
 )
 async def rename_path(
@@ -213,8 +213,10 @@ async def rename_path(
     """
     重命名或移动文件
     """
-    entry = await DiskService.rename(data, current_user.id)
-    return ResponseModel.success(data=entry)
+    success, failed = await DiskService.rename_batch(data, current_user.id)
+    return ResponseModel.success(
+        data=DiskRenameBatchOut(success=success, failed=failed)
+    )
 
 
 @disk_router.get(
@@ -241,7 +243,9 @@ async def save_text_file(
     data: DiskTextSaveIn,
     current_user: User = Depends(AuthService.get_current_user),
 ):
-    entry = await DiskService.save_text_file(data.path, data.content, current_user.id)
+    entry = await DiskService.save_text_file(
+        data.path, data.content, current_user.id, data.overwrite
+    )
     return ResponseModel.success(data=entry)
 
 

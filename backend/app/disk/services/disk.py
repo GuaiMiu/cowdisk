@@ -27,6 +27,7 @@ from app.disk.schemas.disk import (
     DiskEntry,
     DiskListOut,
     DiskRenameIn,
+    DiskRenameItem,
     DiskUploadOut,
     DiskTrashEntry,
     DiskTrashListOut,
@@ -199,7 +200,9 @@ class DiskService:
     @classmethod
     async def mkdir(cls, path: str, user_id: int) -> DiskEntry:
         target = cls._resolve_path(path, user_id)
-        target.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            raise ServiceException(msg="目录已存在")
+        target.mkdir(parents=True, exist_ok=False)
         return cls._to_entry(target, user_id)
 
     @classmethod
@@ -382,12 +385,16 @@ class DiskService:
         }
 
     @classmethod
-    async def save_text_file(cls, path: str, content: str, user_id: int) -> DiskEntry:
+    async def save_text_file(
+        cls, path: str, content: str, user_id: int, overwrite: bool = False
+    ) -> DiskEntry:
         target = cls._resolve_path(path, user_id)
         if target == cls._get_user_root(user_id):
             raise ServiceException(msg="目标不是文件")
         if target.exists():
             cls._ensure_is_file(target, "目标不是文件")
+            if not overwrite:
+                raise ServiceException(msg="文件已存在")
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             if not target.parent.is_dir():
@@ -529,13 +536,30 @@ class DiskService:
         return total
 
     @classmethod
-    async def delete(cls, data: DiskDeleteIn, user_id: int) -> DiskDeleteOut:
-        await cls.move_to_trash(data, user_id)
-        return DiskDeleteOut(path=data.path, deleted=True)
+    async def delete(
+        cls, data: DiskDeleteIn, user_id: int
+    ) -> tuple[list[str], list[dict]]:
+        if not data.paths:
+            raise ServiceException(msg="删除路径不能为空")
+        success: list[str] = []
+        failed: list[dict] = []
+        for path in data.paths:
+            try:
+                await cls.move_to_trash(
+                    DiskDeleteIn(paths=[path], recursive=data.recursive), user_id
+                )
+                success.append(path)
+            except ServiceException as exc:
+                failed.append({"path": path, "error": exc.msg})
+            except Exception:
+                failed.append({"path": path, "error": "删除失败"})
+        return success, failed
 
     @classmethod
     async def move_to_trash(cls, data: DiskDeleteIn, user_id: int) -> DiskTrashEntry:
-        target = cls._resolve_path(data.path, user_id)
+        if not data.paths:
+            raise ServiceException(msg="删除路径不能为空")
+        target = cls._resolve_path(data.paths[0], user_id)
         if target == cls._get_user_root(user_id):
             raise ServiceException(msg="不允许删除根目录")
         if not target.exists():
@@ -653,25 +677,47 @@ class DiskService:
         return count
 
     @classmethod
-    async def rename(cls, data: DiskRenameIn, user_id: int) -> DiskEntry:
-        src = cls._resolve_path(data.src, user_id)
+    async def rename(cls, item: DiskRenameItem, user_id: int) -> DiskEntry:
+        src = cls._resolve_path(item.src, user_id)
         if not src.exists():
             raise ServiceException(msg="源文件或目录不存在")
-        dst = cls._resolve_path(data.dst, user_id)
+        dst = cls._resolve_path(item.dst, user_id)
         if src == dst:
             return cls._to_entry(src, user_id)
         if src == cls._get_user_root(user_id) or dst == cls._get_user_root(user_id):
             raise ServiceException(msg="不允许操作根目录")
-        if dst.exists() and not data.overwrite:
+        if dst.exists() and not item.overwrite:
             raise ServiceException(msg="目标已存在")
         dst.parent.mkdir(parents=True, exist_ok=True)
-        if dst.exists() and data.overwrite:
+        if dst.exists() and item.overwrite:
             if dst.is_dir():
                 shutil.rmtree(dst)
             else:
                 dst.unlink()
         src.rename(dst)
         return cls._to_entry(dst, user_id)
+
+    @classmethod
+    async def rename_batch(
+        cls, data: DiskRenameIn, user_id: int
+    ) -> tuple[list[DiskEntry], list[dict]]:
+        if not data.items:
+            raise ServiceException(msg="重命名内容不能为空")
+        success: list[DiskEntry] = []
+        failed: list[dict] = []
+        for item in data.items:
+            try:
+                entry = await cls.rename(item, user_id)
+                success.append(entry)
+            except ServiceException as exc:
+                failed.append(
+                    {"src": item.src, "dst": item.dst, "error": exc.msg}
+                )
+            except Exception:
+                failed.append(
+                    {"src": item.src, "dst": item.dst, "error": "重命名失败"}
+                )
+        return success, failed
 
     @classmethod
     async def create_download_job(cls, path: str, user_id: int, redis) -> str:

@@ -355,6 +355,12 @@ export default {
       createFailedTitle: 'Create failed',
       createFailedMessage: 'Please try again later',
     },
+    errors: {
+      folderExists: 'Folder already exists',
+      fileExists: 'File already exists',
+      targetExists: 'Target already exists',
+      sameFolder: 'Already in the current folder',
+    },
     modals: {
       shareTitle: 'Create share',
       shareLinkLabel: 'Share link',

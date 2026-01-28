@@ -15,7 +15,7 @@ ENV UV_LINK_MODE=copy
 ENV PYTHONUNBUFFERED=1
 ENV DISK_ROOT=/app/data
 RUN apk add --no-cache nginx
-RUN mkdir -p /app/frontend /app/data /app/log /app/config
+RUN mkdir -p /app/frontend /app/data /app/logs /app/config
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=backend/uv.lock,target=uv.lock \
@@ -34,9 +34,10 @@ COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
+
 ENV PATH="/app/backend/.venv/bin:$PATH"
 ENV PYTHONPATH=/app/backend
 
-RUN mkdir -p /app/log
+RUN mkdir -p /app/logs
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

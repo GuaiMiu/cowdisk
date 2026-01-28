@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView, useRouter } from 'vue-router'
 import { LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-vue-next'
@@ -15,6 +15,20 @@ const router = useRouter()
 const menus = computed(() => authStore.routers)
 const { t } = useI18n({ useScope: 'global' })
 const sidebarOpen = ref(true)
+let mobileQuery: MediaQueryList | null = null
+let compactQuery: MediaQueryList | null = null
+
+const syncSidebarWithViewport = () => {
+  if (mobileQuery?.matches) {
+    sidebarOpen.value = false
+    return
+  }
+  if (compactQuery?.matches) {
+    sidebarOpen.value = false
+    return
+  }
+  sidebarOpen.value = true
+}
 
 const userLabel = computed(() => authStore.me?.nickname || authStore.me?.username || '')
 const initials = computed(() => {
@@ -81,15 +95,42 @@ watch([() => authStore.me?.avatar_path, () => authStore.token], () => {
 
 onBeforeUnmount(() => {
   clearAvatar()
+  if (mobileQuery) {
+    mobileQuery.removeEventListener('change', handleViewportChange)
+  }
+  if (compactQuery) {
+    compactQuery.removeEventListener('change', handleViewportChange)
+  }
+})
+
+const handleViewportChange = () => {
+  syncSidebarWithViewport()
+}
+
+onMounted(() => {
+  mobileQuery = window.matchMedia('(max-width: 768px)')
+  compactQuery = window.matchMedia('(max-width: 1440px)')
+  syncSidebarWithViewport()
+  mobileQuery.addEventListener('change', handleViewportChange)
+  compactQuery.addEventListener('change', handleViewportChange)
 })
 </script>
 
 <template>
-  <div class="layout" :class="{ 'layout--collapsed': !sidebarOpen }">
+  <div class="layout" :class="{ 'layout--collapsed': !sidebarOpen, 'layout--mobile-open': sidebarOpen }">
     <aside class="layout__sidebar">
       <div class="brand">
         <LayoutGrid class="brand__icon" :size="20" />
         <span class="brand__text">{{ t('admin.layout.brand') }}</span>
+        <IconButton
+          size="sm"
+          variant="ghost"
+          :aria-label="t('layout.sidebar.close')"
+          class="brand__close"
+          @click="sidebarOpen = false"
+        >
+          <PanelLeftClose :size="16" />
+        </IconButton>
       </div>
       <nav class="nav">
         <MenuTree :items="menus" base-path="/admin" />
@@ -185,10 +226,37 @@ onBeforeUnmount(() => {
 .layout--collapsed .layout__sidebar {
   opacity: 1;
   transform: translateX(-4px);
+  padding: var(--space-5) var(--space-3);
 }
 
 .layout--collapsed .brand__text {
   display: none;
+}
+
+.layout--collapsed .brand {
+  justify-content: center;
+}
+
+.layout--collapsed :deep(.menu__item span) {
+  display: none;
+}
+
+.layout--collapsed :deep(.menu__group-title span) {
+  display: none;
+}
+
+.layout--collapsed :deep(.menu__chevron) {
+  display: none;
+}
+
+.layout--collapsed :deep(.menu__item) {
+  justify-content: center;
+  padding: var(--space-2) 0;
+}
+
+.layout--collapsed :deep(.menu__group-title) {
+  justify-content: center;
+  padding: var(--space-2) 0;
 }
 
 .layout__sidebar {
@@ -198,11 +266,12 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-3);
   align-content: start;
   grid-auto-rows: max-content;
   box-shadow: var(--shadow-xs);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
 }
 
@@ -235,15 +304,36 @@ onBeforeUnmount(() => {
   gap: var(--space-2);
   font-weight: 700;
   font-family: var(--font-display);
+  min-height: 32px;
+}
+
+.brand__close {
+  margin-left: auto;
+  display: none;
 }
 
 .brand__icon {
   color: var(--color-primary);
 }
 
+.brand__text {
+  line-height: 1;
+}
+
 .nav {
   display: grid;
   gap: var(--space-2);
+}
+
+:deep(.menu__item),
+:deep(.menu__group-title) {
+  height: 48px;
+}
+
+:deep(.menu__icon) {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
 }
 
 .toolbar__title {
@@ -362,17 +452,15 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1280px) {
   .layout {
-    grid-template-columns: 220px 1fr;
+    grid-template-columns: 240px 1fr;
     grid-template-rows: auto 1fr;
     grid-template-areas:
       'sidebar toolbar'
       'sidebar content';
   }
-}
 
-@media (max-width: 1024px) {
-  .layout {
-    grid-template-columns: 200px 1fr;
+  .layout--collapsed {
+    grid-template-columns: 72px 1fr;
   }
 }
 
@@ -387,6 +475,20 @@ onBeforeUnmount(() => {
 
   .layout__sidebar {
     display: none;
+  }
+
+  .layout--mobile-open .layout__sidebar {
+    display: grid;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    grid-template-rows: auto 1fr;
+    border-radius: 0;
+    padding: var(--space-6);
+  }
+
+  .layout--mobile-open .brand__close {
+    display: inline-flex;
   }
 }
 </style>
