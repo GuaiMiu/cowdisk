@@ -6,12 +6,26 @@
 @Description:
 """
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _resolve_env_files() -> tuple[str, ...]:
+    candidates = [
+        "/app/config/.env",
+        "/app/backend/.env",
+        str(Path.cwd() / ".env"),
+        str(Path.cwd() / "backend" / ".env"),
+    ]
+    return tuple(candidates)
 
 
 class CustomBaseSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=_resolve_env_files(),
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
 
