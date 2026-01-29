@@ -174,14 +174,16 @@ onMounted(() => {
           </button>
         </template>
         <template #cell-status="{ row }">
+          <Tag v-if="asShare(row).status === -1" tone="danger">{{ t('shares.status.missing') }}</Tag>
           <label
+            v-else
             class="status-switch"
-            :class="{ 'is-disabled': isToggling(asShare(row).id) || asShare(row).status === -1 }"
+            :class="{ 'is-disabled': isToggling(asShare(row).id) }"
           >
             <input
               type="checkbox"
               :checked="asShare(row).status === 1"
-              :disabled="isToggling(asShare(row).id) || asShare(row).status === -1"
+              :disabled="isToggling(asShare(row).id)"
               @change="toggleStatus(asShare(row), ($event.target as HTMLInputElement).checked)"
             />
             <span class="status-switch__track"></span>

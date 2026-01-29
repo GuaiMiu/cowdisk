@@ -10,6 +10,7 @@ export type Share = {
   hasCode: boolean
   code?: string | null
   status: number
+  missing?: boolean
 }
 
 export type ShareCreateIn = {

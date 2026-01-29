@@ -506,6 +506,9 @@ export default {
       expiresAt: 'Expires',
       actions: 'Actions',
     },
+    status: {
+      missing: 'File deleted',
+    },
     resourceType: {
       folder: 'Folder',
       file: 'File',

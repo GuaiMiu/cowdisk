@@ -107,6 +107,12 @@ const handleViewportChange = () => {
   syncSidebarWithViewport()
 }
 
+const handleNavItemClick = () => {
+  if (mobileQuery?.matches) {
+    sidebarOpen.value = false
+  }
+}
+
 onMounted(() => {
   mobileQuery = window.matchMedia('(max-width: 768px)')
   compactQuery = window.matchMedia('(max-width: 1440px)')
@@ -132,7 +138,7 @@ onMounted(() => {
           <PanelLeftClose :size="16" />
         </IconButton>
       </div>
-      <nav class="nav">
+      <nav class="nav" @click="handleNavItemClick">
         <MenuTree :items="menus" base-path="/admin" />
       </nav>
     </aside>

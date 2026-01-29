@@ -32,6 +32,10 @@ const crumbs = computed(() => {
       :key="item.path"
       type="button"
       class="breadcrumb__item"
+      :class="{
+        'breadcrumb__item--ancestor': index < crumbs.length - 1,
+        'breadcrumb__item--current': index === crumbs.length - 1,
+      }"
       @click="emit('navigate', item.path)"
     >
       <span class="breadcrumb__label">{{ item.label }}</span>
@@ -61,6 +65,18 @@ const crumbs = computed(() => {
 .breadcrumb__label {
   color: var(--color-text);
   font-weight: 600;
+}
+
+.breadcrumb__item--ancestor .breadcrumb__label {
+  color: var(--color-primary);
+}
+
+.breadcrumb__item--ancestor:hover .breadcrumb__label {
+  text-decoration: underline;
+}
+
+.breadcrumb__item--current .breadcrumb__label {
+  color: var(--color-text);
 }
 
 .breadcrumb__sep {

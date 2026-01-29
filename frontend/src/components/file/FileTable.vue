@@ -573,6 +573,7 @@ onBeforeUnmount(() => {
 
 .table__cell--name {
   display: flex;
+  overflow: hidden;
 }
 
 .table__cell--type {
