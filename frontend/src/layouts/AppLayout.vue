@@ -111,6 +111,12 @@ const handleViewportChange = () => {
   syncSidebarWithViewport()
 }
 
+const handleNavItemClick = () => {
+  if (mobileQuery?.matches) {
+    sidebarOpen.value = false
+  }
+}
+
 onMounted(() => {
   mobileQuery = window.matchMedia('(max-width: 768px)')
   compactQuery = window.matchMedia('(max-width: 1440px)')
@@ -137,15 +143,15 @@ onMounted(() => {
         </IconButton>
       </div>
       <nav class="nav">
-        <RouterLink class="nav__item" to="/app/files">
+        <RouterLink class="nav__item" to="/app/files" @click="handleNavItemClick">
           <Folder class="nav__icon" />
           <span>{{ t('layout.nav.files') }}</span>
         </RouterLink>
-        <RouterLink class="nav__item" to="/app/shares">
+        <RouterLink class="nav__item" to="/app/shares" @click="handleNavItemClick">
           <Share2 class="nav__icon" />
           <span>{{ t('layout.nav.shares') }}</span>
         </RouterLink>
-        <RouterLink class="nav__item" to="/app/trash">
+        <RouterLink class="nav__item" to="/app/trash" @click="handleNavItemClick">
           <Trash2 class="nav__icon" />
           <span>{{ t('layout.nav.trash') }}</span>
         </RouterLink>

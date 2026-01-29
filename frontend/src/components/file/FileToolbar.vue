@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import IconButton from '@/components/common/IconButton.vue'
 import Dropdown from '@/components/common/Dropdown.vue'
-import { UploadCloud, FolderPlus, FileText, RefreshCw, ListChecks, ChevronDown, FolderInput } from 'lucide-vue-next'
+import { UploadCloud, FolderPlus, FileText, RefreshCw, ListChecks, ChevronDown, FolderInput, Trash2 } from 'lucide-vue-next'
 
 const props = defineProps<{
   selectedCount: number
@@ -79,6 +79,7 @@ const { t } = useI18n({ useScope: 'global' })
         v-permission="'disk:file:delete'"
         @click="emit('delete-selected')"
       >
+        <Trash2 :size="16" />
         {{ t('fileToolbar.deleteSelected', { count: selectedCount }) }}
       </Button>
     </div>
@@ -136,6 +137,16 @@ const { t } = useI18n({ useScope: 'global' })
   .toolbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .toolbar__left,
+  .toolbar__right {
+    width: 100%;
+  }
+
+  .toolbar__left > * {
+    flex: 0 1 auto;
+    min-width: 0;
   }
 }
 </style>

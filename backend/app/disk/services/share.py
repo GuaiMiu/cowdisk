@@ -46,6 +46,20 @@ class ShareService:
         }
 
     @staticmethod
+    def _share_resource_exists(share: Share, user_id: int) -> bool:
+        try:
+            target = DiskService._resolve_path(share.path, user_id)
+        except ServiceException:
+            return False
+        if not target.exists():
+            return False
+        if share.resource_type == "FILE" and not target.is_file():
+            return False
+        if share.resource_type == "FOLDER" and not target.is_dir():
+            return False
+        return True
+
+    @staticmethod
     async def create_share(
         user_id: int,
         resource_type: str,
@@ -102,8 +116,9 @@ class ShareService:
         page = max(page, 1)
         size = max(1, min(size, 100))
         now = datetime.utcnow()
-        query = select(Share).where(Share.user_id == user_id, Share.is_deleted == False)
-        count_query = select(func.count()).select_from(Share).where(Share.user_id == user_id, Share.is_deleted == False)
+        base_filter = (Share.user_id == user_id, Share.is_deleted == False)
+        query = select(Share).where(*base_filter)
+        count_query = select(func.count()).select_from(Share).where(*base_filter)
         if keyword:
             query = query.where(Share.name.contains(keyword))
             count_query = count_query.where(Share.name.contains(keyword))
@@ -120,13 +135,37 @@ class ShareService:
             count_query = count_query.where(Share.expires_at.is_not(None))
             count_query = count_query.where(Share.expires_at <= now)
         query = query.order_by(Share.created_at.desc())
+        offset = (page - 1) * size
+        if status == "missing":
+            result_all = await db.exec(query)
+            rows_all = result_all.all()
+            missing_rows = [
+                row for row in rows_all if not ShareService._share_resource_exists(row, user_id)
+            ]
+            total = len(missing_rows)
+            pages = max((total + size - 1) // size, 1) if total > 0 else 0
+            rows = missing_rows[offset : offset + size]
+            items: list[dict] = []
+            for row in rows:
+                item = ShareService._share_model_to_dict(row, include_code=True)
+                item["status"] = -1
+                item["missing"] = True
+                items.append(item)
+            return items, total, pages, size
         result_total = await db.exec(count_query)
         total = int(result_total.one() or 0)
         pages = max((total + size - 1) // size, 1) if total > 0 else 0
-        offset = (page - 1) * size
         result = await db.exec(query.offset(offset).limit(size))
         rows = result.all()
-        items = [ShareService._share_model_to_dict(row, include_code=True) for row in rows]
+        items = []
+        for row in rows:
+            item = ShareService._share_model_to_dict(row, include_code=True)
+            if not ShareService._share_resource_exists(row, user_id):
+                item["status"] = -1
+                item["missing"] = True
+            else:
+                item["missing"] = False
+            items.append(item)
         return items, total, pages, size
 
     @staticmethod
@@ -195,6 +234,8 @@ class ShareService:
             raise ServiceException(msg="该分享已取消")
         if share.is_deleted:
             raise ServiceException(msg="该分享已删除")
+        if not ShareService._share_resource_exists(share, share.user_id):
+            raise ServiceException(msg="分享文件已被删除")
         now = datetime.utcnow()
         if share.expires_at and share.expires_at <= now:
             share.status = 0

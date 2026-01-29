@@ -20,6 +20,7 @@ class Share(BaseModel):
     hasCode: bool
     code: str | None = None
     status: int
+    missing: bool | None = None
 
 
 class ShareCreateIn(BaseModel):

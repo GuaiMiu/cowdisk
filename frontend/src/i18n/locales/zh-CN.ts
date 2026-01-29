@@ -506,6 +506,9 @@ export default {
       expiresAt: '有效期',
       actions: '操作',
     },
+    status: {
+      missing: '文件已被删除',
+    },
     resourceType: {
       folder: '文件夹',
       file: '文件',
