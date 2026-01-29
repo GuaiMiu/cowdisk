@@ -38,6 +38,8 @@ export const mkdir = (payload: DiskMkdirIn) =>
     data: payload,
   })
 
+const uploadTimeout = Number(import.meta.env.VITE_UPLOAD_TIMEOUT ?? 1800000)
+
 export const uploadFiles = (
   payload: { items: Array<{ file: File; filename?: string }>; path?: string; overwrite?: boolean },
   options?: { onUploadProgress?: AxiosRequestConfig['onUploadProgress']; signal?: AbortSignal },
@@ -58,6 +60,7 @@ export const uploadFiles = (
       method: 'POST',
       data: formData,
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: uploadTimeout,
     },
     {
       onUploadProgress: options?.onUploadProgress,
