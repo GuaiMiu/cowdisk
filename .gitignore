@@ -14,3 +14,4 @@ frontend/dist/
 .mypy_cache/
 .ruff_cache/
 *.log
+/node_modules/.cache/prettier/.prettier-caches/06c8cc5b2b67205f3a17223764fbccf5a1a4e271.json
