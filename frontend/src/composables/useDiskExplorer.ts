@@ -18,12 +18,16 @@ import { triggerDownload } from '@/utils/download'
 import { normalizeDiskError } from '@/utils/diskError'
 import { usePolling } from './usePolling'
 
+type SortKey = 'name' | 'size' | 'type' | 'updatedAt'
+
 export const useDiskExplorer = () => {
   const { t } = useI18n({ useScope: 'global' })
   const message = useMessage()
   const loading = ref(false)
   const path = ref('/')
   const items = ref<DiskEntry[]>([])
+  const sortKey = ref<SortKey | null>(null)
+  const sortOrder = ref<'asc' | 'desc'>('asc')
   const { poll } = usePolling()
   const listController = ref<AbortController | null>(null)
 
@@ -63,6 +67,55 @@ export const useDiskExplorer = () => {
   }
 
   const refresh = () => load(path.value)
+
+  const getTypeKey = (entry: DiskEntry) => {
+    if (entry.is_dir) {
+      return ''
+    }
+    const parts = (entry.name || '').split('.')
+    return parts.length > 1 ? parts[parts.length - 1]?.toLowerCase() || '' : ''
+  }
+
+  const getUpdatedKey = (entry: DiskEntry) => {
+    if (!entry.modified_time) {
+      return 0
+    }
+    const time = new Date(entry.modified_time).getTime()
+    return Number.isNaN(time) ? 0 : time
+  }
+
+  const sortedItems = computed(() => {
+    if (!sortKey.value) {
+      return items.value
+    }
+    const next = [...items.value]
+    const order = sortOrder.value === 'asc' ? 1 : -1
+    next.sort((a, b) => {
+      if (a.is_dir !== b.is_dir) {
+        return a.is_dir ? -1 : 1
+      }
+      if (sortKey.value === 'name') {
+        return order * a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+      }
+      if (sortKey.value === 'size') {
+        return order * ((a.size || 0) - (b.size || 0))
+      }
+      if (sortKey.value === 'type') {
+        return order * getTypeKey(a).localeCompare(getTypeKey(b), undefined, { numeric: true, sensitivity: 'base' })
+      }
+      return order * (getUpdatedKey(a) - getUpdatedKey(b))
+    })
+    return next
+  })
+
+  const setSort = (key: SortKey) => {
+    if (sortKey.value === key) {
+      sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+      return
+    }
+    sortKey.value = key
+    sortOrder.value = 'asc'
+  }
 
   const createFolder = async (name: string) => {
     if (!name.trim()) {
@@ -283,6 +336,10 @@ export const useDiskExplorer = () => {
     loading,
     path,
     items,
+    sortedItems,
+    sortKey,
+    sortOrder,
+    setSort,
     load,
     refresh,
     createFolder,

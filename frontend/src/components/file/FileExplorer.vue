@@ -769,17 +769,20 @@ watch(
     </div>
     <div class="explorer__table">
       <FileTable
-        :items="explorer.items.value"
+        :items="explorer.sortedItems.value"
         :selected="selection.selected.value"
         :all-selected="selection.allSelected.value"
         :indeterminate="selection.indeterminate.value"
         :is-selected="selection.isSelected"
         :toggle="selection.toggle"
         :toggle-all="selection.toggleAll"
+        :sort-key="explorer.sortKey.value"
+        :sort-order="explorer.sortOrder.value"
         :creating-folder="creatingFolder"
         :creating-text="creatingText"
         :editing-entry="renamingEntry"
         :editing-name="renamingName"
+        @sort-change="explorer.setSort"
         @open="handleOpen"
         @action="handleAction"
         @create-confirm="handleCreateInline"

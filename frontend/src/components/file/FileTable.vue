@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Download, MoreHorizontal, Trash2, X } from 'lucide-vue-next'
+import { Check, Download, MoreHorizontal, Share2, Trash2, X } from 'lucide-vue-next'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ComponentPublicInstance, VNodeRef } from 'vue'
@@ -9,6 +9,8 @@ import IconButton from '@/components/common/IconButton.vue'
 import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import { getFileKind } from '@/utils/fileType'
+
+type SortKey = 'name' | 'size' | 'type' | 'updatedAt'
 
 const props = defineProps<{
   items: DiskEntry[]
@@ -22,6 +24,8 @@ const props = defineProps<{
   creatingText?: boolean
   editingEntry?: DiskEntry | null
   editingName?: string
+  sortKey?: SortKey | null
+  sortOrder?: 'asc' | 'desc' | null
 }>()
 
 const emit = defineEmits<{
@@ -38,9 +42,27 @@ const emit = defineEmits<{
   (event: 'create-cancel'): void
   (event: 'rename-confirm', payload: { entry: DiskEntry; name: string }): void
   (event: 'rename-cancel'): void
+  (event: 'sort-change', key: SortKey): void
 }>()
 
 const { t } = useI18n({ useScope: 'global' })
+const sortableKeys: SortKey[] = ['name', 'size', 'type', 'updatedAt']
+
+const isSortable = (key: SortKey) => sortableKeys.includes(key)
+
+const onSortClick = (key: SortKey) => {
+  if (!isSortable(key)) {
+    return
+  }
+  emit('sort-change', key)
+}
+
+const sortIndicator = (key: SortKey) => {
+  if (props.sortKey !== key) {
+    return ''
+  }
+  return props.sortOrder === 'asc' ? 'asc' : 'desc'
+}
 
 const createName = ref('')
 const renameValue = ref('')
@@ -183,10 +205,15 @@ const openContextMenu = (event: MouseEvent, entry: DiskEntry) => {
 const openMoreMenu = (event: MouseEvent, entry: DiskEntry) => {
   event.stopPropagation()
   const width = 140
-  const height = 160
+  const height = 180
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
   const x = Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8)
-  const y = Math.min(rect.bottom + 6, window.innerHeight - height - 8)
+  const spaceBelow = window.innerHeight - rect.bottom
+  const spaceAbove = rect.top
+  const preferTop = spaceBelow < height + 12 && spaceAbove > spaceBelow
+  const y = preferTop
+    ? Math.max(rect.top - height - 6, 8)
+    : Math.min(rect.bottom + 6, window.innerHeight - height - 8)
   contextMenu.value = { open: true, x, y, entry, mode: 'more', width }
   menuEntryPath.value = entry.path
 }
@@ -300,10 +327,50 @@ onBeforeUnmount(() => {
           @change="toggleAll"
         />
       </label>
-      <div class="table__cell">{{ t('fileTable.headers.name') }}</div>
-      <div class="table__cell table__cell--size">{{ t('fileTable.headers.size') }}</div>
-      <div class="table__cell table__cell--type">{{ t('fileTable.headers.type') }}</div>
-      <div class="table__cell table__cell--time">{{ t('fileTable.headers.updatedAt') }}</div>
+      <div class="table__cell">
+        <button
+          type="button"
+          class="table__sort"
+          :class="[`is-${sortIndicator('name')}`, { 'is-active': props.sortKey === 'name' }]"
+          @click="onSortClick('name')"
+        >
+          {{ t('fileTable.headers.name') }}
+          <span class="table__sort-indicator"></span>
+        </button>
+      </div>
+      <div class="table__cell table__cell--size">
+        <button
+          type="button"
+          class="table__sort"
+          :class="[`is-${sortIndicator('size')}`, { 'is-active': props.sortKey === 'size' }]"
+          @click="onSortClick('size')"
+        >
+          {{ t('fileTable.headers.size') }}
+          <span class="table__sort-indicator"></span>
+        </button>
+      </div>
+      <div class="table__cell table__cell--type">
+        <button
+          type="button"
+          class="table__sort"
+          :class="[`is-${sortIndicator('type')}`, { 'is-active': props.sortKey === 'type' }]"
+          @click="onSortClick('type')"
+        >
+          {{ t('fileTable.headers.type') }}
+          <span class="table__sort-indicator"></span>
+        </button>
+      </div>
+      <div class="table__cell table__cell--time">
+        <button
+          type="button"
+          class="table__sort"
+          :class="[`is-${sortIndicator('updatedAt')}`, { 'is-active': props.sortKey === 'updatedAt' }]"
+          @click="onSortClick('updatedAt')"
+        >
+          {{ t('fileTable.headers.updatedAt') }}
+          <span class="table__sort-indicator"></span>
+        </button>
+      </div>
     </div>
     <div
       v-if="items.length || creatingFolder || creatingText"
@@ -427,6 +494,15 @@ onBeforeUnmount(() => {
               @click="emit('action', { entry: item, action: 'download' })"
             >
               <Download :size="14" />
+            </IconButton>
+            <IconButton
+              size="sm"
+              variant="ghost"
+              :aria-label="t('fileTable.actions.share')"
+              v-permission="'disk:file:download'"
+              @click="emit('action', { entry: item, action: 'share' })"
+            >
+              <Share2 :size="14" />
             </IconButton>
             <IconButton
               size="sm"
@@ -613,6 +689,40 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: var(--color-muted);
   letter-spacing: 0.06em;
+}
+
+.table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.table__sort-indicator {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 6px solid var(--color-muted);
+  opacity: 0;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.table__sort.is-active .table__sort-indicator {
+  opacity: 1;
+}
+
+.table__sort.is-asc .table__sort-indicator {
+  transform: rotate(180deg);
+}
+
+.table__sort.is-desc .table__sort-indicator {
+  transform: rotate(0deg);
 }
 
 .table__body {
