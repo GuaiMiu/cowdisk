@@ -61,3 +61,8 @@ export type ShareListQueryOut = {
   items: Record<string, unknown>[]
   nextCursor?: string | null
 }
+
+export type ShareBatchResult = {
+  success: number
+  failed: string[]
+}

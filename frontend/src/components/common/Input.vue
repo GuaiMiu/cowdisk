@@ -61,7 +61,9 @@ const classes = computed(() => ['input', props.error ? 'input--error' : ''])
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
-  transition: border var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    border var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .input:focus {

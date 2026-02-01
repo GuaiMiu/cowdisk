@@ -15,12 +15,18 @@ import ShareForm, { type ShareFormValue } from '@/components/share/ShareForm.vue
 import ImagePreview from '@/components/common/ImagePreview.vue'
 import PdfPreview from '@/components/common/PdfPreview.vue'
 import VideoPreview from '@/components/common/VideoPreview.vue'
-import { createDownloadToken, getPreviewFileUrl, previewFileByToken, readEditFile, saveEditFile } from '@/api/modules/userDisk'
+import {
+  createDownloadToken,
+  getPreviewFileUrl,
+  previewFileByToken,
+  readEditFile,
+  saveEditFile,
+} from '@/api/modules/userDisk'
 import { useDiskExplorer } from '@/composables/useDiskExplorer'
 import { useSelection } from '@/composables/useSelection'
 import { useUploader } from '@/composables/useUploader'
 import { useShareActions } from '@/composables/useShareActions'
-import { useToastStore } from '@/stores/toast'
+import { useMessage } from '@/stores/message'
 import { useUploadsStore } from '@/stores/uploads'
 import type { DiskEntry } from '@/types/disk'
 import type { Share } from '@/types/share'
@@ -37,7 +43,7 @@ const explorer = useDiskExplorer()
 const selection = useSelection(() => explorer.items.value)
 const uploader = useUploader()
 const shareActions = useShareActions()
-const toast = useToastStore()
+const message = useMessage()
 const uploadsStore = useUploadsStore()
 
 const queueOpen = ref(false)
@@ -45,8 +51,12 @@ const shareModal = ref(false)
 const deleteConfirm = ref(false)
 const shareEntry = ref<DiskEntry | null>(null)
 const shareLink = ref('')
+const shareLinkWithCode = ref('')
+const shareCode = ref('')
+const shareIncludeCode = ref(true)
 const shareResult = ref<Share | null>(null)
 const shareSubmitting = ref(false)
+const lastShareSignature = ref<string | null>(null)
 const detailModal = ref(false)
 const detailEntry = ref<DiskEntry | null>(null)
 const moveModal = ref(false)
@@ -122,12 +132,40 @@ const openShareModal = (entry: DiskEntry) => {
     code: '',
   }
   shareLink.value = ''
+  shareLinkWithCode.value = ''
+  shareCode.value = ''
+  shareIncludeCode.value = true
   shareResult.value = null
+  lastShareSignature.value = null
   shareModal.value = true
 }
 
+const buildShareSignature = () => {
+  const expiresAt =
+    shareForm.value.expiresAt && Number.isFinite(Date.parse(shareForm.value.expiresAt))
+      ? Date.parse(shareForm.value.expiresAt)
+      : null
+  return JSON.stringify({
+    path: shareEntry.value?.path ?? '',
+    resourceType: shareEntry.value?.is_dir ? 'FOLDER' : 'FILE',
+    expiresInDays: shareForm.value.expiresInDays ?? null,
+    expiresAt,
+    code:
+      shareForm.value.requiresCode && shareForm.value.code.trim()
+        ? shareForm.value.code.trim()
+        : null,
+  })
+}
+
+const canRegenerateShare = computed(() => {
+  if (!shareResult.value) {
+    return true
+  }
+  return buildShareSignature() !== lastShareSignature.value
+})
+
 const submitShare = async () => {
-  if (!shareEntry.value || shareSubmitting.value) {
+  if (!shareEntry.value || shareSubmitting.value || !canRegenerateShare.value) {
     return
   }
   shareSubmitting.value = true
@@ -140,22 +178,32 @@ const submitShare = async () => {
     path: shareEntry.value.path,
     expiresInDays: shareForm.value.expiresInDays ?? null,
     expiresAt,
-    code: shareForm.value.requiresCode && shareForm.value.code.trim() ? shareForm.value.code.trim() : null,
+    code:
+      shareForm.value.requiresCode && shareForm.value.code.trim()
+        ? shareForm.value.code.trim()
+        : null,
   }
   const share = await shareActions.create(payload)
   shareSubmitting.value = false
   if (share) {
     shareResult.value = share
-    shareLink.value = `${window.location.origin}/public/shares/${share.token}`
+    shareCode.value = share.code ?? ''
+    shareLink.value = buildShareUrl(share.token)
+    shareLinkWithCode.value = buildShareUrl(share.token, share.code)
+    lastShareSignature.value = buildShareSignature()
   }
 }
 
 const handleCopyLink = async () => {
-  const ok = await copyToClipboard(shareLink.value)
+  const link = shareIncludeCode.value && shareCode.value ? shareLinkWithCode.value : shareLink.value
+  const text = shareCode.value
+    ? `${t('fileExplorer.modals.copyLinkPrefix')}: ${link} ${t('fileExplorer.modals.copyCodePrefix')}: ${shareCode.value}`
+    : link
+  const ok = await copyToClipboard(text)
   if (ok) {
-    toast.success(t('fileExplorer.toasts.linkCopied'))
+    message.success(t('fileExplorer.toasts.linkCopied'))
   } else {
-    toast.error(t('fileExplorer.toasts.copyFailTitle'), t('fileExplorer.toasts.copyFailMessage'))
+    message.error(t('fileExplorer.toasts.copyFailTitle'), t('fileExplorer.toasts.copyFailMessage'))
   }
 }
 
@@ -218,7 +266,10 @@ const handleOpen = async (entry: DiskEntry) => {
   renamingEntry.value = null
 }
 
-const handleAction = async (payload: { entry: DiskEntry; action: 'download' | 'rename' | 'delete' | 'share' | 'detail' | 'preview' | 'move' | 'edit' }) => {
+const handleAction = async (payload: {
+  entry: DiskEntry
+  action: 'download' | 'rename' | 'delete' | 'share' | 'detail' | 'preview' | 'move' | 'edit'
+}) => {
   if (payload.action === 'download') {
     await explorer.downloadEntry(payload.entry)
   }
@@ -250,7 +301,7 @@ const handleAction = async (payload: { entry: DiskEntry; action: 'download' | 'r
       await openEditorForFile(payload.entry)
       return
     }
-    toast.warning(t('fileExplorer.toasts.notEditable'))
+    message.warning(t('fileExplorer.toasts.notEditable'))
   }
 }
 
@@ -314,9 +365,17 @@ const getVideoMime = (name: string) => {
   return map[ext] || 'video/mp4'
 }
 
+const buildShareUrl = (token: string, code?: string | null) => {
+  const url = new URL(`/s/${token}`, window.location.origin)
+  if (code) {
+    url.searchParams.set('code', code)
+  }
+  return url.toString()
+}
+
 const openPreview = async (entry: DiskEntry) => {
   if (entry.is_dir) {
-    toast.warning(t('fileExplorer.toasts.folderNoPreview'))
+    message.warning(t('fileExplorer.toasts.folderNoPreview'))
     return
   }
   if (isImageEntry(entry)) {
@@ -335,7 +394,7 @@ const openPreview = async (entry: DiskEntry) => {
     await openEditorForFile(entry)
     return
   }
-  toast.warning(t('fileExplorer.toasts.fileNoPreview'))
+  message.warning(t('fileExplorer.toasts.fileNoPreview'))
 }
 
 const openImagePreview = async (entry: DiskEntry) => {
@@ -353,7 +412,7 @@ const openImagePreview = async (entry: DiskEntry) => {
     await ensurePreview(currentIndex)
     await Promise.all([ensurePreview(currentIndex - 1), ensurePreview(currentIndex + 1)])
   } catch (error) {
-    toast.error(
+    message.error(
       t('fileExplorer.toasts.previewFailedTitle'),
       error instanceof Error ? error.message : t('fileExplorer.toasts.previewFailedMessage'),
     )
@@ -372,7 +431,7 @@ const openPdfPreview = async (entry: DiskEntry) => {
     pdfName.value = entry.name || t('fileExplorer.pdfPreviewDefault')
     pdfOpen.value = true
   } catch (error) {
-    toast.error(
+    message.error(
       t('fileExplorer.toasts.previewFailedTitle'),
       error instanceof Error ? error.message : t('fileExplorer.toasts.previewFailedMessage'),
     )
@@ -389,7 +448,7 @@ const openVideoPreview = async (entry: DiskEntry) => {
     videoType.value = getVideoMime(entry.name || '')
     videoOpen.value = true
   } catch (error) {
-    toast.error(
+    message.error(
       t('fileExplorer.toasts.previewFailedTitle'),
       error instanceof Error ? error.message : t('fileExplorer.toasts.previewFailedMessage'),
     )
@@ -486,7 +545,7 @@ const openEditorForFile = async (entry: DiskEntry) => {
     const data = await readEditFile(entry.path)
     editorContent.value = data.content || ''
   } catch (error) {
-    toast.error(
+    message.error(
       t('fileExplorer.toasts.readFailedTitle'),
       error instanceof Error ? error.message : t('fileExplorer.toasts.readFailedMessage'),
     )
@@ -505,7 +564,7 @@ const selectEditorFile = async (payload: { path: string; name: string }) => {
     const data = await readEditFile(payload.path)
     editorContent.value = data.content || ''
   } catch (error) {
-    toast.error(
+    message.error(
       t('fileExplorer.toasts.readFailedTitle'),
       error instanceof Error ? error.message : t('fileExplorer.toasts.readFailedMessage'),
     )
@@ -520,11 +579,15 @@ const saveEditor = async () => {
   }
   editorSaving.value = true
   try {
-    await saveEditFile({ path: editorFilePath.value, content: editorContent.value, overwrite: true })
-    toast.success(t('fileExplorer.toasts.saveSuccess'))
+    await saveEditFile({
+      path: editorFilePath.value,
+      content: editorContent.value,
+      overwrite: true,
+    })
+    message.success(t('fileExplorer.toasts.saveSuccess'))
     await explorer.refresh()
   } catch (error) {
-    toast.error(
+    message.error(
       t('fileExplorer.toasts.saveFailedTitle'),
       error instanceof Error ? error.message : t('fileExplorer.toasts.saveFailedMessage'),
     )
@@ -583,17 +646,17 @@ const cancelCreateInline = () => {
 const handleCreateTextInline = async (name: string) => {
   const filename = name.trim()
   if (!filename) {
-    toast.warning(t('fileExplorer.toasts.docNameRequired'))
+    message.warning(t('fileExplorer.toasts.docNameRequired'))
     return
   }
   const path = toRelativePath(joinPath(explorer.path.value, filename))
   try {
     await saveEditFile({ path, content: '', overwrite: false })
-    toast.success(t('fileExplorer.toasts.docCreated'))
+    message.success(t('fileExplorer.toasts.docCreated'))
     creatingText.value = false
     await explorer.refresh()
   } catch (error) {
-    toast.error(
+    message.error(
       t('fileExplorer.toasts.createFailedTitle'),
       normalizeDiskError(error, t('fileExplorer.toasts.createFailedMessage')),
     )
@@ -700,7 +763,9 @@ watch(
     />
     <div class="explorer__bar">
       <FileBreadcrumb :path="explorer.path.value" @navigate="explorer.load" />
-      <div class="explorer__count">{{ t('files.itemsCount', { count: explorer.items.value.length }) }}</div>
+      <div class="explorer__count">
+        {{ t('files.itemsCount', { count: explorer.items.value.length }) }}
+      </div>
     </div>
     <div class="explorer__table">
       <FileTable
@@ -728,21 +793,43 @@ watch(
 
   <UploadQueueDrawer :open="queueOpen" @close="queueOpen = false" />
 
-  <Modal :open="shareModal" :title="t('fileExplorer.modals.shareTitle')" @close="shareModal = false">
+  <Modal
+    :open="shareModal"
+    :title="t('fileExplorer.modals.shareTitle')"
+    @close="shareModal = false"
+  >
     <ShareForm v-model="shareForm" />
     <div v-if="shareResult" class="share__result">
-      <Input :model-value="shareLink" :label="t('fileExplorer.modals.shareLinkLabel')" :readonly="true" />
+      <Input
+        :model-value="
+          shareCode
+            ? `${t('fileExplorer.modals.copyLinkPrefix')}: ${shareIncludeCode ? shareLinkWithCode : shareLink} ${t('fileExplorer.modals.copyCodePrefix')}: ${shareCode}`
+            : shareLink
+        "
+        :label="t('fileExplorer.modals.shareLinkLabel')"
+        :readonly="true"
+      />
+      <label class="share__toggle">
+        <input type="checkbox" v-model="shareIncludeCode" />
+        <span>{{ t('fileExplorer.modals.includeCodeInLink') }}</span>
+      </label>
       <Button variant="secondary" @click="handleCopyLink">
         {{ t('common.copyLink') }}
       </Button>
     </div>
     <template #footer>
       <Button variant="ghost" @click="shareModal = false">{{ t('common.cancel') }}</Button>
-      <Button :loading="shareSubmitting" @click="submitShare">{{ t('fileExplorer.modals.shareGenerate') }}</Button>
+      <Button :loading="shareSubmitting" :disabled="!canRegenerateShare" @click="submitShare">
+        {{ t('fileExplorer.modals.shareGenerate') }}
+      </Button>
     </template>
   </Modal>
 
-  <Modal :open="detailModal" :title="t('fileExplorer.modals.detailTitle')" @close="detailModal = false">
+  <Modal
+    :open="detailModal"
+    :title="t('fileExplorer.modals.detailTitle')"
+    @close="detailModal = false"
+  >
     <div v-if="detailEntry" class="detail">
       <div class="detail__row">
         <span class="detail__label">{{ t('fileExplorer.modals.detailName') }}</span>
@@ -750,7 +837,9 @@ watch(
       </div>
       <div class="detail__row">
         <span class="detail__label">{{ t('fileExplorer.modals.detailType') }}</span>
-        <span class="detail__value">{{ detailEntry.is_dir ? t('common.folder') : t('common.file') }}</span>
+        <span class="detail__value">{{
+          detailEntry.is_dir ? t('common.folder') : t('common.file')
+        }}</span>
       </div>
       <div class="detail__row">
         <span class="detail__label">{{ t('fileExplorer.modals.detailPath') }}</span>
@@ -772,12 +861,16 @@ watch(
     </template>
   </Modal>
 
-
   <FileMoveDialog
     :open="moveModal"
     :entries="moveEntries"
     :current-path="explorer.path.value"
-    @close="() => { moveModal = false; moveEntries = [] }"
+    @close="
+      () => {
+        moveModal = false
+        moveEntries = []
+      }
+    "
     @confirm="confirmMove"
   />
 
@@ -786,7 +879,11 @@ watch(
     :images="previewItems"
     :start-index="previewIndex"
     @change="handlePreviewChange"
-    @update:open="(value) => { if (!value) clearPreview() }"
+    @update:open="
+      (value) => {
+        if (!value) clearPreview()
+      }
+    "
     @close="clearPreview"
   />
 
@@ -794,7 +891,11 @@ watch(
     :open="pdfOpen"
     :src="pdfSrc"
     :name="pdfName"
-    @update:open="(value) => { if (!value) clearPdfPreview() }"
+    @update:open="
+      (value) => {
+        if (!value) clearPdfPreview()
+      }
+    "
     @close="clearPdfPreview"
   />
 
@@ -803,7 +904,11 @@ watch(
     :src="videoSrc"
     :name="videoName"
     :type="videoType"
-    @update:open="(value) => { if (!value) clearVideoPreview() }"
+    @update:open="
+      (value) => {
+        if (!value) clearVideoPreview()
+      }
+    "
     @close="clearVideoPreview"
   />
 
@@ -863,6 +968,14 @@ watch(
 .share__result {
   display: grid;
   gap: var(--space-3);
+}
+
+.share__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--color-muted);
 }
 
 .detail {

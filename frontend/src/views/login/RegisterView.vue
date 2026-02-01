@@ -5,12 +5,12 @@ import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import { useAuthStore } from '@/stores/auth'
-import { useToastStore } from '@/stores/toast'
+import { useMessage } from '@/stores/message'
 import { register as registerApi } from '@/api/modules/auth'
 import { getLocale, setLocale } from '@/i18n'
 
 const authStore = useAuthStore()
-const toast = useToastStore()
+const message = useMessage()
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
@@ -29,7 +29,12 @@ const errors = reactive({
 })
 
 const canSubmit = computed(() => {
-  return username.value.trim() && mail.value.trim() && password.value.trim() && confirmPassword.value.trim()
+  return (
+    username.value.trim() &&
+    mail.value.trim() &&
+    password.value.trim() &&
+    confirmPassword.value.trim()
+  )
 })
 
 const isEmailValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -85,7 +90,7 @@ const onSubmit = async () => {
     const redirect = route.query.redirect as string | undefined
     await router.replace(redirect || authStore.landingPath())
   } catch (error) {
-    toast.error(
+    message.error(
       t('auth.register.errorTitle'),
       error instanceof Error ? error.message : t('auth.register.errorFallback'),
     )

@@ -45,11 +45,7 @@ onBeforeUnmount(() => {
       <slot name="trigger" />
     </div>
     <transition name="fade-slide">
-      <div
-        v-if="open"
-        class="dropdown__content"
-        :style="{ width: `${width}px`, [align]: '0px' }"
-      >
+      <div v-if="open" class="dropdown__content" :style="{ width: `${width}px`, [align]: '0px' }">
         <slot name="content" :close="close" />
       </div>
     </transition>
@@ -75,7 +71,9 @@ onBeforeUnmount(() => {
 
 .fade-slide-enter-active,
 .fade-slide-leave-active {
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .fade-slide-enter-from,

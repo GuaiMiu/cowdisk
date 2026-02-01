@@ -15,12 +15,7 @@ export const formatTime = (value?: string | number | null) => {
   if (value === undefined || value === null) {
     return '-'
   }
-  const normalized =
-    typeof value === 'number'
-      ? value
-      : /^\d+$/.test(value)
-        ? Number(value)
-        : value
+  const normalized = typeof value === 'number' ? value : /^\d+$/.test(value) ? Number(value) : value
   const date = new Date(normalized)
   if (Number.isNaN(date.getTime())) {
     return String(value)

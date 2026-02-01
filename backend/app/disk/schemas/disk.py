@@ -60,6 +60,14 @@ class DiskUploadCompleteIn(BaseModel):
     upload_id: str
 
 
+class DiskUploadCancelIn(BaseModel):
+    """
+    分片上传取消
+    """
+
+    upload_id: str
+
+
 class DiskMkdirIn(BaseModel):
     """
     创建目录输入模型
@@ -123,6 +131,23 @@ class DiskTrashListOut(BaseModel):
     """
 
     items: list[DiskTrashEntry]
+
+
+class DiskTrashBatchIdsIn(BaseModel):
+    """
+    回收站批量操作输入模型
+    """
+
+    ids: list[str]
+
+
+class DiskTrashBatchOut(BaseModel):
+    """
+    回收站批量操作输出模型
+    """
+
+    success: int
+    failed: list[str]
 
 
 class DiskTrashRestoreIn(BaseModel):

@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="TRow extends Record<string, unknown>">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
 import Empty from './Empty.vue'
 import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
 
@@ -78,7 +78,13 @@ const tableStyle = computed(() => ({
 
 defineSlots<{
   [K in `cell-${string}`]?: (props: { row: TRow }) => unknown
+} & {
+  [K in `head-${string}`]?: (props: { column: Column }) => unknown
 }>()
+
+const slots = useSlots()
+const hasHeadSlot = (key: string) => Boolean(slots[`head-${key}` as `head-${string}`])
+const headSlotName = (key: string) => `head-${key}` as `head-${string}`
 
 let observer: ResizeObserver | null = null
 
@@ -116,7 +122,10 @@ onBeforeUnmount(() => {
         class="table__cell table__cell--head"
         :style="{ textAlign: col.align || 'left' }"
       >
-        {{ col.label }}
+        <slot v-if="hasHeadSlot(col.key)" :name="headSlotName(col.key)" :column="col">
+          {{ col.label }}
+        </slot>
+        <template v-else>{{ col.label }}</template>
       </div>
     </div>
     <div
@@ -146,13 +155,13 @@ onBeforeUnmount(() => {
             class="table__row table__row--placeholder"
           >
             <div
-            v-for="col in columns"
-            :key="col.key"
-            class="table__cell"
-            :style="{ textAlign: col.align || 'left' }"
-          >
-            &nbsp;
-          </div>
+              v-for="col in columns"
+              :key="col.key"
+              class="table__cell"
+              :style="{ textAlign: col.align || 'left' }"
+            >
+              &nbsp;
+            </div>
           </div>
         </div>
       </div>

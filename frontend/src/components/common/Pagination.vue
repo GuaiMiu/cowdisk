@@ -44,7 +44,9 @@ const sizeOptions = () =>
 <template>
   <div class="pagination">
     <div class="pagination__left">
-      <span class="pagination__info">{{ t('pagination.info', { total, pages: totalPages() }) }}</span>
+      <span class="pagination__info">{{
+        t('pagination.info', { total, pages: totalPages() })
+      }}</span>
       <div v-if="showPageSize" class="pagination__size">
         <span class="pagination__size-label">{{ t('pagination.perPage') }}</span>
         <Select

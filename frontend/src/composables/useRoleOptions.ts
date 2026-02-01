@@ -1,9 +1,11 @@
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { getRoleList } from '@/api/modules/adminSystem'
-import { useToastStore } from '@/stores/toast'
+import { useMessage } from '@/stores/message'
 
 export const useRoleOptions = () => {
-  const toast = useToastStore()
+  const { t } = useI18n({ useScope: 'global' })
+  const message = useMessage()
   const options = ref<Array<{ id: number; label: string; description?: string }>>([])
 
   const load = async () => {
@@ -15,7 +17,10 @@ export const useRoleOptions = () => {
         description: role.permission_char || '',
       }))
     } catch (error) {
-      toast.error('加载角色失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('admin.role.toasts.loadFailTitle'),
+        error instanceof Error ? error.message : t('admin.role.toasts.loadFailMessage'),
+      )
     }
   }
 

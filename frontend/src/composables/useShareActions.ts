@@ -1,10 +1,18 @@
 import { ref } from 'vue'
-import { createShare, deleteShare, listShares, revokeShare, updateShare } from '@/api/modules/shares'
-import { useToastStore } from '@/stores/toast'
+import { useI18n } from 'vue-i18n'
+import {
+  batchDeleteShares,
+  batchUpdateShareStatus,
+  createShare,
+  listShares,
+  updateShare,
+} from '@/api/modules/shares'
+import { useMessage } from '@/stores/message'
 import type { Share, ShareCreateIn, ShareUpdateIn } from '@/types/share'
 
 export const useShareActions = () => {
-  const toast = useToastStore()
+  const { t } = useI18n({ useScope: 'global' })
+  const message = useMessage()
   const loading = ref(false)
   const items = ref<Share[]>([])
   const limit = ref(20)
@@ -22,7 +30,10 @@ export const useShareActions = () => {
       currentPage.value = data.page ?? page
       limit.value = data.size ?? limit.value
     } catch (error) {
-      toast.error('加载分享失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('shares.toasts.loadFailTitle'),
+        error instanceof Error ? error.message : t('shares.toasts.loadFailMessage'),
+      )
     } finally {
       loading.value = false
     }
@@ -36,46 +47,43 @@ export const useShareActions = () => {
   const create = async (payload: ShareCreateIn) => {
     try {
       const share = await createShare(payload)
-      toast.success('分享已创建')
+      message.success(t('shares.toasts.createSuccessTitle'))
       return share
     } catch (error) {
-      toast.error('创建分享失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('shares.toasts.createFailTitle'),
+        error instanceof Error ? error.message : t('shares.toasts.createFailMessage'),
+      )
       return null
-    }
-  }
-
-  const revoke = async (shareId: string) => {
-    try {
-      await revokeShare(shareId)
-      toast.success('已取消分享')
-      await fetchShares(currentPage.value)
-      return true
-    } catch (error) {
-      toast.error('取消分享失败', error instanceof Error ? error.message : '请稍后重试')
-      return false
     }
   }
 
   const update = async (shareId: string, payload: ShareUpdateIn) => {
     try {
       const share = await updateShare(shareId, payload)
-      toast.success('分享已更新')
+      message.success(t('shares.toasts.updateSuccessTitle'))
       await fetchShares(currentPage.value)
       return share
     } catch (error) {
-      toast.error('更新分享失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('shares.toasts.updateFailTitle'),
+        error instanceof Error ? error.message : t('shares.toasts.updateFailMessage'),
+      )
       return null
     }
   }
 
   const remove = async (shareId: string) => {
     try {
-      await deleteShare(shareId)
-      toast.success('分享已删除')
+      await batchDeleteShares({ ids: [shareId] })
+      message.success(t('shares.toasts.deleteSuccessTitle'))
       await fetchShares(currentPage.value)
       return true
     } catch (error) {
-      toast.error('删除分享失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('shares.toasts.deleteFailTitle'),
+        error instanceof Error ? error.message : t('shares.toasts.deleteFailMessage'),
+      )
       return false
     }
   }
@@ -90,8 +98,22 @@ export const useShareActions = () => {
     fetchShares,
     setPageSize,
     create,
-    revoke,
     update,
     remove,
+    revokeBatch: async (ids: string[]) => {
+      const result = await batchUpdateShareStatus({ ids, status: 0 })
+      await fetchShares(currentPage.value)
+      return result
+    },
+    enableBatch: async (ids: string[]) => {
+      const result = await batchUpdateShareStatus({ ids, status: 1 })
+      await fetchShares(currentPage.value)
+      return result
+    },
+    removeBatch: async (ids: string[]) => {
+      const result = await batchDeleteShares({ ids })
+      await fetchShares(currentPage.value)
+      return result
+    },
   }
 }

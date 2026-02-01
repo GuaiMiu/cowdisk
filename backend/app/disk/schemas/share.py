@@ -38,6 +38,20 @@ class ShareUpdateIn(BaseModel):
     status: int | None = None
 
 
+class ShareBatchIdsIn(BaseModel):
+    ids: list[str]
+
+
+class ShareBatchStatusIn(BaseModel):
+    ids: list[str]
+    status: int
+
+
+class ShareBatchOut(BaseModel):
+    success: int
+    failed: list[str]
+
+
 class ShareListOut(BaseModel):
     items: list[Share]
     total: int

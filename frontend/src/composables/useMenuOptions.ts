@@ -1,6 +1,7 @@
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { getMenuList } from '@/api/modules/adminSystem'
-import { useToastStore } from '@/stores/toast'
+import { useMessage } from '@/stores/message'
 
 type MenuOption = {
   id: number
@@ -12,7 +13,8 @@ type MenuOption = {
 }
 
 export const useMenuOptions = () => {
-  const toast = useToastStore()
+  const { t } = useI18n({ useScope: 'global' })
+  const message = useMessage()
   const options = ref<MenuOption[]>([])
 
   const load = async () => {
@@ -52,7 +54,10 @@ export const useMenuOptions = () => {
       sortTree(roots)
       options.value = roots
     } catch (error) {
-      toast.error('加载菜单失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('admin.menu.toasts.loadFailTitle'),
+        error instanceof Error ? error.message : t('admin.menu.toasts.loadFailMessage'),
+      )
     }
   }
 

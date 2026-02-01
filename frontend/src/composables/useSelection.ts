@@ -1,9 +1,12 @@
 import { computed, ref } from 'vue'
 
-export const useSelection = <T extends { path?: string; id?: string }>(items: () => T[]) => {
+export const useSelection = <T extends { path?: string; id?: string }>(
+  items: () => T[],
+  keyGetter?: (item: T) => string,
+) => {
   const selected = ref(new Set<string>())
 
-  const getKey = (item: T) => item.path || String(item.id)
+  const getKey = (item: T) => (keyGetter ? keyGetter(item) : item.path || String(item.id))
 
   const isSelected = (item: T) => selected.value.has(getKey(item))
 
@@ -36,7 +39,9 @@ export const useSelection = <T extends { path?: string; id?: string }>(items: ()
   }
 
   const selectedItems = computed(() => items().filter((item) => selected.value.has(getKey(item))))
-  const allSelected = computed(() => items().length > 0 && selectedItems.value.length === items().length)
+  const allSelected = computed(
+    () => items().length > 0 && selectedItems.value.length === items().length,
+  )
   const indeterminate = computed(
     () => selectedItems.value.length > 0 && selectedItems.value.length < items().length,
   )

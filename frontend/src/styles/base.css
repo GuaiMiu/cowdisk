@@ -17,7 +17,8 @@ body {
 body {
   font-family: var(--font-sans);
   color: var(--color-text);
-  background: radial-gradient(1200px 600px at 10% -10%, var(--color-bg-accent-1), transparent 55%),
+  background:
+    radial-gradient(1200px 600px at 10% -10%, var(--color-bg-accent-1), transparent 55%),
     radial-gradient(900px 480px at 100% 0%, var(--color-bg-accent-2), transparent 60%),
     var(--color-bg);
   line-height: 1.6;

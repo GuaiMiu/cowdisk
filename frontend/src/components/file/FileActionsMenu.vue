@@ -24,10 +24,20 @@ const { t } = useI18n({ useScope: 'global' })
     </template>
     <template #content>
       <div class="menu">
-        <button class="menu__item" type="button" v-permission="'disk:file:rename'" @click="emit('action', 'rename')">
+        <button
+          class="menu__item"
+          type="button"
+          v-permission="'disk:file:rename'"
+          @click="emit('action', 'rename')"
+        >
           {{ t('fileActionsMenu.rename') }}
         </button>
-        <button class="menu__item" type="button" v-permission="'disk:file:download'" @click="emit('action', 'share')">
+        <button
+          class="menu__item"
+          type="button"
+          v-permission="'disk:file:download'"
+          @click="emit('action', 'share')"
+        >
           {{ t('fileActionsMenu.share') }}
         </button>
       </div>

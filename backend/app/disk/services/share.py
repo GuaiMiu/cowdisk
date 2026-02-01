@@ -179,6 +179,28 @@ class ShareService:
         share.status = 0
         db.add(share)
         await db.commit()
+ 
+    @staticmethod
+    async def batch_update_status(
+        user_id: int, ids: list[str], status: int, db: AsyncSession
+    ) -> dict:
+        if status not in (0, 1):
+            raise ServiceException(msg="状态值不合法")
+        if not ids:
+            return {"success": 0, "failed": []}
+        result = await db.exec(
+            select(Share).where(
+                Share.user_id == user_id, Share.id.in_(ids), Share.is_deleted == False
+            )
+        )
+        rows = result.all()
+        found_ids = {row.id for row in rows}
+        for row in rows:
+            row.status = status
+            db.add(row)
+        await db.commit()
+        failed = [share_id for share_id in ids if share_id not in found_ids]
+        return {"success": len(found_ids), "failed": failed}
 
     @staticmethod
     async def update_share(
@@ -249,6 +271,24 @@ class ShareService:
             owner_name = owner.nickname or owner.username
         data["ownerName"] = owner_name
         return share.user_id, data
+
+    @staticmethod
+    async def batch_delete(user_id: int, ids: list[str], db: AsyncSession) -> dict:
+        if not ids:
+            return {"success": 0, "failed": []}
+        result = await db.exec(
+            select(Share).where(
+                Share.user_id == user_id, Share.id.in_(ids), Share.is_deleted == False
+            )
+        )
+        rows = result.all()
+        found_ids = {row.id for row in rows}
+        for row in rows:
+            row.is_deleted = True
+            db.add(row)
+        await db.commit()
+        failed = [share_id for share_id in ids if share_id not in found_ids]
+        return {"success": len(found_ids), "failed": failed}
 
     @staticmethod
     async def delete_share(user_id: int, share_id: str, db: AsyncSession) -> None:

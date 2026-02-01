@@ -9,6 +9,7 @@
 import asyncio
 import json
 import shutil
+import threading
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -40,6 +41,11 @@ class DiskService:
     """
 
     _root: Path | None = None
+    _UPLOAD_BUFFER_SIZE = int(settings.DISK_UPLOAD_BUFFER_SIZE or 1024 * 1024)
+    _UPLOAD_CONCURRENCY_LIMIT = int(settings.DISK_UPLOAD_CONCURRENCY or 3)
+
+    class _UploadCancelled(Exception):
+        pass
 
     @classmethod
     def _get_root(cls) -> Path:
@@ -215,9 +221,12 @@ class DiskService:
         db: AsyncSession | None = None,
     ) -> DiskUploadOut:
         items: list[DiskEntry] = []
-        for upload in files:
+        # 单请求多文件上传限并发，避免瞬间打满磁盘 I/O
+        semaphore = asyncio.Semaphore(cls._UPLOAD_CONCURRENCY_LIMIT)
+
+        async def handle_upload(upload: UploadFile) -> DiskEntry | None:
             if not upload.filename:
-                continue
+                return None
             target_dir, safe_name = cls._normalize_upload_target(
                 path, upload.filename, user_id
             )
@@ -226,11 +235,32 @@ class DiskService:
                 raise ServiceException(msg=f"文件已存在: {safe_name}")
             target_dir.mkdir(parents=True, exist_ok=True)
             try:
-                with target_file.open("wb") as handle:
-                    shutil.copyfileobj(upload.file, handle)
+                async with semaphore:
+                    await cls._write_uploadfile_to_disk(
+                        upload, target_file, overwrite=overwrite
+                    )
             finally:
                 await upload.close()
-            items.append(cls._to_entry(target_file, user_id))
+            return cls._to_entry(target_file, user_id)
+
+        tasks = [asyncio.create_task(handle_upload(upload)) for upload in files]
+        try:
+            results = await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        except Exception:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        for entry in results:
+            if entry:
+                items.append(entry)
         return DiskUploadOut(items=items)
 
     @classmethod
@@ -323,8 +353,7 @@ class DiskService:
         tmp_dir.mkdir(parents=True, exist_ok=True)
         chunk_path = tmp_dir / f"{index}.part"
         try:
-            with chunk_path.open("wb") as handle:
-                shutil.copyfileobj(chunk.file, handle)
+            await cls._write_uploadfile_to_disk(chunk, chunk_path, overwrite=True)
         finally:
             await chunk.close()
         await redis.expire(key, 10800)
@@ -353,14 +382,124 @@ class DiskService:
                 raise ServiceException(msg="分片未上传完成")
         if target_file.exists() and overwrite:
             target_file.unlink(missing_ok=True)
-        with target_file.open("wb") as handle:
-            for idx in range(total_chunks):
-                chunk_path = tmp_dir / f"{idx}.part"
-                with chunk_path.open("rb") as part:
-                    shutil.copyfileobj(part, handle)
+        await cls._merge_chunks_to_target(
+            tmp_dir=tmp_dir,
+            total_chunks=total_chunks,
+            target_file=target_file,
+        )
         shutil.rmtree(tmp_dir, ignore_errors=True)
         await redis.delete(key)
         return cls._to_entry(target_file, user_id)
+
+    @classmethod
+    async def cancel_chunk_upload(
+        cls, upload_id: str, user_id: int, redis
+    ) -> None:
+        key = f"disk:upload:{upload_id}"
+        await cls._get_upload_meta(key, user_id, redis)
+        tmp_dir = cls._get_tmp_dir(user_id) / upload_id
+        if tmp_dir.exists():
+            await asyncio.to_thread(shutil.rmtree, tmp_dir, True)
+        await redis.delete(key)
+
+    @classmethod
+    def _build_temp_path(cls, target: Path) -> Path:
+        return target.with_name(f".{target.name}.uploading-{uuid4().hex}")
+
+    @classmethod
+    def _copy_stream_sync(
+        cls,
+        src,
+        dst,
+        buffer_size: int,
+        cancel_event: threading.Event,
+    ) -> None:
+        while True:
+            if cancel_event.is_set():
+                raise cls._UploadCancelled()
+            chunk = src.read(buffer_size)
+            if not chunk:
+                break
+            dst.write(chunk)
+
+    @classmethod
+    async def _run_sync_with_cancel(cls, func, cancel_event: threading.Event):
+        # 文件 I/O 放到线程池，避免阻塞 event loop
+        task = asyncio.create_task(asyncio.to_thread(func))
+        try:
+            return await task
+        except asyncio.CancelledError:
+            # 客户端断开时尽快通知线程停止写入
+            cancel_event.set()
+            try:
+                await asyncio.shield(task)
+            except Exception:
+                pass
+            raise
+
+    @classmethod
+    async def _write_uploadfile_to_disk(
+        cls, upload: UploadFile, target_file: Path, overwrite: bool = True
+    ) -> None:
+        temp_path = cls._build_temp_path(target_file)
+        cancel_event = threading.Event()
+
+        def _sync_write():
+            temp_path.parent.mkdir(parents=True, exist_ok=True)
+            with temp_path.open("wb") as handle:
+                cls._copy_stream_sync(
+                    upload.file, handle, cls._UPLOAD_BUFFER_SIZE, cancel_event
+                )
+
+        try:
+            await cls._run_sync_with_cancel(_sync_write, cancel_event)
+        except asyncio.CancelledError:
+            temp_path.unlink(missing_ok=True)
+            raise
+        except cls._UploadCancelled:
+            temp_path.unlink(missing_ok=True)
+            raise
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            raise
+        if target_file.exists() and not overwrite:
+            temp_path.unlink(missing_ok=True)
+            raise ServiceException(msg=f"文件已存在: {target_file.name}")
+        temp_path.replace(target_file)
+
+    @classmethod
+    async def _merge_chunks_to_target(
+        cls, tmp_dir: Path, total_chunks: int, target_file: Path
+    ) -> None:
+        temp_path = cls._build_temp_path(target_file)
+        cancel_event = threading.Event()
+
+        def _sync_merge():
+            temp_path.parent.mkdir(parents=True, exist_ok=True)
+            with temp_path.open("wb") as handle:
+                for idx in range(total_chunks):
+                    chunk_path = tmp_dir / f"{idx}.part"
+                    with chunk_path.open("rb") as part:
+                        while True:
+                            if cancel_event.is_set():
+                                raise cls._UploadCancelled()
+                            data = part.read(cls._UPLOAD_BUFFER_SIZE)
+                            if not data:
+                                break
+                            handle.write(data)
+
+        try:
+            await cls._run_sync_with_cancel(_sync_merge, cancel_event)
+        except asyncio.CancelledError:
+            temp_path.unlink(missing_ok=True)
+            raise
+        except cls._UploadCancelled:
+            temp_path.unlink(missing_ok=True)
+            raise
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            raise
+        temp_path.replace(target_file)
 
     @classmethod
     async def get_file_path(cls, path: str, user_id: int) -> Path:
@@ -619,6 +758,71 @@ class DiskService:
         if len(valid_items) != len(items):
             cls._save_trash_items(user_id, valid_items)
         return DiskTrashListOut(items=entries)
+
+    @classmethod
+    async def batch_restore_trash(cls, ids: list[str], user_id: int) -> dict:
+        if not ids:
+            return {"success": 0, "failed": []}
+        items = cls._load_trash_items(user_id)
+        item_map = {item.get("id"): item for item in items if item.get("id")}
+        trash_dir = cls._get_trash_dir(user_id)
+        remove_ids: set[str] = set()
+        failed: list[str] = []
+        success = 0
+        for trash_id in ids:
+            target_item = item_map.get(trash_id)
+            if not target_item:
+                failed.append(trash_id)
+                continue
+            trash_path = trash_dir / trash_id
+            if not trash_path.exists():
+                remove_ids.add(trash_id)
+                failed.append(trash_id)
+                continue
+            desired = cls._resolve_path(target_item.get("path", ""), user_id)
+            dest = cls._unique_path(desired, "restored")
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(trash_path), dest)
+                remove_ids.add(trash_id)
+                success += 1
+            except Exception:
+                failed.append(trash_id)
+        if remove_ids:
+            items = [item for item in items if item.get("id") not in remove_ids]
+            cls._save_trash_items(user_id, items)
+        return {"success": success, "failed": failed}
+
+    @classmethod
+    async def batch_delete_trash(cls, ids: list[str], user_id: int) -> dict:
+        if not ids:
+            return {"success": 0, "failed": []}
+        items = cls._load_trash_items(user_id)
+        item_map = {item.get("id"): item for item in items if item.get("id")}
+        trash_dir = cls._get_trash_dir(user_id)
+        remove_ids: set[str] = set()
+        failed: list[str] = []
+        success = 0
+        for trash_id in ids:
+            target_item = item_map.get(trash_id)
+            if not target_item:
+                failed.append(trash_id)
+                continue
+            trash_path = trash_dir / trash_id
+            try:
+                if trash_path.exists():
+                    if trash_path.is_dir():
+                        shutil.rmtree(trash_path)
+                    else:
+                        trash_path.unlink(missing_ok=True)
+                remove_ids.add(trash_id)
+                success += 1
+            except Exception:
+                failed.append(trash_id)
+        if remove_ids:
+            items = [item for item in items if item.get("id") not in remove_ids]
+            cls._save_trash_items(user_id, items)
+        return {"success": success, "failed": failed}
 
     @classmethod
     async def restore_trash(cls, trash_id: str, user_id: int) -> DiskEntry:

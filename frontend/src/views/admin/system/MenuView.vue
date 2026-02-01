@@ -84,10 +84,8 @@ const filteredMenus = computed(() => {
   const keywordValue = keyword.value.trim().toLowerCase()
   return menuStore.items.value.filter((menu) => {
     const statusMatch =
-      statusFilter.value === 'all' ||
-      (statusFilter.value === 'true' ? !!menu.status : !menu.status)
-    const typeMatch =
-      typeFilter.value === 'all' || String(menu.type ?? '') === typeFilter.value
+      statusFilter.value === 'all' || (statusFilter.value === 'true' ? !!menu.status : !menu.status)
+    const typeMatch = typeFilter.value === 'all' || String(menu.type ?? '') === typeFilter.value
     if (!statusMatch || !typeMatch) {
       return false
     }
@@ -334,12 +332,18 @@ onMounted(() => {
         <Button variant="secondary" @click="menuStore.fetchMenus(menuStore.page.value)">
           {{ t('admin.menu.refresh') }}
         </Button>
-        <Button v-permission="'system:menu:add'" @click="openCreate">{{ t('admin.menu.add') }}</Button>
+        <Button v-permission="'system:menu:add'" @click="openCreate">{{
+          t('admin.menu.add')
+        }}</Button>
       </template>
     </PageHeader>
 
     <div class="filters">
-      <Input v-model="keyword" :label="t('admin.menu.searchLabel')" :placeholder="t('admin.menu.searchPlaceholder')" />
+      <Input
+        v-model="keyword"
+        :label="t('admin.menu.searchLabel')"
+        :placeholder="t('admin.menu.searchPlaceholder')"
+      />
       <Select
         v-model="typeFilter"
         :label="t('admin.menu.typeLabel')"
@@ -396,10 +400,20 @@ onMounted(() => {
         </template>
         <template #cell-actions="{ row }">
           <div class="actions">
-            <Button size="sm" variant="secondary" v-permission="'system:menu:edit'" @click="openEdit(row)">
+            <Button
+              size="sm"
+              variant="secondary"
+              v-permission="'system:menu:edit'"
+              @click="openEdit(row)"
+            >
               {{ t('common.edit') }}
             </Button>
-            <Button size="sm" variant="ghost" v-permission="'system:menu:delete'" @click="requestDelete(row)">
+            <Button
+              size="sm"
+              variant="ghost"
+              v-permission="'system:menu:delete'"
+              @click="requestDelete(row)"
+            >
               {{ t('common.delete') }}
             </Button>
           </div>
@@ -412,7 +426,12 @@ onMounted(() => {
       :page-size="menuStore.size.value"
       :current-page="menuStore.page.value"
       @update:currentPage="menuStore.fetchMenus"
-      @update:pageSize="(size) => { menuStore.size.value = size; menuStore.fetchMenus(1) }"
+      @update:pageSize="
+        (size) => {
+          menuStore.size.value = size
+          menuStore.fetchMenus(1)
+        }
+      "
     />
   </section>
 
@@ -428,9 +447,18 @@ onMounted(() => {
         :placeholder="t('admin.menu.placeholders.name')"
         :error="errors.name"
       />
-      <Select v-model="form.type" :label="t('admin.menu.form.type')" :options="typeOptions" :error="errors.type" />
+      <Select
+        v-model="form.type"
+        :label="t('admin.menu.form.type')"
+        :options="typeOptions"
+        :error="errors.type"
+      />
       <Select v-model="form.pid" :label="t('admin.menu.form.parent')" :options="parentOptions" />
-      <Input v-model="form.route_name" :label="t('admin.menu.form.routeName')" :placeholder="t('admin.common.optional')" />
+      <Input
+        v-model="form.route_name"
+        :label="t('admin.menu.form.routeName')"
+        :placeholder="t('admin.common.optional')"
+      />
       <Input
         v-model="form.router_path"
         :label="t('admin.menu.form.routerPath')"
@@ -447,12 +475,36 @@ onMounted(() => {
         :placeholder="t('admin.menu.placeholders.sort')"
       />
       <Select v-model="form.status" :label="t('admin.menu.form.status')" :options="statusOptions" />
-      <Select v-model="form.keep_alive" :label="t('admin.menu.form.keepAlive')" :options="boolOptions" />
-      <Select v-model="form.is_frame" :label="t('admin.menu.form.isFrame')" :options="boolOptions" />
-      <Input v-model="form.redirect" :label="t('admin.menu.form.redirect')" :placeholder="t('admin.common.optional')" />
-      <Input v-model="form.component_path" :label="t('admin.menu.form.componentPath')" :placeholder="t('admin.common.optional')" />
-      <Input v-model="form.icon" :label="t('admin.menu.form.icon')" :placeholder="t('admin.common.optional')" />
-      <Input v-model="form.description" :label="t('admin.menu.form.description')" :placeholder="t('admin.common.optional')" />
+      <Select
+        v-model="form.keep_alive"
+        :label="t('admin.menu.form.keepAlive')"
+        :options="boolOptions"
+      />
+      <Select
+        v-model="form.is_frame"
+        :label="t('admin.menu.form.isFrame')"
+        :options="boolOptions"
+      />
+      <Input
+        v-model="form.redirect"
+        :label="t('admin.menu.form.redirect')"
+        :placeholder="t('admin.common.optional')"
+      />
+      <Input
+        v-model="form.component_path"
+        :label="t('admin.menu.form.componentPath')"
+        :placeholder="t('admin.common.optional')"
+      />
+      <Input
+        v-model="form.icon"
+        :label="t('admin.menu.form.icon')"
+        :placeholder="t('admin.common.optional')"
+      />
+      <Input
+        v-model="form.description"
+        :label="t('admin.menu.form.description')"
+        :placeholder="t('admin.common.optional')"
+      />
     </div>
     <template #footer>
       <Button variant="secondary" @click="formOpen = false">{{ t('common.cancel') }}</Button>
@@ -490,7 +542,6 @@ onMounted(() => {
   justify-content: space-between;
   gap: var(--space-2);
 }
-
 
 .form {
   display: grid;

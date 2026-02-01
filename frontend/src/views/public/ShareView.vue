@@ -15,6 +15,10 @@ const route = useRoute()
 const token = route.params.token as string
 const share = usePublicShare(token)
 const unlockCode = ref('')
+const autoCode = computed(() => {
+  const value = route.query.code || route.query.pwd
+  return typeof value === 'string' ? value.trim() : ''
+})
 const redirectCount = ref(5)
 let redirectTimer: number | null = null
 const asEntry = (row: unknown) => row as DiskEntry
@@ -29,8 +33,12 @@ const columns = computed(() => [
   { key: 'actions', label: t('sharePublic.columns.actions') },
 ])
 
-onMounted(() => {
-  void share.loadShare()
+onMounted(async () => {
+  await share.loadShare()
+  if (share.locked.value && autoCode.value) {
+    unlockCode.value = autoCode.value
+    void share.unlock(autoCode.value)
+  }
 })
 
 watch(unlockCode, () => {
@@ -80,8 +88,12 @@ onBeforeUnmount(() => {
       <div class="notice__card">
         <div class="notice__title">{{ t('sharePublic.unavailable.title') }}</div>
         <div class="notice__desc">{{ share.errorMessage.value }}</div>
-        <div class="notice__hint">{{ t('sharePublic.unavailable.redirectHint', { count: redirectCount }) }}</div>
-        <Button variant="secondary" @click="goHome">{{ t('sharePublic.unavailable.backHome') }}</Button>
+        <div class="notice__hint">
+          {{ t('sharePublic.unavailable.redirectHint', { count: redirectCount }) }}
+        </div>
+        <Button variant="secondary" @click="goHome">{{
+          t('sharePublic.unavailable.backHome')
+        }}</Button>
       </div>
     </div>
     <div v-else-if="share.locked.value" class="unlock">
@@ -89,7 +101,11 @@ onBeforeUnmount(() => {
         <div class="unlock__title">{{ t('sharePublic.unlock.title') }}</div>
         <div class="unlock__subtitle">{{ t('sharePublic.unlock.subtitle') }}</div>
         <div class="unlock__meta">
-          <span>{{ t('sharePublic.labels.owner') }}：{{ (share.share.value as any)?.ownerName || '-' }}</span>
+          <span
+            >{{ t('sharePublic.labels.owner') }}：{{
+              (share.share.value as any)?.ownerName || '-'
+            }}</span
+          >
           <span>
             {{ t('sharePublic.labels.expires') }}：{{
               (share.share.value as any)?.expiresAt
@@ -108,7 +124,9 @@ onBeforeUnmount(() => {
             {{ t('sharePublic.unlock.button') }}
           </Button>
         </div>
-        <div v-if="share.unlockError.value" class="unlock__error">{{ share.unlockError.value }}</div>
+        <div v-if="share.unlockError.value" class="unlock__error">
+          {{ share.unlockError.value }}
+        </div>
         <div class="unlock__hint">{{ t('sharePublic.unlock.hint') }}</div>
       </div>
     </div>
@@ -116,9 +134,17 @@ onBeforeUnmount(() => {
     <div v-else-if="share.isFile.value" class="file-card">
       <div class="file-card__title">{{ (share.share.value as any)?.name }}</div>
       <div class="file-card__meta">
-        <span>{{ t('sharePublic.labels.size') }}：{{ share.fileMeta.value?.size ? formatBytes(share.fileMeta.value.size) : '-' }}</span>
+        <span
+          >{{ t('sharePublic.labels.size') }}：{{
+            share.fileMeta.value?.size ? formatBytes(share.fileMeta.value.size) : '-'
+          }}</span
+        >
         <span>{{ t('sharePublic.labels.type') }}：{{ share.fileMeta.value?.mime || '-' }}</span>
-        <span>{{ t('sharePublic.labels.owner') }}：{{ (share.share.value as any)?.ownerName || '-' }}</span>
+        <span
+          >{{ t('sharePublic.labels.owner') }}：{{
+            (share.share.value as any)?.ownerName || '-'
+          }}</span
+        >
         <span>
           {{ t('sharePublic.labels.expires') }}：{{
             (share.share.value as any)?.expiresAt
@@ -128,7 +154,9 @@ onBeforeUnmount(() => {
         </span>
       </div>
       <div class="file-card__actions">
-        <Button variant="secondary" @click="share.preview()">{{ t('sharePublic.actions.preview') }}</Button>
+        <Button variant="secondary" @click="share.preview()">{{
+          t('sharePublic.actions.preview')
+        }}</Button>
         <Button @click="share.download()">{{ t('sharePublic.actions.download') }}</Button>
       </div>
     </div>
@@ -136,9 +164,15 @@ onBeforeUnmount(() => {
     <div v-else class="share__body">
       <div class="share__panel">
         <div class="share__bar">
-          <div class="share__title">{{ (share.share.value as any)?.name || t('sharePublic.list.title') }}</div>
+          <div class="share__title">
+            {{ (share.share.value as any)?.name || t('sharePublic.list.title') }}
+          </div>
           <div class="share__meta">
-            <span>{{ t('sharePublic.labels.owner') }}：{{ (share.share.value as any)?.ownerName || '-' }}</span>
+            <span
+              >{{ t('sharePublic.labels.owner') }}：{{
+                (share.share.value as any)?.ownerName || '-'
+              }}</span
+            >
             <span>
               {{ t('sharePublic.labels.expires') }}：{{
                 (share.share.value as any)?.expiresAt
@@ -153,45 +187,45 @@ onBeforeUnmount(() => {
           />
         </div>
         <div class="share__table">
-        <Table :columns="columns" :rows="share.items.value" :min-rows="10" scrollable fill>
-          <template #cell-name="{ row }">
-            <button
-              v-if="asEntry(row).is_dir"
-              type="button"
-              class="name name--clickable"
-              @click="share.loadEntries(asEntry(row).path as string)"
-            >
-              <FileTypeIcon :name="asEntry(row).name" :is-dir="asEntry(row).is_dir" />
-              <span class="name__text">{{ asEntry(row).name }}</span>
-            </button>
-            <div v-else class="name">
-              <FileTypeIcon :name="asEntry(row).name" :is-dir="asEntry(row).is_dir" />
-              <span class="name__text">{{ asEntry(row).name }}</span>
-            </div>
-          </template>
-          <template #cell-size="{ row }">
-            {{ asEntry(row).is_dir ? '-' : formatBytes(asEntry(row).size as number) }}
-          </template>
-          <template #cell-actions="{ row }">
-            <div class="actions">
-              <Button
-                v-if="!asEntry(row).is_dir"
-                size="sm"
-                variant="secondary"
-                @click="share.download(asEntry(row).path as string)"
+          <Table :columns="columns" :rows="share.items.value" :min-rows="10" scrollable fill>
+            <template #cell-name="{ row }">
+              <button
+                v-if="asEntry(row).is_dir"
+                type="button"
+                class="name name--clickable"
+                @click="share.loadEntries(asEntry(row).path as string)"
               >
-                {{ t('sharePublic.table.download') }}
-              </Button>
-              <Button
-                v-if="!asEntry(row).is_dir"
-                size="sm"
-                variant="ghost"
-                @click="share.preview(asEntry(row).path as string)"
-              >
-                {{ t('sharePublic.table.preview') }}
-              </Button>
-            </div>
-          </template>
+                <FileTypeIcon :name="asEntry(row).name" :is-dir="asEntry(row).is_dir" />
+                <span class="name__text">{{ asEntry(row).name }}</span>
+              </button>
+              <div v-else class="name">
+                <FileTypeIcon :name="asEntry(row).name" :is-dir="asEntry(row).is_dir" />
+                <span class="name__text">{{ asEntry(row).name }}</span>
+              </div>
+            </template>
+            <template #cell-size="{ row }">
+              {{ asEntry(row).is_dir ? '-' : formatBytes(asEntry(row).size as number) }}
+            </template>
+            <template #cell-actions="{ row }">
+              <div class="actions">
+                <Button
+                  v-if="!asEntry(row).is_dir"
+                  size="sm"
+                  variant="secondary"
+                  @click="share.download(asEntry(row).path as string)"
+                >
+                  {{ t('sharePublic.table.download') }}
+                </Button>
+                <Button
+                  v-if="!asEntry(row).is_dir"
+                  size="sm"
+                  variant="ghost"
+                  @click="share.preview(asEntry(row).path as string)"
+                >
+                  {{ t('sharePublic.table.preview') }}
+                </Button>
+              </div>
+            </template>
           </Table>
         </div>
       </div>

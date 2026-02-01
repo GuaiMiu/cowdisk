@@ -127,7 +127,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="layout" :class="{ 'layout--collapsed': !sidebarOpen, 'layout--mobile-open': sidebarOpen }">
+  <div
+    class="layout"
+    :class="{ 'layout--collapsed': !sidebarOpen, 'layout--mobile-open': sidebarOpen }"
+  >
     <aside class="layout__sidebar">
       <div class="brand">
         <Cloud class="brand__icon" :size="20" />
@@ -176,7 +179,12 @@ onMounted(() => {
           <template #trigger>
             <button type="button" class="user-menu__trigger">
               <span class="user-menu__avatar">
-                <img v-if="avatarSrc && !avatarFailed" :src="avatarSrc" :alt="userLabel" @error="onAvatarError" />
+                <img
+                  v-if="avatarSrc && !avatarFailed"
+                  :src="avatarSrc"
+                  :alt="userLabel"
+                  @error="onAvatarError"
+                />
                 <span v-else class="user-menu__initials">{{ initials }}</span>
               </span>
               <span class="user-menu__name">{{ userLabel }}</span>
@@ -190,7 +198,7 @@ onMounted(() => {
                   type="button"
                   class="user-menu__item"
                   :class="{ 'is-active': currentLocale === 'zh-CN' }"
-                  @click="switchLocale('zh-CN'); close()"
+                  @click="switchLocale('zh-CN'); close();"
                 >
                   {{ t('layout.userMenu.langZh') }}
                 </button>
@@ -198,19 +206,41 @@ onMounted(() => {
                   type="button"
                   class="user-menu__item"
                   :class="{ 'is-active': currentLocale === 'en-US' }"
-                  @click="switchLocale('en-US'); close()"
+                  @click="switchLocale('en-US'); close();"
                 >
                   {{ t('layout.userMenu.langEn') }}
                 </button>
               </div>
               <div class="user-menu__divider"></div>
-              <button type="button" class="user-menu__item" @click="goSettings(); close()">
+              <button
+                type="button"
+                class="user-menu__item"
+                @click="
+                  goSettings();
+                  close();
+                "
+              >
                 {{ t('layout.userMenu.profile') }}
               </button>
-              <button v-if="canAdmin" type="button" class="user-menu__item" @click="goAdmin(); close()">
+              <button
+                v-if="canAdmin"
+                type="button"
+                class="user-menu__item"
+                @click="
+                  goAdmin();
+                  close();
+                "
+              >
                 {{ t('layout.userMenu.admin') }}
               </button>
-              <button type="button" class="user-menu__item user-menu__item--danger" @click="logout(); close()">
+              <button
+                type="button"
+                class="user-menu__item user-menu__item--danger"
+                @click="
+                  logout();
+                  close();
+                "
+              >
                 {{ t('layout.userMenu.logout') }}
               </button>
             </div>
@@ -223,7 +253,6 @@ onMounted(() => {
     <main class="layout__content">
       <RouterView />
     </main>
-
   </div>
 </template>
 
@@ -282,7 +311,9 @@ onMounted(() => {
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
-  transition: opacity 160ms ease, transform 160ms ease;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
 }
 
 .layout__toolbar {
@@ -342,7 +373,9 @@ onMounted(() => {
   height: 48px;
   border-radius: var(--radius-sm);
   color: var(--color-muted);
-  transition: background var(--transition-base), color var(--transition-base);
+  transition:
+    background var(--transition-base),
+    color var(--transition-base);
 }
 
 .nav__icon {
@@ -399,7 +432,9 @@ onMounted(() => {
   background: var(--color-surface);
   color: var(--color-text);
   cursor: pointer;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .user-menu__trigger:hover {

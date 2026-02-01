@@ -1,9 +1,16 @@
 import { defineStore } from 'pinia'
-import { login as loginApi, getMe, getPermissions, getRouters, logout as logoutApi } from '@/api/modules/auth'
+import {
+  login as loginApi,
+  getMe,
+  getPermissions,
+  getRouters,
+  logout as logoutApi,
+} from '@/api/modules/auth'
 import type { MenuRoutersOut } from '@/types/menu'
 import type { UserOut } from '@/types/auth'
 import router from '@/router'
-import { useToastStore } from './toast'
+import { i18n } from '@/i18n'
+import { useMessage } from './message'
 
 type AuthState = {
   token: string | null
@@ -25,19 +32,22 @@ export const useAuthStore = defineStore('auth', {
   }),
   actions: {
     async login(payload: { username: string; password: string }) {
-      const toast = useToastStore()
+      const message = useMessage()
       this.loading = true
       try {
         const tokenOut = await loginApi(payload)
         const token = tokenOut?.access_token
         if (!token) {
-          throw new Error('登录失败')
+          throw new Error(i18n.global.t('auth.toasts.loginFailedMessage'))
         }
         this.token = token
         localStorage.setItem(TOKEN_KEY, token)
         await this.bootstrap()
       } catch (error) {
-        toast.error('登录失败', error instanceof Error ? error.message : '请稍后重试')
+        message.error(
+          i18n.global.t('auth.toasts.loginFailedTitle'),
+          error instanceof Error ? error.message : i18n.global.t('auth.toasts.commonFailMessage'),
+        )
         throw error
       } finally {
         this.loading = false
@@ -46,7 +56,11 @@ export const useAuthStore = defineStore('auth', {
     async bootstrap() {
       this.loading = true
       try {
-        const [me, permissions, routers] = await Promise.all([getMe(), getPermissions(), getRouters()])
+        const [me, permissions, routers] = await Promise.all([
+          getMe(),
+          getPermissions(),
+          getRouters(),
+        ])
         this.me = me
         this.permissions = new Set(Array.isArray(permissions) ? permissions : [])
         if (Array.isArray(routers)) {
@@ -61,14 +75,17 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     async logout(options?: { redirect?: boolean; silent?: boolean }) {
-      const toast = useToastStore()
+      const message = useMessage()
       try {
         if (!options?.silent) {
           await logoutApi()
         }
       } catch (error) {
         if (!options?.silent) {
-          toast.error('退出失败', error instanceof Error ? error.message : '请稍后重试')
+          message.error(
+            i18n.global.t('auth.toasts.logoutFailedTitle'),
+            error instanceof Error ? error.message : i18n.global.t('auth.toasts.commonFailMessage'),
+          )
         }
       } finally {
         this.token = null

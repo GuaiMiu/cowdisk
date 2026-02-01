@@ -18,11 +18,12 @@ export const normalizeLocale = (input?: string): AppLocale => {
 }
 
 export const detectBrowserLocale = (): AppLocale => {
-  const candidates = typeof navigator === 'undefined'
-    ? []
-    : navigator.languages?.length
-      ? navigator.languages
-      : [navigator.language]
+  const candidates =
+    typeof navigator === 'undefined'
+      ? []
+      : navigator.languages?.length
+        ? navigator.languages
+        : [navigator.language]
   for (const candidate of candidates) {
     const normalized = normalizeLocale(candidate)
     if (SUPPORTED_LOCALES.includes(normalized)) {

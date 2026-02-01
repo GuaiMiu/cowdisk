@@ -80,7 +80,12 @@ onBeforeUnmount(() => {
         <div class="video-preview__top">
           <div class="video-preview__title">{{ name || t('preview.videoTitle') }}</div>
           <div class="video-preview__top-actions">
-            <button type="button" class="video-preview__top-btn" :title="t('common.openInNewTab')" @click="openInNewTab">
+            <button
+              type="button"
+              class="video-preview__top-btn"
+              :title="t('common.openInNewTab')"
+              @click="openInNewTab"
+            >
               <ExternalLink :size="18" />
             </button>
             <button
@@ -92,7 +97,12 @@ onBeforeUnmount(() => {
             >
               <Download :size="18" />
             </button>
-            <button type="button" class="video-preview__top-btn" :title="t('common.close')" @click="close">
+            <button
+              type="button"
+              class="video-preview__top-btn"
+              :title="t('common.close')"
+              @click="close"
+            >
               <X :size="18" />
             </button>
           </div>
@@ -105,7 +115,9 @@ onBeforeUnmount(() => {
             </media-provider>
             <media-video-layout :translations="vidstackTranslations"></media-video-layout>
           </media-player>
-          <div v-if="!src" class="video-preview__placeholder">{{ t('common.loadingEllipsis') }}</div>
+          <div v-if="!src" class="video-preview__placeholder">
+            {{ t('common.loadingEllipsis') }}
+          </div>
         </div>
       </div>
     </transition>
@@ -182,7 +194,6 @@ onBeforeUnmount(() => {
   position: relative;
   max-width: 100vw;
 }
-
 
 .video-preview__placeholder {
   position: absolute;

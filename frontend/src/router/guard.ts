@@ -26,7 +26,9 @@ const flattenMenus = (items: MenuRoutersOut[], parentPath = '', basePath = '') =
       result.push(buildFullPath(item, parentPath, basePath))
     }
     if (item.children?.length) {
-      result.push(...flattenMenus(item.children, buildFullPath(item, parentPath, basePath), basePath))
+      result.push(
+        ...flattenMenus(item.children, buildFullPath(item, parentPath, basePath), basePath),
+      )
     }
   })
   return result

@@ -4,10 +4,10 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
-import { useToastStore } from '@/stores/toast'
+import { useMessage } from '@/stores/message'
 
 const { t } = useI18n({ useScope: 'global' })
-const toast = useToastStore()
+const message = useMessage()
 const mail = ref('')
 const submitting = ref(false)
 const errors = reactive({
@@ -35,7 +35,7 @@ const onSubmit = async () => {
   }
   submitting.value = true
   try {
-    toast.info(t('auth.forgot.unavailableTitle'), t('auth.forgot.unavailableMessage'))
+    message.info(t('auth.forgot.unavailableTitle'), t('auth.forgot.unavailableMessage'))
   } finally {
     submitting.value = false
   }

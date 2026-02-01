@@ -58,7 +58,8 @@ const updateExpires = (value: string | number) => {
     return
   }
   if (value === 'custom') {
-    const fallback = props.modelValue.expiresAt || toLocalInputValue(new Date(Date.now() + 86400000))
+    const fallback =
+      props.modelValue.expiresAt || toLocalInputValue(new Date(Date.now() + 86400000))
     emit('update:modelValue', { ...props.modelValue, expiresInDays: null, expiresAt: fallback })
     return
   }

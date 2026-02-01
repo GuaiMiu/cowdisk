@@ -17,11 +17,11 @@ import { formatTime } from '@/utils/format'
 import { useRoleOptions } from '@/composables/useRoleOptions'
 import type { UserOut } from '@/types/auth'
 import { useAuthStore } from '@/stores/auth'
-import { useToastStore } from '@/stores/toast'
+import { useMessage } from '@/stores/message'
 
 const userStore = useAdminUsers()
 const authStore = useAuthStore()
-const toast = useToastStore()
+const message = useMessage()
 const { t } = useI18n({ useScope: 'global' })
 const columns = computed(() => [
   { key: 'username', label: t('admin.user.columns.username') },
@@ -29,7 +29,7 @@ const columns = computed(() => [
   { key: 'mail', label: t('admin.user.columns.mail') },
   { key: 'status', label: t('admin.user.columns.status') },
   { key: 'create_time', label: t('admin.user.columns.createTime') },
-  { key: 'actions', label: t('admin.user.columns.actions'), width: '120px'},
+  { key: 'actions', label: t('admin.user.columns.actions'), width: '120px' },
 ])
 
 const statusOptions = computed(() => [
@@ -164,7 +164,10 @@ const isSelf = (id?: number) => !!id && id === currentUserId.value
 
 const toggleStatus = async (row: UserOut, next: boolean) => {
   if (isSelf(row.id)) {
-    toast.warning(t('admin.user.toasts.selfDisableTitle'), t('admin.user.toasts.selfDisableMessage'))
+    message.warning(
+      t('admin.user.toasts.selfDisableTitle'),
+      t('admin.user.toasts.selfDisableMessage'),
+    )
     return
   }
   if (!row.id || toggling.value.has(row.id)) {
@@ -209,8 +212,7 @@ const filteredUsers = computed(() => {
   const keywordValue = keyword.value.trim().toLowerCase()
   return userStore.items.value.filter((user) => {
     const statusMatch =
-      statusFilter.value === 'all' ||
-      (statusFilter.value === 'true' ? !!user.status : !user.status)
+      statusFilter.value === 'all' || (statusFilter.value === 'true' ? !!user.status : !user.status)
     if (!statusMatch) {
       return false
     }
@@ -236,12 +238,18 @@ onMounted(() => {
         <Button variant="secondary" @click="userStore.fetchUsers(userStore.page.value)">
           {{ t('admin.user.refresh') }}
         </Button>
-        <Button v-permission="'system:user:add'" @click="openCreate">{{ t('admin.user.add') }}</Button>
+        <Button v-permission="'system:user:add'" @click="openCreate">{{
+          t('admin.user.add')
+        }}</Button>
       </template>
     </PageHeader>
 
     <div class="filters">
-      <Input v-model="keyword" :label="t('admin.user.searchLabel')" :placeholder="t('admin.user.searchPlaceholder')" />
+      <Input
+        v-model="keyword"
+        :label="t('admin.user.searchLabel')"
+        :placeholder="t('admin.user.searchPlaceholder')"
+      />
       <Select
         v-model="statusFilter"
         :label="t('admin.user.statusLabel')"
@@ -254,7 +262,13 @@ onMounted(() => {
     </div>
 
     <div class="table-wrap">
-      <Table :columns="columns" :rows="filteredUsers" :min-rows="userStore.size.value" scrollable fill>
+      <Table
+        :columns="columns"
+        :rows="filteredUsers"
+        :min-rows="userStore.size.value"
+        scrollable
+        fill
+      >
         <template #cell-status="{ row }">
           <Switch
             :model-value="!!row.status"
@@ -267,10 +281,20 @@ onMounted(() => {
         </template>
         <template #cell-actions="{ row }">
           <div class="actions">
-            <Button size="sm" variant="secondary" v-permission="'system:user:edit'" @click="openEdit(row)">
+            <Button
+              size="sm"
+              variant="secondary"
+              v-permission="'system:user:edit'"
+              @click="openEdit(row)"
+            >
               {{ t('common.edit') }}
             </Button>
-            <Button size="sm" variant="ghost" v-permission="'system:user:delete'" @click="requestDelete(row)">
+            <Button
+              size="sm"
+              variant="ghost"
+              v-permission="'system:user:delete'"
+              @click="requestDelete(row)"
+            >
               {{ t('common.delete') }}
             </Button>
           </div>
@@ -283,7 +307,12 @@ onMounted(() => {
       :page-size="userStore.size.value"
       :current-page="userStore.page.value"
       @update:currentPage="userStore.fetchUsers"
-      @update:pageSize="(size) => { userStore.size.value = size; userStore.fetchUsers(1) }"
+      @update:pageSize="
+        (size) => {
+          userStore.size.value = size
+          userStore.fetchUsers(1)
+        }
+      "
     />
   </section>
 
@@ -299,8 +328,16 @@ onMounted(() => {
         :placeholder="t('admin.user.placeholders.username')"
         :error="errors.username"
       />
-      <Input v-model="form.nickname" :label="t('admin.user.form.nickname')" :placeholder="t('admin.common.optional')" />
-      <Input v-model="form.mail" :label="t('admin.user.form.mail')" :placeholder="t('admin.common.optional')" />
+      <Input
+        v-model="form.nickname"
+        :label="t('admin.user.form.nickname')"
+        :placeholder="t('admin.common.optional')"
+      />
+      <Input
+        v-model="form.mail"
+        :label="t('admin.user.form.mail')"
+        :placeholder="t('admin.common.optional')"
+      />
       <Input
         v-model="form.total_space"
         :label="t('admin.user.form.totalSpace')"
@@ -323,10 +360,18 @@ onMounted(() => {
         :error="errors.password"
       />
       <Select v-model="form.status" :label="t('admin.user.form.status')" :options="statusOptions" />
-      <Select v-model="form.is_superuser" :label="t('admin.user.form.superuser')" :options="superOptions" />
+      <Select
+        v-model="form.is_superuser"
+        :label="t('admin.user.form.superuser')"
+        :options="superOptions"
+      />
       <div class="form__roles">
         <div class="form__label">{{ t('admin.user.form.roles') }}</div>
-        <CheckList v-model="form.roles" :items="roleOptions.options.value" :empty-text="t('admin.user.rolesEmpty')" />
+        <CheckList
+          v-model="form.roles"
+          :items="roleOptions.options.value"
+          :empty-text="t('admin.user.rolesEmpty')"
+        />
       </div>
     </div>
     <template #footer>
@@ -365,7 +410,6 @@ onMounted(() => {
   justify-content: space-between;
   gap: var(--space-2);
 }
-
 
 .form {
   display: grid;

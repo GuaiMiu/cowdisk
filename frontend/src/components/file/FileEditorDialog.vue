@@ -251,7 +251,9 @@ watch(rootLabel, (value) => {
             </button>
             <FileTypeIcon :name="node.name" :is-dir="node.isDir" />
             <span class="editor__name" :title="node.name">{{ node.name }}</span>
-            <span v-if="node.loading" class="editor__loading">{{ t('fileEditorDialog.loading') }}</span>
+            <span v-if="node.loading" class="editor__loading">{{
+              t('fileEditorDialog.loading')
+            }}</span>
           </div>
         </div>
       </aside>
@@ -297,8 +299,12 @@ watch(rootLabel, (value) => {
           </div>
         </div>
 
-        <div v-if="!activePath" class="editor__placeholder">{{ t('fileEditorDialog.placeholderSelect') }}</div>
-        <div v-else-if="loading" class="editor__placeholder">{{ t('fileEditorDialog.placeholderLoading') }}</div>
+        <div v-if="!activePath" class="editor__placeholder">
+          {{ t('fileEditorDialog.placeholderSelect') }}
+        </div>
+        <div v-else-if="loading" class="editor__placeholder">
+          {{ t('fileEditorDialog.placeholderLoading') }}
+        </div>
         <TextEditor
           v-else
           class="editor__body"
@@ -317,7 +323,9 @@ watch(rootLabel, (value) => {
 
     <template #footer>
       <Button variant="ghost" @click="emit('close')">{{ t('fileEditorDialog.cancel') }}</Button>
-      <Button :loading="saving" :disabled="!activePath" @click="emit('save')">{{ t('fileEditorDialog.save') }}</Button>
+      <Button :loading="saving" :disabled="!activePath" @click="emit('save')">{{
+        t('fileEditorDialog.save')
+      }}</Button>
     </template>
   </Modal>
 </template>
@@ -383,7 +391,6 @@ watch(rootLabel, (value) => {
   color: var(--color-text);
   background: var(--color-surface-2);
 }
-
 
 .editor__sidebar-search {
   padding: 6px var(--space-2);
@@ -525,7 +532,6 @@ watch(rootLabel, (value) => {
     align-items: flex-start;
   }
 }
-
 
 .editor__settings {
   display: flex;

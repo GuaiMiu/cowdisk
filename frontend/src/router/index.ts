@@ -40,6 +40,11 @@ const router = createRouter({
       component: () => import('@/views/public/ShareView.vue'),
     },
     {
+      path: '/s/:token',
+      name: 'public-share-short',
+      component: () => import('@/views/public/ShareView.vue'),
+    },
+    {
       path: '/app',
       component: AppLayout,
       meta: { requiresAuth: true },

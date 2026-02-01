@@ -1,25 +1,25 @@
 import { defineStore } from 'pinia'
 
-export type ToastType = 'success' | 'error' | 'info' | 'warning'
+export type MessageType = 'success' | 'error' | 'info' | 'warning'
 
-export type ToastItem = {
+export type MessageItem = {
   id: number
-  type: ToastType
+  type: MessageType
   title: string
   message?: string
   loading?: boolean
   duration: number
 }
 
-let toastSeed = 1
+let messageSeed = 1
 
-export const useToastStore = defineStore('toast', {
+export const useMessage = defineStore('message', {
   state: () => ({
-    items: [] as ToastItem[],
+    items: [] as MessageItem[],
   }),
   actions: {
-    push(payload: Omit<ToastItem, 'id'>) {
-      const item = { ...payload, id: toastSeed++ }
+    push(payload: Omit<MessageItem, 'id'>) {
+      const item = { ...payload, id: messageSeed++ }
       this.items.push(item)
       if (item.duration > 0) {
         window.setTimeout(() => this.remove(item.id), item.duration)

@@ -96,7 +96,10 @@ const emit = defineEmits<{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: border-color var(--transition-base), color var(--transition-base), background var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    color var(--transition-base),
+    background var(--transition-base);
 }
 
 .drawer__close:hover {

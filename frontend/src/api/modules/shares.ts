@@ -29,10 +29,11 @@ export const listShares = (params?: {
     params,
   })
 
-export const revokeShare = (shareId: string) =>
-  request<boolean>({
-    url: `/api/v1/shares/${shareId}/revoke`,
+export const batchUpdateShareStatus = (payload: { ids: string[]; status: number }) =>
+  request<{ success: number; failed: string[] }>({
+    url: '/api/v1/shares/batch/status',
     method: 'POST',
+    data: payload,
   })
 
 export const updateShare = (shareId: string, payload: ShareUpdateIn) =>
@@ -42,10 +43,11 @@ export const updateShare = (shareId: string, payload: ShareUpdateIn) =>
     data: payload,
   })
 
-export const deleteShare = (shareId: string) =>
-  request<boolean>({
-    url: `/api/v1/shares/${shareId}`,
-    method: 'DELETE',
+export const batchDeleteShares = (payload: { ids: string[] }) =>
+  request<{ success: number; failed: string[] }>({
+    url: '/api/v1/shares/batch/delete',
+    method: 'POST',
+    data: payload,
   })
 
 export const getPublicShare = (token: string, accessToken?: string) =>
@@ -91,11 +93,7 @@ export const getShareDownloadUrl = (
   return base ? href : href.replace(window.location.origin, '')
 }
 
-export const previewShare = (
-  token: string,
-  params?: { path?: string },
-  accessToken?: string,
-) =>
+export const previewShare = (token: string, params?: { path?: string }, accessToken?: string) =>
   downloadBlob({
     url: `/api/v1/public/shares/${token}/preview`,
     method: 'GET',

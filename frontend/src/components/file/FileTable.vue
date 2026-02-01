@@ -26,7 +26,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'open', entry: DiskEntry): void
-  (event: 'action', payload: { entry: DiskEntry; action: 'download' | 'rename' | 'delete' | 'share' | 'detail' | 'preview' | 'move' | 'edit' }): void
+  (
+    event: 'action',
+    payload: {
+      entry: DiskEntry
+      action: 'download' | 'rename' | 'delete' | 'share' | 'detail' | 'preview' | 'move' | 'edit'
+    },
+  ): void
   (event: 'create-confirm', name: string): void
   (event: 'create-text-confirm', name: string): void
   (event: 'create-cancel'): void
@@ -65,20 +71,17 @@ const isEditableFile = (entry: DiskEntry | null) => {
   return kind === 'text' || kind === 'code'
 }
 
-watch(
-  [() => props.creatingFolder, () => props.creatingText],
-  ([creatingFolder, creatingText]) => {
-    if (creatingFolder || creatingText) {
-      createName.value = creatingFolder
-        ? t('fileTable.createFolderName')
-        : t('fileTable.createTextFileName')
-      void nextTick(() => {
-        createInputRef.value?.focus()
-        createInputRef.value?.select()
-      })
-    }
-  },
-)
+watch([() => props.creatingFolder, () => props.creatingText], ([creatingFolder, creatingText]) => {
+  if (creatingFolder || creatingText) {
+    createName.value = creatingFolder
+      ? t('fileTable.createFolderName')
+      : t('fileTable.createTextFileName')
+    void nextTick(() => {
+      createInputRef.value?.focus()
+      createInputRef.value?.select()
+    })
+  }
+})
 
 watch(
   [() => props.editingEntry, () => props.editingName],
@@ -203,7 +206,11 @@ const onMenuLeave = () => {
 }
 
 const onRowLeave = (entry: DiskEntry) => {
-  if (contextMenu.value.open && contextMenu.value.entry?.path === entry.path && !menuHovering.value) {
+  if (
+    contextMenu.value.open &&
+    contextMenu.value.entry?.path === entry.path &&
+    !menuHovering.value
+  ) {
     if (closeTimer) {
       window.clearTimeout(closeTimer)
     }
@@ -312,7 +319,11 @@ onBeforeUnmount(() => {
           </label>
           <div class="table__cell table__cell--name">
             <div class="name name--edit name--inline">
-              <FileTypeIcon class="name__icon" :name="creatingText ? 'new.txt' : undefined" :is-dir="creatingFolder" />
+              <FileTypeIcon
+                class="name__icon"
+                :name="creatingText ? 'new.txt' : undefined"
+                :is-dir="creatingFolder"
+              />
               <input
                 v-model="createName"
                 ref="createInputRef"
@@ -322,10 +333,20 @@ onBeforeUnmount(() => {
                 @keydown="onCreateKey"
               />
               <div class="name__actions">
-                <IconButton size="sm" variant="secondary" :aria-label="t('fileTable.aria.confirm')" @click="confirmCreate">
+                <IconButton
+                  size="sm"
+                  variant="secondary"
+                  :aria-label="t('fileTable.aria.confirm')"
+                  @click="confirmCreate"
+                >
                   <Check :size="14" />
                 </IconButton>
-                <IconButton size="sm" variant="ghost" :aria-label="t('fileTable.aria.cancel')" @click="emit('create-cancel')">
+                <IconButton
+                  size="sm"
+                  variant="ghost"
+                  :aria-label="t('fileTable.aria.cancel')"
+                  @click="emit('create-cancel')"
+                >
                   <X :size="14" />
                 </IconButton>
               </div>
@@ -348,31 +369,48 @@ onBeforeUnmount(() => {
             <input type="checkbox" :checked="isSelected(item)" @click.stop @change="toggle(item)" />
           </label>
           <div class="table__cell table__cell--name">
-            <button v-if="!isEditing(item)" class="name" type="button" @click.stop="onNameClick(item)">
-            <FileTypeIcon class="name__icon" :name="item.name" :is-dir="item.is_dir" />
-            <span class="name__text" :title="item.name">{{ item.name }}</span>
-          </button>
-          <div v-else class="name name--edit name--inline">
-            <FileTypeIcon class="name__icon" :name="item.name" :is-dir="item.is_dir" />
-            <input
-              v-model="renameValue"
-              :ref="setRenameInputRef(item)"
-              class="name__input"
-              :placeholder="t('fileTable.placeholders.rename')"
-              autofocus
-              @keydown="(event) => onRenameKey(event, item)"
-            />
-            <div class="name__actions">
-              <IconButton size="sm" variant="secondary" :aria-label="t('fileTable.aria.confirm')" @click="confirmRename(item)">
-                <Check :size="14" />
-              </IconButton>
-              <IconButton size="sm" variant="ghost" :aria-label="t('fileTable.aria.cancel')" @click="emit('rename-cancel')">
-                <X :size="14" />
-              </IconButton>
+            <button
+              v-if="!isEditing(item)"
+              class="name"
+              type="button"
+              @click.stop="onNameClick(item)"
+            >
+              <FileTypeIcon class="name__icon" :name="item.name" :is-dir="item.is_dir" />
+              <span class="name__text" :title="item.name">{{ item.name }}</span>
+            </button>
+            <div v-else class="name name--edit name--inline">
+              <FileTypeIcon class="name__icon" :name="item.name" :is-dir="item.is_dir" />
+              <input
+                v-model="renameValue"
+                :ref="setRenameInputRef(item)"
+                class="name__input"
+                :placeholder="t('fileTable.placeholders.rename')"
+                autofocus
+                @keydown="(event) => onRenameKey(event, item)"
+              />
+              <div class="name__actions">
+                <IconButton
+                  size="sm"
+                  variant="secondary"
+                  :aria-label="t('fileTable.aria.confirm')"
+                  @click="confirmRename(item)"
+                >
+                  <Check :size="14" />
+                </IconButton>
+                <IconButton
+                  size="sm"
+                  variant="ghost"
+                  :aria-label="t('fileTable.aria.cancel')"
+                  @click="emit('rename-cancel')"
+                >
+                  <X :size="14" />
+                </IconButton>
+              </div>
             </div>
           </div>
+          <div class="table__cell table__cell--size">
+            {{ item.is_dir ? '-' : formatBytes(item.size) }}
           </div>
-          <div class="table__cell table__cell--size">{{ item.is_dir ? '-' : formatBytes(item.size) }}</div>
           <div class="table__cell table__cell--type">{{ formatEntryType(item) }}</div>
           <div class="table__cell table__cell--time">{{ formatTime(item.modified_time) }}</div>
           <div
@@ -424,7 +462,11 @@ onBeforeUnmount(() => {
     <div
       v-if="contextMenu.open && contextMenu.entry"
       class="context-menu"
-      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px`, width: `${contextMenu.width}px` }"
+      :style="{
+        left: `${contextMenu.x}px`,
+        top: `${contextMenu.y}px`,
+        width: `${contextMenu.width}px`,
+      }"
       @mouseenter="onMenuEnter"
       @mouseleave="onMenuLeave"
       @click.stop
@@ -432,7 +474,10 @@ onBeforeUnmount(() => {
       <button
         class="context-menu__item"
         type="button"
-        @click="emit('action', { entry: contextMenu.entry, action: 'detail' }); closeContextMenu()"
+        @click="
+          emit('action', { entry: contextMenu.entry, action: 'detail' });
+          closeContextMenu();
+        "
       >
         {{ t('fileTable.actions.details') }}
       </button>
@@ -440,7 +485,10 @@ onBeforeUnmount(() => {
         class="context-menu__item"
         type="button"
         v-permission="'disk:file:download'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'preview' }); closeContextMenu()"
+        @click="
+          emit('action', { entry: contextMenu.entry, action: 'preview' });
+          closeContextMenu();
+        "
       >
         {{ t('fileTable.actions.preview') }}
       </button>
@@ -449,7 +497,10 @@ onBeforeUnmount(() => {
         class="context-menu__item"
         type="button"
         v-permission="'disk:file:list'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'edit' }); closeContextMenu()"
+        @click="
+          emit('action', { entry: contextMenu.entry, action: 'edit' });
+          closeContextMenu();
+        "
       >
         {{ t('fileTable.actions.openEditor') }}
       </button>
@@ -458,7 +509,10 @@ onBeforeUnmount(() => {
         class="context-menu__item"
         type="button"
         v-permission="'disk:file:download'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'edit' }); closeContextMenu()"
+        @click="
+          emit('action', { entry: contextMenu.entry, action: 'edit' });
+          closeContextMenu();
+        "
       >
         {{ t('fileTable.actions.edit') }}
       </button>
@@ -467,7 +521,10 @@ onBeforeUnmount(() => {
         class="context-menu__item"
         type="button"
         v-permission="'disk:file:download'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'download' }); closeContextMenu()"
+        @click="
+          emit('action', { entry: contextMenu.entry, action: 'download' });
+          closeContextMenu();
+        "
       >
         {{ t('fileTable.actions.download') }}
       </button>
@@ -475,7 +532,10 @@ onBeforeUnmount(() => {
         class="context-menu__item"
         type="button"
         v-permission="'disk:file:rename'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'rename' }); closeContextMenu()"
+        @click="
+          emit('action', { entry: contextMenu.entry, action: 'rename' });
+          closeContextMenu();
+        "
       >
         {{ t('fileTable.actions.rename') }}
       </button>
@@ -483,7 +543,10 @@ onBeforeUnmount(() => {
         class="context-menu__item"
         type="button"
         v-permission="'disk:file:rename'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'move' }); closeContextMenu()"
+        @click="
+          emit('action', { entry: contextMenu.entry, action: 'move' });
+          closeContextMenu();
+        "
       >
         {{ t('fileTable.actions.move') }}
       </button>
@@ -491,7 +554,10 @@ onBeforeUnmount(() => {
         class="context-menu__item"
         type="button"
         v-permission="'disk:file:download'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'share' }); closeContextMenu()"
+        @click="
+          emit('action', { entry: contextMenu.entry, action: 'share' });
+          closeContextMenu();
+        "
       >
         {{ t('fileTable.actions.share') }}
       </button>
@@ -500,7 +566,10 @@ onBeforeUnmount(() => {
         class="context-menu__item context-menu__item--danger"
         type="button"
         v-permission="'disk:file:delete'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'delete' }); closeContextMenu()"
+        @click="
+          emit('action', { entry: contextMenu.entry, action: 'delete' });
+          closeContextMenu();
+        "
       >
         {{ t('fileTable.actions.delete') }}
       </button>

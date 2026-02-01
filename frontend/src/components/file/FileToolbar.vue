@@ -3,7 +3,16 @@ import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import IconButton from '@/components/common/IconButton.vue'
 import Dropdown from '@/components/common/Dropdown.vue'
-import { UploadCloud, FolderPlus, FileText, RefreshCw, ListChecks, ChevronDown, FolderInput, Trash2 } from 'lucide-vue-next'
+import {
+  UploadCloud,
+  FolderPlus,
+  FileText,
+  RefreshCw,
+  ListChecks,
+  ChevronDown,
+  FolderInput,
+  Trash2,
+} from 'lucide-vue-next'
 
 const props = defineProps<{
   selectedCount: number
@@ -36,10 +45,26 @@ const { t } = useI18n({ useScope: 'global' })
         </template>
         <template #content="{ close }">
           <div class="menu">
-            <button class="menu__item" type="button" v-permission="'disk:file:mkdir'" @click="emit('new-folder'); close()">
+            <button
+              class="menu__item"
+              type="button"
+              v-permission="'disk:file:mkdir'"
+              @click="
+                emit('new-folder');
+                close();
+              "
+            >
               {{ t('fileToolbar.folder') }}
             </button>
-            <button class="menu__item" type="button" v-permission="'disk:file:upload'" @click="emit('new-text'); close()">
+            <button
+              class="menu__item"
+              type="button"
+              v-permission="'disk:file:upload'"
+              @click="
+                emit('new-text');
+                close();
+              "
+            >
               {{ t('fileToolbar.textFile') }}
             </button>
           </div>
@@ -84,10 +109,18 @@ const { t } = useI18n({ useScope: 'global' })
       </Button>
     </div>
     <div class="toolbar__right">
-      <IconButton :aria-label="t('fileToolbar.uploadQueue')" variant="secondary" @click="emit('toggle-queue')">
+      <IconButton
+        :aria-label="t('fileToolbar.uploadQueue')"
+        variant="secondary"
+        @click="emit('toggle-queue')"
+      >
         <ListChecks :size="18" />
       </IconButton>
-      <IconButton :aria-label="t('fileToolbar.refresh')" variant="secondary" @click="emit('refresh')">
+      <IconButton
+        :aria-label="t('fileToolbar.refresh')"
+        variant="secondary"
+        @click="emit('refresh')"
+      >
         <RefreshCw :size="18" />
       </IconButton>
     </div>
@@ -111,6 +144,7 @@ const { t } = useI18n({ useScope: 'global' })
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
 .menu {
@@ -142,6 +176,10 @@ const { t } = useI18n({ useScope: 'global' })
   .toolbar__left,
   .toolbar__right {
     width: 100%;
+  }
+
+  .toolbar__left {
+    flex-wrap: wrap;
   }
 
   .toolbar__left > * {

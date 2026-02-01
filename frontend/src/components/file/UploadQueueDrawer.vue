@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Drawer from '@/components/common/Drawer.vue'
 import Button from '@/components/common/Button.vue'
 import Progress from '@/components/common/Progress.vue'
 import { useUploadsStore } from '@/stores/uploads'
 import { useUploader } from '@/composables/useUploader'
+import { formatBytes } from '@/utils/format'
 
 const props = defineProps<{
   open: boolean
@@ -15,8 +17,21 @@ const emit = defineEmits<{
 }>()
 
 const uploadsStore = useUploadsStore()
-const { retry, cancel } = useUploader()
+const { retry, cancel, pause, resume } = useUploader()
 const { t } = useI18n({ useScope: 'global' })
+
+const hasActive = computed(() =>
+  uploadsStore.items.some((item) => ['queued', 'uploading', 'paused'].includes(item.status)),
+)
+
+watch(
+  () => [props.open, uploadsStore.items.length, hasActive.value],
+  ([open]) => {
+    if (open && uploadsStore.items.length > 0 && !hasActive.value) {
+      emit('close')
+    }
+  },
+)
 </script>
 
 <template>
@@ -26,22 +41,59 @@ const { t } = useI18n({ useScope: 'global' })
       <div v-for="item in uploadsStore.items" :key="item.id" class="queue__item">
         <div class="queue__meta">
           <div class="queue__name">{{ item.file.name }}</div>
-          <div class="queue__status">{{ item.status }}</div>
+          <div class="queue__status">
+            <span>{{ item.status }}</span>
+            <span v-if="item.status === 'uploading'" class="queue__speed">
+              {{ formatBytes(item.speed ?? 0) }}/s
+            </span>
+          </div>
         </div>
         <Progress :value="item.progress" />
         <div class="queue__actions">
-          <Button v-if="item.status === 'error'" size="sm" variant="secondary" @click="retry(item.id)">
-            {{ t('uploadQueue.retry') }}
-          </Button>
-          <Button v-if="item.status === 'uploading' || item.status === 'queued'" size="sm" variant="ghost" @click="cancel(item.id)">
-            {{ t('uploadQueue.cancel') }}
-          </Button>
-          <span v-if="item.error" class="queue__error">{{ item.error }}</span>
+          <div class="queue__error" v-if="item.error">{{ item.error }}</div>
+          <div class="queue__buttons">
+            <Button
+              v-if="item.status === 'error'"
+              size="sm"
+              variant="secondary"
+              @click="retry(item.id)"
+            >
+              {{ t('uploadQueue.retry') }}
+            </Button>
+            <Button
+              v-if="item.status === 'uploading'"
+              size="sm"
+              variant="secondary"
+              @click="pause(item.id)"
+            >
+              {{ t('uploadQueue.pause') }}
+            </Button>
+            <Button
+              v-if="item.status === 'paused'"
+              size="sm"
+              variant="secondary"
+              @click="resume(item.id)"
+            >
+              {{ t('uploadQueue.resume') }}
+            </Button>
+            <Button
+              v-if="
+                item.status === 'uploading' || item.status === 'queued' || item.status === 'paused'
+              "
+              size="sm"
+              variant="ghost"
+              @click="cancel(item.id)"
+            >
+              {{ t('uploadQueue.cancel') }}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
     <template #footer>
-      <Button variant="secondary" @click="uploadsStore.clearDone()">{{ t('uploadQueue.clearDone') }}</Button>
+      <Button variant="secondary" @click="uploadsStore.clearDone()">{{
+        t('uploadQueue.clearDone')
+      }}</Button>
       <Button variant="ghost" @click="emit('close')">{{ t('uploadQueue.close') }}</Button>
     </template>
   </Drawer>
@@ -84,18 +136,37 @@ const { t } = useI18n({ useScope: 'global' })
 .queue__status {
   font-size: 11px;
   color: var(--color-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.queue__speed {
+  font-size: 11px;
+  color: var(--color-text);
 }
 
 .queue__actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  justify-content: space-between;
+  min-width: 0;
 }
 
 .queue__error {
   font-size: 12px;
   color: var(--color-danger);
-  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.queue__buttons {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
 }
 
 .empty {

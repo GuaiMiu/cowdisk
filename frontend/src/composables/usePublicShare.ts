@@ -1,11 +1,20 @@
 import { computed, ref } from 'vue'
-import { getPublicShare, getShareDownloadUrl, listShareEntries, previewShare, saveShare, unlockShare } from '@/api/modules/shares'
-import { useToastStore } from '@/stores/toast'
+import { useI18n } from 'vue-i18n'
+import {
+  getPublicShare,
+  getShareDownloadUrl,
+  listShareEntries,
+  previewShare,
+  saveShare,
+  unlockShare,
+} from '@/api/modules/shares'
+import { useMessage } from '@/stores/message'
 import type { SharePublicResult } from '@/types/share'
 import { openBlob } from '@/utils/download'
 
 export const usePublicShare = (token: string) => {
-  const toast = useToastStore()
+  const { t } = useI18n({ useScope: 'global' })
+  const message = useMessage()
   const loading = ref(false)
   const accessToken = ref<string | null>(null)
   const share = ref<SharePublicResult['share'] | null>(null)
@@ -33,9 +42,10 @@ export const usePublicShare = (token: string) => {
         await loadEntries()
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : '请稍后重试'
-      errorMessage.value = message
-      toast.error('加载分享失败', message)
+      const detail =
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage')
+      errorMessage.value = detail
+      message.error(t('sharePublic.toasts.loadFailTitle'), detail)
     } finally {
       loading.value = false
     }
@@ -46,20 +56,21 @@ export const usePublicShare = (token: string) => {
     try {
       const data = await unlockShare(token, { code })
       if (!data.accessToken && !data.ok) {
-        const message = '提取码错误'
-        unlockError.value = message
-        toast.error('解锁失败', message)
+        const detail = t('sharePublic.toasts.unlockWrongCode')
+        unlockError.value = detail
+        message.error(t('sharePublic.toasts.unlockFailTitle'), detail)
         return false
       }
       accessToken.value = data.accessToken ?? null
       await loadShare()
       unlockError.value = ''
-      toast.success('分享已解锁')
+      message.success(t('sharePublic.toasts.unlockSuccessTitle'))
       return true
     } catch (error) {
-      const message = error instanceof Error ? error.message : '请稍后重试'
-      unlockError.value = message
-      toast.error('解锁失败', message)
+      const detail =
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage')
+      unlockError.value = detail
+      message.error(t('sharePublic.toasts.unlockFailTitle'), detail)
       return false
     } finally {
       loading.value = false
@@ -68,15 +79,14 @@ export const usePublicShare = (token: string) => {
 
   const loadEntries = async (path?: string) => {
     try {
-      const data = await listShareEntries(
-        token,
-        { path },
-        accessToken.value ?? undefined,
-      )
+      const data = await listShareEntries(token, { path }, accessToken.value ?? undefined)
       items.value = data.items || []
       currentPath.value = path ?? '/'
     } catch (error) {
-      toast.error('加载分享目录失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('sharePublic.toasts.listFailTitle'),
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage'),
+      )
     }
   }
 
@@ -87,9 +97,12 @@ export const usePublicShare = (token: string) => {
       link.href = url
       link.rel = 'noopener'
       link.click()
-      toast.success('下载已开始')
+      message.success(t('sharePublic.toasts.downloadStarted'))
     } catch (error) {
-      toast.error('下载失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('sharePublic.toasts.downloadFailTitle'),
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage'),
+      )
     }
   }
 
@@ -98,16 +111,22 @@ export const usePublicShare = (token: string) => {
       const result = await previewShare(token, { path }, accessToken.value ?? undefined)
       openBlob(result.blob)
     } catch (error) {
-      toast.error('预览失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('sharePublic.toasts.previewFailTitle'),
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage'),
+      )
     }
   }
 
   const saveToDrive = async (targetPath: string) => {
     try {
       await saveShare(token, { targetPath })
-      toast.success('已保存到网盘')
+      message.success(t('sharePublic.toasts.saveSuccessTitle'), targetPath)
     } catch (error) {
-      toast.error('保存失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('sharePublic.toasts.saveFailTitle'),
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage'),
+      )
     }
   }
 

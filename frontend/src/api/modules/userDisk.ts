@@ -11,9 +11,9 @@ import type {
   DiskMkdirIn,
   DiskRenameBatchOut,
   DiskRenameItem,
-  DiskTrashDeleteIn,
+  DiskTrashBatchIdsIn,
+  DiskTrashBatchOut,
   DiskTrashListOut,
-  DiskTrashRestoreIn,
   DiskUploadCompleteIn,
   DiskUploadInitIn,
   DiskUploadOut,
@@ -69,32 +69,60 @@ export const uploadFiles = (
   )
 }
 
-export const initChunkUpload = (payload: DiskUploadInitIn) =>
-  request<{ upload_id: string }>({
-    url: '/api/v1/user/disk/upload/init',
-    method: 'POST',
-    data: payload,
-  })
+export const initChunkUpload = (payload: DiskUploadInitIn, options?: { signal?: AbortSignal }) =>
+  request<{ upload_id: string }>(
+    {
+      url: '/api/v1/user/disk/upload/init',
+      method: 'POST',
+      data: payload,
+    },
+    options,
+  )
 
-export const uploadChunk = (payload: { upload_id: string; index: number; chunk: Blob }) => {
+export const uploadChunk = (
+  payload: { upload_id: string; index: number; chunk: Blob },
+  options?: { signal?: AbortSignal },
+) => {
   const formData = new FormData()
   formData.append('upload_id', payload.upload_id)
   formData.append('index', String(payload.index))
   formData.append('chunk', payload.chunk)
-  return request<boolean>({
-    url: '/api/v1/user/disk/upload/chunk',
-    method: 'POST',
-    data: formData,
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
+  return request<boolean>(
+    {
+      url: '/api/v1/user/disk/upload/chunk',
+      method: 'POST',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    },
+    options,
+  )
 }
 
-export const completeChunkUpload = (payload: DiskUploadCompleteIn) =>
-  request<DiskEntry>({
-    url: '/api/v1/user/disk/upload/complete',
-    method: 'POST',
-    data: payload,
-  })
+export const completeChunkUpload = (
+  payload: DiskUploadCompleteIn,
+  options?: { signal?: AbortSignal },
+) =>
+  request<DiskEntry>(
+    {
+      url: '/api/v1/user/disk/upload/complete',
+      method: 'POST',
+      data: payload,
+    },
+    options,
+  )
+
+export const cancelChunkUpload = (
+  payload: { upload_id: string },
+  options?: { signal?: AbortSignal },
+) =>
+  request<boolean>(
+    {
+      url: '/api/v1/user/disk/upload/cancel',
+      method: 'POST',
+      data: payload,
+    },
+    options,
+  )
 
 export const deletePaths = (paths: string[], recursive = false) =>
   request<DiskDeleteBatchOut>({
@@ -145,8 +173,7 @@ export const getDownloadFileUrl = (token: string) =>
 export const getDownloadJobUrl = (token: string) =>
   buildUrl('/api/v1/user/disk/download/job', { token })
 
-export const getPreviewFileUrl = (token: string) =>
-  buildUrl('/api/v1/user/disk/preview', { token })
+export const getPreviewFileUrl = (token: string) => buildUrl('/api/v1/user/disk/preview', { token })
 
 export const previewFileByToken = (token: string) =>
   downloadBlob({
@@ -161,17 +188,17 @@ export const listTrash = () =>
     method: 'GET',
   })
 
-export const restoreTrash = (payload: DiskTrashRestoreIn) =>
-  request<DiskEntry>({
-    url: '/api/v1/user/disk/trash/restore',
+export const batchRestoreTrash = (payload: DiskTrashBatchIdsIn) =>
+  request<DiskTrashBatchOut>({
+    url: '/api/v1/user/disk/trash/batch/restore',
     method: 'POST',
     data: payload,
   })
 
-export const deleteTrash = (payload: DiskTrashDeleteIn) =>
-  request<boolean>({
-    url: '/api/v1/user/disk/trash',
-    method: 'DELETE',
+export const batchDeleteTrash = (payload: DiskTrashBatchIdsIn) =>
+  request<DiskTrashBatchOut>({
+    url: '/api/v1/user/disk/trash/batch/delete',
+    method: 'POST',
     data: payload,
   })
 

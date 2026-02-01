@@ -32,7 +32,10 @@ export type MenusOut = {
   pages: number
 }
 
-export type MenuAddIn = Omit<MenuOut, 'id' | 'create_by' | 'create_time' | 'update_by' | 'update_time'>
+export type MenuAddIn = Omit<
+  MenuOut,
+  'id' | 'create_by' | 'create_time' | 'update_by' | 'update_time'
+>
 
 export type MenuEditIn = MenuOut
 

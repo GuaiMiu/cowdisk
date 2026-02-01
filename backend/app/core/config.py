@@ -74,6 +74,9 @@ class Config(CustomBaseSettings):
 
     # 网盘存储目录
     DISK_ROOT: str | None = None
+    # 上传优化参数
+    DISK_UPLOAD_BUFFER_SIZE: int | None = None
+    DISK_UPLOAD_CONCURRENCY: int | None = None
 
 
 settings = Config()

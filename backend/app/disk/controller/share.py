@@ -26,6 +26,8 @@ from app.core.exception import ServiceException
 from app.disk.schemas.share import (
     ShareCreateIn,
     ShareListOut,
+    ShareBatchIdsIn,
+    ShareBatchStatusIn,
     ShareUnlockIn,
     ShareSaveIn,
     ShareUpdateIn,
@@ -183,17 +185,19 @@ async def list_shares(
 
 
 @share_manage_router.post(
-    "/{share_id}/revoke",
-    summary="取消分享",
+    "/batch/status",
+    summary="批量设置分享状态",
     dependencies=[Security(check_user_permission, scopes=["disk:file:download"])],
 )
-async def revoke_share(
-    share_id: str,
+async def batch_update_status(
+    data: ShareBatchStatusIn,
     current_user: User = Depends(AuthService.get_current_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    await ShareService.revoke_share(current_user.id, share_id, db)
-    return ResponseModel.success(data=True)
+    result = await ShareService.batch_update_status(
+        current_user.id, data.ids, data.status, db
+    )
+    return ResponseModel.success(data=result)
 
 
 @share_manage_router.put(
@@ -217,6 +221,20 @@ async def update_share(
         db=db,
     )
     return ResponseModel.success(data=share)
+
+
+@share_manage_router.post(
+    "/batch/delete",
+    summary="批量删除分享",
+    dependencies=[Security(check_user_permission, scopes=["disk:file:download"])],
+)
+async def batch_delete_share(
+    data: ShareBatchIdsIn,
+    current_user: User = Depends(AuthService.get_current_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    result = await ShareService.batch_delete(current_user.id, data.ids, db)
+    return ResponseModel.success(data=result)
 
 
 @share_manage_router.delete(

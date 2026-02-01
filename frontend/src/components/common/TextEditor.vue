@@ -102,17 +102,14 @@ watch(
   },
 )
 
-watch(
-  locale,
-  async () => {
-    if (!rootRef.value) {
-      return
-    }
-    const currentValue = editor?.getValue() ?? props.modelValue ?? ''
-    disposeEditor()
-    await createEditor(currentValue)
-  },
-)
+watch(locale, async () => {
+  if (!rootRef.value) {
+    return
+  }
+  const currentValue = editor?.getValue() ?? props.modelValue ?? ''
+  disposeEditor()
+  await createEditor(currentValue)
+})
 
 watch(
   () => props.language,

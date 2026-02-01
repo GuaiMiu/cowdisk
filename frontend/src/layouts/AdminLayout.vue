@@ -123,7 +123,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="layout" :class="{ 'layout--collapsed': !sidebarOpen, 'layout--mobile-open': sidebarOpen }">
+  <div
+    class="layout"
+    :class="{ 'layout--collapsed': !sidebarOpen, 'layout--mobile-open': sidebarOpen }"
+  >
     <aside class="layout__sidebar">
       <div class="brand">
         <LayoutGrid class="brand__icon" :size="20" />
@@ -161,7 +164,12 @@ onMounted(() => {
           <template #trigger>
             <button type="button" class="user-menu__trigger">
               <span class="user-menu__avatar">
-                <img v-if="avatarSrc && !avatarFailed" :src="avatarSrc" :alt="userLabel" @error="onAvatarError" />
+                <img
+                  v-if="avatarSrc && !avatarFailed"
+                  :src="avatarSrc"
+                  :alt="userLabel"
+                  @error="onAvatarError"
+                />
                 <span v-else class="user-menu__initials">{{ initials }}</span>
               </span>
               <span class="user-menu__name">{{ userLabel }}</span>
@@ -189,13 +197,34 @@ onMounted(() => {
                 </button>
               </div>
               <div class="user-menu__divider"></div>
-              <button type="button" class="user-menu__item" @click="goSettings(); close()">
+              <button
+                type="button"
+                class="user-menu__item"
+                @click="
+                  goSettings();
+                  close();
+                "
+              >
                 {{ t('layout.userMenu.profile') }}
               </button>
-              <button type="button" class="user-menu__item" @click="goDrive(); close()">
+              <button
+                type="button"
+                class="user-menu__item"
+                @click="
+                  goDrive();
+                  close();
+                "
+              >
                 {{ t('layout.userMenu.backToDrive') }}
               </button>
-              <button type="button" class="user-menu__item user-menu__item--danger" @click="logout(); close()">
+              <button
+                type="button"
+                class="user-menu__item user-menu__item--danger"
+                @click="
+                  logout();
+                  close();
+                "
+              >
                 {{ t('layout.userMenu.logout') }}
               </button>
             </div>
@@ -303,7 +332,6 @@ onMounted(() => {
   height: 100%;
 }
 
-
 .brand {
   display: flex;
   align-items: center;
@@ -371,7 +399,9 @@ onMounted(() => {
   background: var(--color-surface);
   color: var(--color-text);
   cursor: pointer;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .user-menu__trigger:hover {

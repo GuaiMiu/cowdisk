@@ -123,7 +123,9 @@ const toggleStatus = async (row: RoleOut, next: boolean) => {
   toggling.value = new Set(toggling.value).add(row.id)
   try {
     const detail = await getRoleDetail(row.id)
-    const menus = (detail.menus || row.menus || []).map((menu) => menu.id || 0).filter((id) => id > 0)
+    const menus = (detail.menus || row.menus || [])
+      .map((menu) => menu.id || 0)
+      .filter((id) => id > 0)
     await roleStore.updateRole({
       id: row.id,
       name: row.name || '',
@@ -143,8 +145,7 @@ const filteredRoles = computed(() => {
   const keywordValue = keyword.value.trim().toLowerCase()
   return roleStore.items.value.filter((role) => {
     const statusMatch =
-      statusFilter.value === 'all' ||
-      (statusFilter.value === 'true' ? !!role.status : !role.status)
+      statusFilter.value === 'all' || (statusFilter.value === 'true' ? !!role.status : !role.status)
     if (!statusMatch) {
       return false
     }
@@ -170,12 +171,18 @@ onMounted(() => {
         <Button variant="secondary" @click="roleStore.fetchRoles(roleStore.page.value)">
           {{ t('admin.role.refresh') }}
         </Button>
-        <Button v-permission="'system:role:add'" @click="openCreate">{{ t('admin.role.add') }}</Button>
+        <Button v-permission="'system:role:add'" @click="openCreate">{{
+          t('admin.role.add')
+        }}</Button>
       </template>
     </PageHeader>
 
     <div class="filters">
-      <Input v-model="keyword" :label="t('admin.role.searchLabel')" :placeholder="t('admin.role.searchPlaceholder')" />
+      <Input
+        v-model="keyword"
+        :label="t('admin.role.searchLabel')"
+        :placeholder="t('admin.role.searchPlaceholder')"
+      />
       <Select
         v-model="statusFilter"
         :label="t('admin.role.statusLabel')"
@@ -188,7 +195,13 @@ onMounted(() => {
     </div>
 
     <div class="table-wrap">
-      <Table :columns="columns" :rows="filteredRoles" :min-rows="roleStore.size.value" scrollable fill>
+      <Table
+        :columns="columns"
+        :rows="filteredRoles"
+        :min-rows="roleStore.size.value"
+        scrollable
+        fill
+      >
         <template #cell-status="{ row }">
           <Switch
             :model-value="!!row.status"
@@ -201,10 +214,20 @@ onMounted(() => {
         </template>
         <template #cell-actions="{ row }">
           <div class="actions">
-            <Button size="sm" variant="secondary" v-permission="'system:role:edit'" @click="openEdit(row)">
+            <Button
+              size="sm"
+              variant="secondary"
+              v-permission="'system:role:edit'"
+              @click="openEdit(row)"
+            >
               {{ t('common.edit') }}
             </Button>
-            <Button size="sm" variant="ghost" v-permission="'system:role:delete'" @click="requestDelete(row)">
+            <Button
+              size="sm"
+              variant="ghost"
+              v-permission="'system:role:delete'"
+              @click="requestDelete(row)"
+            >
               {{ t('common.delete') }}
             </Button>
           </div>
@@ -217,7 +240,12 @@ onMounted(() => {
       :page-size="roleStore.size.value"
       :current-page="roleStore.page.value"
       @update:currentPage="roleStore.fetchRoles"
-      @update:pageSize="(size) => { roleStore.size.value = size; roleStore.fetchRoles(1) }"
+      @update:pageSize="
+        (size) => {
+          roleStore.size.value = size
+          roleStore.fetchRoles(1)
+        }
+      "
     />
   </section>
 
@@ -246,7 +274,11 @@ onMounted(() => {
       <Select v-model="form.status" :label="t('admin.role.form.status')" :options="statusOptions" />
       <div class="form__menus">
         <div class="form__label">{{ t('admin.role.form.menus') }}</div>
-        <TreeCheckList v-model="form.menus" :items="menuOptions.options.value" :empty-text="t('admin.role.menusEmpty')" />
+        <TreeCheckList
+          v-model="form.menus"
+          :items="menuOptions.options.value"
+          :empty-text="t('admin.role.menusEmpty')"
+        />
       </div>
     </div>
     <template #footer>
@@ -285,7 +317,6 @@ onMounted(() => {
   justify-content: space-between;
   gap: var(--space-2);
 }
-
 
 .form {
   display: grid;

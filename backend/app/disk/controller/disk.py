@@ -25,6 +25,7 @@ from app.disk.schemas.disk import (
     DiskListOut,
     DiskDownloadTokenIn,
     DiskUploadCompleteIn,
+    DiskUploadCancelIn,
     DiskUploadInitIn,
     DiskMkdirIn,
     DiskRenameIn,
@@ -36,8 +37,10 @@ from app.disk.schemas.disk import (
     DiskUploadOut,
     DiskEntry,
     DiskTrashListOut,
-    DiskTrashRestoreIn,
     DiskTrashDeleteIn,
+    DiskTrashRestoreIn,
+    DiskTrashBatchIdsIn,
+    DiskTrashBatchOut,
 )
 from app.disk.services.disk import DiskService
 from app.disk.utils.streaming import build_file_response, build_inline_response
@@ -176,6 +179,24 @@ async def upload_complete(
     )
     await DiskService.refresh_used_space(current_user.id, db)
     return ResponseModel.success(data=entry)
+
+
+@disk_router.post(
+    "/upload/cancel",
+    summary="分片上传取消",
+    dependencies=[Security(check_user_permission, scopes=["disk:file:upload"])],
+)
+async def upload_cancel(
+    data: DiskUploadCancelIn,
+    current_user: User = Depends(AuthService.get_current_user),
+    redis=Depends(get_async_redis),
+):
+    await DiskService.cancel_chunk_upload(
+        upload_id=data.upload_id,
+        user_id=current_user.id,
+        redis=redis,
+    )
+    return ResponseModel.success(data=True)
 
 
 @disk_router.delete(
@@ -345,7 +366,6 @@ async def list_trash(
     data = await DiskService.list_trash(current_user.id)
     return ResponseModel.success(data=data)
 
-
 @disk_router.post(
     "/trash/restore",
     summary="回收站恢复",
@@ -360,6 +380,37 @@ async def restore_trash(
     entry = await DiskService.restore_trash(data.id, current_user.id)
     await DiskService.refresh_used_space(current_user.id, db)
     return ResponseModel.success(data=entry)
+
+
+@disk_router.post(
+    "/trash/batch/restore",
+    summary="回收站批量恢复",
+    response_model=ResponseModel[DiskTrashBatchOut],
+    dependencies=[Security(check_user_permission, scopes=["disk:file:delete"])],
+)
+async def batch_restore_trash(
+    data: DiskTrashBatchIdsIn,
+    current_user: User = Depends(AuthService.get_current_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    result = await DiskService.batch_restore_trash(data.ids, current_user.id)
+    if result.get("success"):
+        await DiskService.refresh_used_space(current_user.id, db)
+    return ResponseModel.success(data=result)
+
+
+@disk_router.post(
+    "/trash/batch/delete",
+    summary="回收站批量删除",
+    response_model=ResponseModel[DiskTrashBatchOut],
+    dependencies=[Security(check_user_permission, scopes=["disk:file:delete"])],
+)
+async def batch_delete_trash(
+    data: DiskTrashBatchIdsIn,
+    current_user: User = Depends(AuthService.get_current_user),
+):
+    result = await DiskService.batch_delete_trash(data.ids, current_user.id)
+    return ResponseModel.success(data=result)
 
 
 @disk_router.delete(

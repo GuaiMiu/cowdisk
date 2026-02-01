@@ -1,7 +1,6 @@
 import type { MenuRoutersOut } from '@/types/menu'
 
-const normalizePath = (path: string) =>
-  `/${path}`.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/'
+const normalizePath = (path: string) => `/${path}`.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/'
 
 export const buildFullPath = (node: MenuRoutersOut, parentPath = '', basePath = '') => {
   const normalizedBase = basePath ? normalizePath(basePath) : ''

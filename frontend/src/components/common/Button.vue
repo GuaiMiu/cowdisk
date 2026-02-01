@@ -48,8 +48,11 @@ const classes = computed(() => [
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-4);
   font-weight: 600;
-  transition: transform var(--transition-fast), box-shadow var(--transition-base),
-    background var(--transition-base), color var(--transition-base);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-base),
+    background var(--transition-base),
+    color var(--transition-base);
   cursor: pointer;
   border: 1px solid transparent;
   background: var(--color-primary);

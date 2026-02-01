@@ -59,9 +59,7 @@ const loadChildren = async (node: TreeNode) => {
   node.loading = true
   try {
     const data = await listDir(node.path)
-    node.children = (data.items || [])
-      .filter((item) => item.is_dir)
-      .map((item) => buildNode(item))
+    node.children = (data.items || []).filter((item) => item.is_dir).map((item) => buildNode(item))
     node.loaded = true
   } finally {
     node.loading = false
@@ -149,7 +147,9 @@ watch(locale, () => {
 <template>
   <Modal :open="open" :title="t('fileMoveDialog.title')" @close="emit('close')">
     <div class="move">
-      <div class="move__meta">{{ t('fileMoveDialog.selectedCount', { count: props.entries.length }) }}</div>
+      <div class="move__meta">
+        {{ t('fileMoveDialog.selectedCount', { count: props.entries.length }) }}
+      </div>
       <div class="move__tree">
         <div
           v-for="{ node, level } in flatNodes"
@@ -179,7 +179,9 @@ watch(locale, () => {
     </div>
     <template #footer>
       <Button variant="ghost" @click="emit('close')">{{ t('fileMoveDialog.cancel') }}</Button>
-      <Button :disabled="!canSubmit" @click="emit('confirm', selectedPath)">{{ t('fileMoveDialog.move') }}</Button>
+      <Button :disabled="!canSubmit" @click="emit('confirm', selectedPath)">{{
+        t('fileMoveDialog.move')
+      }}</Button>
     </template>
   </Modal>
 </template>

@@ -195,15 +195,18 @@ const imageStyle = computed(() => ({
         <div class="preview__top">
           <div class="preview__title">{{ current?.name || t('preview.imageTitle') }}</div>
           <div class="preview__top-actions">
-            <button type="button" class="preview__top-btn" :title="t('common.close')" @click="close">
+            <button
+              type="button"
+              class="preview__top-btn"
+              :title="t('common.close')"
+              @click="close"
+            >
               <X :size="18" />
             </button>
           </div>
         </div>
 
-        <div v-if="canNavigate" class="preview__counter">
-          {{ index + 1 }} / {{ items.length }}
-        </div>
+        <div v-if="canNavigate" class="preview__counter">{{ index + 1 }} / {{ items.length }}</div>
 
         <button
           v-if="canNavigate"
@@ -242,19 +245,44 @@ const imageStyle = computed(() => ({
         </div>
 
         <div class="preview__toolbar">
-          <button type="button" class="preview__tool" :title="t('preview.zoomOut')" @click="zoomBy(-0.2)">
+          <button
+            type="button"
+            class="preview__tool"
+            :title="t('preview.zoomOut')"
+            @click="zoomBy(-0.2)"
+          >
             <ZoomOut :size="16" />
           </button>
-          <button type="button" class="preview__tool" :title="t('preview.zoomIn')" @click="zoomBy(0.2)">
+          <button
+            type="button"
+            class="preview__tool"
+            :title="t('preview.zoomIn')"
+            @click="zoomBy(0.2)"
+          >
             <ZoomIn :size="16" />
           </button>
-          <button type="button" class="preview__tool" :title="t('preview.reset')" @click="resetTransform">
+          <button
+            type="button"
+            class="preview__tool"
+            :title="t('preview.reset')"
+            @click="resetTransform"
+          >
             <RefreshCcw :size="16" />
           </button>
-          <button type="button" class="preview__tool" :title="t('preview.rotateLeft')" @click="rotateBy(-90)">
+          <button
+            type="button"
+            class="preview__tool"
+            :title="t('preview.rotateLeft')"
+            @click="rotateBy(-90)"
+          >
             <RotateCcw :size="16" />
           </button>
-          <button type="button" class="preview__tool" :title="t('preview.rotateRight')" @click="rotateBy(90)">
+          <button
+            type="button"
+            class="preview__tool"
+            :title="t('preview.rotateRight')"
+            @click="rotateBy(90)"
+          >
             <RotateCw :size="16" />
           </button>
           <button

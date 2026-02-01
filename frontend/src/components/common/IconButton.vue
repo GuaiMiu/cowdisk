@@ -21,7 +21,11 @@ const props = withDefaults(
   },
 )
 
-const classes = computed(() => ['icon-btn', `icon-btn--${props.variant}`, `icon-btn--${props.size}`])
+const classes = computed(() => [
+  'icon-btn',
+  `icon-btn--${props.variant}`,
+  `icon-btn--${props.size}`,
+])
 </script>
 
 <template>
@@ -40,7 +44,9 @@ const classes = computed(() => ['icon-btn', `icon-btn--${props.variant}`, `icon-
   background: transparent;
   color: var(--color-text);
   cursor: pointer;
-  transition: background var(--transition-base), transform var(--transition-fast),
+  transition:
+    background var(--transition-base),
+    transform var(--transition-fast),
     box-shadow var(--transition-base);
 }
 

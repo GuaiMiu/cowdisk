@@ -76,12 +76,13 @@ export type DiskTrashListOut = {
   items: DiskTrashEntry[]
 }
 
-export type DiskTrashRestoreIn = {
-  id: string
+export type DiskTrashBatchIdsIn = {
+  ids: string[]
 }
 
-export type DiskTrashDeleteIn = {
-  id: string
+export type DiskTrashBatchOut = {
+  success: number
+  failed: string[]
 }
 
 export type DiskCompressIn = {

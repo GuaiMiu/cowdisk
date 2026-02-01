@@ -1,5 +1,6 @@
 import { ref } from 'vue'
-import { useToastStore } from '@/stores/toast'
+import { useI18n } from 'vue-i18n'
+import { useMessage } from '@/stores/message'
 
 type PageResult<T> = {
   items?: T[]
@@ -19,7 +20,12 @@ type Messages = {
   deleteFail?: string
 }
 
-export const usePagedCrud = <TItem, TCreate = unknown, TUpdate = unknown, TDelete = unknown>(config: {
+export const usePagedCrud = <
+  TItem,
+  TCreate = unknown,
+  TUpdate = unknown,
+  TDelete = unknown,
+>(config: {
   list: (params: { page: number; size: number }) => Promise<PageResult<TItem>>
   create?: (payload: TCreate) => Promise<TItem>
   update?: (payload: TUpdate) => Promise<TItem>
@@ -27,7 +33,8 @@ export const usePagedCrud = <TItem, TCreate = unknown, TUpdate = unknown, TDelet
   messages: Messages
   initialSize?: number
 }) => {
-  const toast = useToastStore()
+  const { t } = useI18n({ useScope: 'global' })
+  const message = useMessage()
   const loading = ref(false)
   const items = ref<TItem[]>([])
   const total = ref(0)
@@ -45,7 +52,10 @@ export const usePagedCrud = <TItem, TCreate = unknown, TUpdate = unknown, TDelet
       size.value = data.size ?? size.value
       pages.value = data.pages ?? pages.value
     } catch (error) {
-      toast.error(config.messages.listFail, error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        config.messages.listFail,
+        error instanceof Error ? error.message : t('common.retryLater'),
+      )
     } finally {
       loading.value = false
     }
@@ -58,13 +68,16 @@ export const usePagedCrud = <TItem, TCreate = unknown, TUpdate = unknown, TDelet
     try {
       const data = await config.create(payload)
       if (config.messages.createSuccess) {
-        toast.success(config.messages.createSuccess)
+        message.success(config.messages.createSuccess)
       }
       await fetchPage()
       return data
     } catch (error) {
       if (config.messages.createFail) {
-        toast.error(config.messages.createFail, error instanceof Error ? error.message : '请稍后重试')
+        message.error(
+          config.messages.createFail,
+          error instanceof Error ? error.message : t('common.retryLater'),
+        )
       }
       return null
     }
@@ -77,13 +90,16 @@ export const usePagedCrud = <TItem, TCreate = unknown, TUpdate = unknown, TDelet
     try {
       const data = await config.update(payload)
       if (config.messages.updateSuccess) {
-        toast.success(config.messages.updateSuccess)
+        message.success(config.messages.updateSuccess)
       }
       await fetchPage()
       return data
     } catch (error) {
       if (config.messages.updateFail) {
-        toast.error(config.messages.updateFail, error instanceof Error ? error.message : '请稍后重试')
+        message.error(
+          config.messages.updateFail,
+          error instanceof Error ? error.message : t('common.retryLater'),
+        )
       }
       return null
     }
@@ -96,13 +112,16 @@ export const usePagedCrud = <TItem, TCreate = unknown, TUpdate = unknown, TDelet
     try {
       await config.remove(payload)
       if (config.messages.deleteSuccess) {
-        toast.success(config.messages.deleteSuccess)
+        message.success(config.messages.deleteSuccess)
       }
       await fetchPage()
       return true
     } catch (error) {
       if (config.messages.deleteFail) {
-        toast.error(config.messages.deleteFail, error instanceof Error ? error.message : '请稍后重试')
+        message.error(
+          config.messages.deleteFail,
+          error instanceof Error ? error.message : t('common.retryLater'),
+        )
       }
       return false
     }

@@ -126,7 +126,11 @@ const toggleGroup = (item: MenuRoutersOut) => {
         >
           <component :is="getIcon(item)" v-if="getIcon(item)" class="menu__icon" :size="16" />
           <span>{{ getLabel(item) }}</span>
-          <ChevronDown class="menu__chevron" :class="{ 'menu__chevron--open': isGroupOpen(item) }" :size="14" />
+          <ChevronDown
+            class="menu__chevron"
+            :class="{ 'menu__chevron--open': isGroupOpen(item) }"
+            :size="14"
+          />
         </button>
         <div v-show="isGroupOpen(item)">
           <MenuTree
@@ -196,7 +200,9 @@ const toggleGroup = (item: MenuRoutersOut) => {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--color-muted);
-  transition: background var(--transition-base), color var(--transition-base);
+  transition:
+    background var(--transition-base),
+    color var(--transition-base);
 }
 
 .menu__item.router-link-active {

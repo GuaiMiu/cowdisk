@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   listDir,
   mkdir,
@@ -10,7 +11,7 @@ import {
   prepareDownload,
   downloadStatus,
 } from '@/api/modules/userDisk'
-import { useToastStore } from '@/stores/toast'
+import { useMessage } from '@/stores/message'
 import type { DiskEntry } from '@/types/disk'
 import { joinPath, toRelativePath } from '@/utils/path'
 import { triggerDownload } from '@/utils/download'
@@ -18,7 +19,8 @@ import { normalizeDiskError } from '@/utils/diskError'
 import { usePolling } from './usePolling'
 
 export const useDiskExplorer = () => {
-  const toast = useToastStore()
+  const { t } = useI18n({ useScope: 'global' })
+  const message = useMessage()
   const loading = ref(false)
   const path = ref('/')
   const items = ref<DiskEntry[]>([])
@@ -48,7 +50,10 @@ export const useDiskExplorer = () => {
       if (controller.signal.aborted) {
         return
       }
-      toast.error('加载失败', normalizeDiskError(error, '请稍后重试'))
+      message.error(
+        t('fileExplorer.toasts.loadFailTitle'),
+        normalizeDiskError(error, t('fileExplorer.toasts.loadFailMessage')),
+      )
     } finally {
       if (listController.value === controller) {
         listController.value = null
@@ -61,23 +66,26 @@ export const useDiskExplorer = () => {
 
   const createFolder = async (name: string) => {
     if (!name.trim()) {
-      toast.warning('请输入文件夹名称')
+      message.warning(t('fileExplorer.toasts.folderNameRequired'))
       return false
     }
     try {
       await mkdir({ path: toRelativePath(joinPath(path.value, name.trim())) })
-      toast.success('文件夹已创建')
+      message.success(t('fileExplorer.toasts.folderCreatedTitle'), name.trim())
       await refresh()
       return true
     } catch (error) {
-      toast.error('创建失败', normalizeDiskError(error, '请稍后重试'))
+      message.error(
+        t('fileExplorer.toasts.createFailedTitle'),
+        normalizeDiskError(error, t('fileExplorer.toasts.createFailedMessage')),
+      )
       return false
     }
   }
 
   const renameEntry = async (entry: DiskEntry, nextName: string) => {
     if (!nextName.trim()) {
-      toast.warning('请输入新名称')
+      message.warning(t('fileExplorer.toasts.renameRequired'))
       return false
     }
     try {
@@ -86,11 +94,17 @@ export const useDiskExplorer = () => {
       if (result.failed.length > 0) {
         throw new Error(result.failed[0]?.error || '重命名失败')
       }
-      toast.success('重命名成功')
+      message.success(
+        t('fileExplorer.toasts.renameSuccessTitle'),
+        `${entry.name} → ${nextName.trim()}`,
+      )
       await refresh()
       return true
     } catch (error) {
-      toast.error('重命名失败', normalizeDiskError(error, '请稍后重试'))
+      message.error(
+        t('fileExplorer.toasts.renameFailedTitle'),
+        normalizeDiskError(error, t('fileExplorer.toasts.renameFailedMessage')),
+      )
       return false
     }
   }
@@ -99,7 +113,7 @@ export const useDiskExplorer = () => {
     const base = targetPath ? `/${targetPath}` : '/'
     const target = toRelativePath(joinPath(base, entry.name))
     if (target === entry.path) {
-      toast.info('已在当前目录')
+      message.info(t('fileExplorer.toasts.alreadyHere'))
       return false
     }
     try {
@@ -107,18 +121,24 @@ export const useDiskExplorer = () => {
       if (result.failed.length > 0) {
         throw new Error(result.failed[0]?.error || '移动失败')
       }
-      toast.success('移动成功')
+      message.success(
+        t('fileExplorer.toasts.moveSuccessTitle'),
+        `${entry.name} → ${targetPath || '/'}`,
+      )
       await refresh()
       return true
     } catch (error) {
-      toast.error('移动失败', normalizeDiskError(error, '请稍后重试'))
+      message.error(
+        t('fileExplorer.toasts.moveFailedTitle'),
+        normalizeDiskError(error, t('fileExplorer.toasts.moveFailedMessage')),
+      )
       return false
     }
   }
 
   const moveEntries = async (entries: DiskEntry[], targetPath: string) => {
     if (!entries.length) {
-      toast.warning('未选择文件')
+      message.warning(t('fileExplorer.toasts.noSelection'))
       return false
     }
     const base = targetPath ? `/${targetPath}` : '/'
@@ -130,24 +150,39 @@ export const useDiskExplorer = () => {
       }))
       .filter((item) => item.src !== item.dst)
     if (!items.length) {
-      toast.info('已在当前目录')
+      message.info(t('fileExplorer.toasts.alreadyHere'))
       return false
     }
     try {
       const result = await renamePaths(items)
       if (result.failed.length === 0) {
-        toast.success('移动完成', `已移动 ${result.success.length} 项`)
+        message.success(
+          t('fileExplorer.toasts.moveBatchSuccessTitle'),
+          t('fileExplorer.toasts.moveBatchSuccessMessage', { count: result.success.length }),
+        )
       } else if (result.success.length > 0) {
-        toast.warning('部分移动失败', `成功 ${result.success.length} 项，失败 ${result.failed.length} 项`)
+        message.warning(
+          t('fileExplorer.toasts.moveBatchPartialTitle'),
+          t('fileExplorer.toasts.moveBatchPartialMessage', {
+            success: result.success.length,
+            failed: result.failed.length,
+          }),
+        )
       } else {
-        toast.error('移动失败', result.failed[0]?.error || '请稍后重试')
+        message.error(
+          t('fileExplorer.toasts.moveFailedTitle'),
+          result.failed[0]?.error || t('fileExplorer.toasts.moveFailedMessage'),
+        )
       }
       if (result.success.length > 0) {
         await refresh()
       }
       return result.success.length > 0 && result.failed.length === 0
     } catch (error) {
-      toast.error('移动失败', normalizeDiskError(error, '请稍后重试'))
+      message.error(
+        t('fileExplorer.toasts.moveFailedTitle'),
+        normalizeDiskError(error, t('fileExplorer.toasts.moveFailedMessage')),
+      )
       return false
     }
   }
@@ -156,7 +191,10 @@ export const useDiskExplorer = () => {
     try {
       return await removeEntries([entry])
     } catch (error) {
-      toast.error('删除失败', normalizeDiskError(error, '请稍后重试'))
+      message.error(
+        t('fileExplorer.toasts.deleteFailedTitle'),
+        normalizeDiskError(error, t('fileExplorer.toasts.deleteFailedMessage')),
+      )
       return false
     }
   }
@@ -170,18 +208,33 @@ export const useDiskExplorer = () => {
       const recursive = entries.some((entry) => entry.is_dir)
       const result = await deletePaths(paths, recursive)
       if (result.failed.length === 0) {
-        toast.success('已移入回收站')
+        message.success(
+          t('fileExplorer.toasts.deleteSuccessTitle'),
+          t('fileExplorer.toasts.deleteSuccessMessage', { count: result.success.length }),
+        )
       } else if (result.success.length > 0) {
-        toast.warning('部分删除失败', `成功 ${result.success.length} 项，失败 ${result.failed.length} 项`)
+        message.warning(
+          t('fileExplorer.toasts.deletePartialTitle'),
+          t('fileExplorer.toasts.deletePartialMessage', {
+            success: result.success.length,
+            failed: result.failed.length,
+          }),
+        )
       } else {
-        toast.error('删除失败', result.failed[0]?.error || '请稍后重试')
+        message.error(
+          t('fileExplorer.toasts.deleteFailedTitle'),
+          result.failed[0]?.error || t('fileExplorer.toasts.deleteFailedMessage'),
+        )
       }
       if (result.success.length > 0) {
         await refresh()
       }
       return result.success.length > 0 && result.failed.length === 0
     } catch (error) {
-      toast.error('删除失败', normalizeDiskError(error, '请稍后重试'))
+      message.error(
+        t('fileExplorer.toasts.deleteFailedTitle'),
+        normalizeDiskError(error, t('fileExplorer.toasts.deleteFailedMessage')),
+      )
       return false
     }
   }
@@ -189,31 +242,37 @@ export const useDiskExplorer = () => {
   const downloadEntry = async (entry: DiskEntry) => {
     try {
       if (entry.is_dir) {
-        const loadingId = toast.loading('正在打包', '文件夹正在打包，请稍候')
-        const job = await prepareDownload({ path: entry.path })
-        const status = await poll(
-          () => downloadStatus(job.job_id),
-          {
-            stopCondition: (data) => data.status === 'ready' || data.status === 'error',
-            interval: 1500,
-          },
+        const loadingId = message.loading(
+          t('fileExplorer.toasts.packagingTitle'),
+          t('fileExplorer.toasts.packagingMessage'),
         )
+        const job = await prepareDownload({ path: entry.path })
+        const status = await poll(() => downloadStatus(job.job_id), {
+          stopCondition: (data) => data.status === 'ready' || data.status === 'error',
+          interval: 1500,
+        })
         if (status.status !== 'ready') {
-          toast.remove(loadingId)
+          message.remove(loadingId)
           throw new Error(status.message || '打包失败')
         }
         const token = await createDownloadToken({ job_id: job.job_id })
         triggerDownload(getDownloadJobUrl(token.token))
-        toast.remove(loadingId)
-        toast.success('打包完成', '已开始下载')
+        message.remove(loadingId)
+        message.success(
+          t('fileExplorer.toasts.packageDoneTitle'),
+          t('fileExplorer.toasts.downloadStarted'),
+        )
       } else {
         const token = await createDownloadToken({ path: entry.path })
         triggerDownload(getDownloadFileUrl(token.token))
-        toast.success('下载已开始')
+        message.success(t('fileExplorer.toasts.downloadStarted'))
       }
       return true
     } catch (error) {
-      toast.error('下载失败', normalizeDiskError(error, '请稍后重试'))
+      message.error(
+        t('fileExplorer.toasts.downloadFailedTitle'),
+        normalizeDiskError(error, t('fileExplorer.toasts.downloadFailedMessage')),
+      )
       return false
     }
   }
