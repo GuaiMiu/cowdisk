@@ -578,6 +578,11 @@ onMounted(() => {
   padding-right: 0;
 }
 
+.shares-table :deep(.table__cell:nth-child(2)) {
+  display: flex;
+  align-items: center;
+}
+
 .shares-table :deep(.table),
 .shares-table :deep(.table__row),
 .shares-table :deep(.table__header) {

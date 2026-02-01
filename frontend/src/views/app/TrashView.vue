@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RotateCcw, Trash2 } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
+import IconButton from '@/components/common/IconButton.vue'
 import Table from '@/components/common/Table.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -35,7 +36,7 @@ const columns = computed(() => [
   { key: 'name', label: t('trash.columns.name'), width: 'minmax(240px, 1fr)' },
   { key: 'size', label: t('trash.columns.size'), width: '110px' },
   { key: 'deleted_at', label: t('trash.columns.deletedAt'), width: '140px' },
-  { key: 'actions', label: t('trash.columns.actions'), width: '126px' },
+  { key: 'actions', label: t('trash.columns.actions'), width: '88px' },
 ])
 
 const selectedCount = computed(() => selection.selectedItems.value.length)
@@ -222,25 +223,26 @@ onMounted(() => {
           {{ formatTime(asTrash(row).deleted_at as string) }}
         </template>
         <template #cell-actions="{ row }">
-          <div class="actions actions--group">
-            <Button
+          <div class="actions actions--icons">
+            <IconButton
               size="sm"
               variant="ghost"
-              class="action-btn"
+              :aria-label="t('trash.restore')"
               v-permission="'disk:file:delete'"
               @click="trash.restore(asTrash(row))"
             >
-              {{ t('trash.restore') }}
-            </Button>
-            <Button
+              <RotateCcw :size="16" />
+            </IconButton>
+            <IconButton
               size="sm"
               variant="ghost"
-              class="action-btn action-btn--danger"
+              class="action-btn--danger"
+              :aria-label="t('trash.deleteForever')"
               v-permission="'disk:file:delete'"
               @click="requestDelete(asTrash(row))"
             >
-              {{ t('trash.deleteForever') }}
-            </Button>
+              <Trash2 :size="16" />
+            </IconButton>
           </div>
         </template>
       </Table>
@@ -307,13 +309,13 @@ onMounted(() => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   gap: var(--space-3);
-  height: 65px;
 }
 
 .page__actions {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .page__info {
@@ -332,6 +334,8 @@ onMounted(() => {
   margin-left: auto;
   display: inline-flex;
   gap: var(--space-2);
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
 }
 
 .trash-table :deep(.table__cell:first-child) {
@@ -340,6 +344,11 @@ onMounted(() => {
   justify-content: center;
   padding-left: 0;
   padding-right: 0;
+}
+
+.trash-table :deep(.table__cell:nth-child(2)) {
+  display: flex;
+  align-items: center;
 }
 
 .trash-table :deep(.table),
@@ -362,6 +371,7 @@ onMounted(() => {
 .table-wrap {
   height: 100%;
   min-height: 0;
+  min-width: 0;
 }
 
 .actions {
@@ -373,37 +383,12 @@ onMounted(() => {
   justify-self: start;
 }
 
-.actions--group {
-  gap: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--color-surface);
+.actions--icons {
+  gap: var(--space-2);
 }
 
-.actions--group :deep(.action-btn) {
-  border: 0;
-  box-shadow: none;
-  padding: var(--space-1) var(--space-3);
-  border-radius: 0;
-}
-
-.actions--group :deep(.action-btn + .action-btn) {
-  border-left: 1px solid var(--color-border);
-}
-
-.actions--group :deep(.action-btn:hover) {
-  background: var(--color-surface-2);
-  transform: none;
-  box-shadow: none;
-}
-
-.actions--group :deep(.action-btn--danger) {
+.actions--icons :deep(.action-btn--danger) {
   color: var(--color-danger);
-}
-
-.actions--group :deep(.action-btn--danger:hover) {
-  background: var(--color-danger-soft);
 }
 
 .name {
@@ -423,6 +408,11 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
+  .page__bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .trash-table :deep(.table) {
     --table-columns: 32px minmax(0, 1fr) 96px;
   }
