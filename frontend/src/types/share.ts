@@ -57,8 +57,16 @@ export type SharePublicResult = {
   fileMeta?: { size?: number; mime?: string } | null
 }
 
+export type ShareEntry = {
+  name: string
+  path: string
+  is_dir: boolean
+  size: number
+  modified_time?: string | null
+}
+
 export type ShareListQueryOut = {
-  items: Record<string, unknown>[]
+  items: ShareEntry[]
   nextCursor?: string | null
 }
 

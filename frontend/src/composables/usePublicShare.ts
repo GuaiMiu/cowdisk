@@ -9,7 +9,7 @@ import {
   unlockShare,
 } from '@/api/modules/shares'
 import { useMessage } from '@/stores/message'
-import type { SharePublicResult } from '@/types/share'
+import type { ShareEntry, SharePublicResult } from '@/types/share'
 import { openBlob } from '@/utils/download'
 
 export const usePublicShare = (token: string) => {
@@ -22,7 +22,7 @@ export const usePublicShare = (token: string) => {
   const unlockError = ref('')
   const errorMessage = ref('')
   const fileMeta = ref<SharePublicResult['fileMeta'] | null>(null)
-  const items = ref<Record<string, unknown>[]>([])
+  const items = ref<ShareEntry[]>([])
   const currentPath = ref<string | undefined>(undefined)
 
   const isFile = computed(() => {
@@ -39,7 +39,7 @@ export const usePublicShare = (token: string) => {
       fileMeta.value = data.fileMeta ?? null
       errorMessage.value = ''
       if (!data.locked && !isFile.value) {
-        await loadEntries()
+        currentPath.value = '/'
       }
     } catch (error) {
       const detail =
@@ -79,9 +79,10 @@ export const usePublicShare = (token: string) => {
 
   const loadEntries = async (path?: string) => {
     try {
-      const data = await listShareEntries(token, { path }, accessToken.value ?? undefined)
+      const normalizedPath = path && path !== '/' ? path : undefined
+      const data = await listShareEntries(token, { path: normalizedPath }, accessToken.value ?? undefined)
       items.value = data.items || []
-      currentPath.value = path ?? '/'
+      currentPath.value = normalizedPath ?? '/'
     } catch (error) {
       message.error(
         t('sharePublic.toasts.listFailTitle'),

@@ -5,11 +5,19 @@ import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import Table from '@/components/common/Table.vue'
+import ImagePreview from '@/components/common/ImagePreview.vue'
+import PdfPreview from '@/components/common/PdfPreview.vue'
+import VideoPreview from '@/components/common/VideoPreview.vue'
+import IconButton from '@/components/common/IconButton.vue'
 import FileBreadcrumb from '@/components/file/FileBreadcrumb.vue'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import { usePublicShare } from '@/composables/usePublicShare'
+import { useSelection } from '@/composables/useSelection'
 import { formatBytes, formatTime } from '@/utils/format'
+import { getFileKind } from '@/utils/fileType'
 import type { DiskEntry } from '@/types/disk'
+import { previewShare } from '@/api/modules/shares'
+import { Download } from 'lucide-vue-next'
 
 const route = useRoute()
 const token = route.params.token as string
@@ -23,21 +31,183 @@ const redirectCount = ref(5)
 let redirectTimer: number | null = null
 const asEntry = (row: unknown) => row as DiskEntry
 const { t } = useI18n({ useScope: 'global' })
+const rootDirName = computed(
+  () => (share.share.value as { name?: string } | null)?.name || t('sharePublic.list.title'),
+)
+const enteredRoot = ref(false)
+const previewOpen = ref(false)
+const previewItems = ref<Array<{ src: string; name?: string }>>([])
+const previewIndex = ref(0)
+const previewUrls = ref<string[]>([])
+const previewEntries = ref<Array<{ name: string; path?: string }>>([])
+const previewLoading = ref(new Set<number>())
+const pdfOpen = ref(false)
+const pdfSrc = ref<string | null>(null)
+const pdfName = ref('')
+const pdfUrls = ref<string[]>([])
+const videoOpen = ref(false)
+const videoSrc = ref<string | null>(null)
+const videoName = ref('')
+const videoType = ref<string | null>(null)
+const videoUrls = ref<string[]>([])
+const selectAllRef = ref<HTMLInputElement | null>(null)
+const selection = useSelection(
+  () => share.items.value,
+  (item) => `${item.path || ''}|${item.name}`,
+)
 const goHome = () => {
   window.location.href = '/'
 }
 
 const columns = computed(() => [
+  { key: 'select', label: '', width: '32px', align: 'center' as const },
   { key: 'name', label: t('sharePublic.columns.name') },
-  { key: 'size', label: t('sharePublic.columns.size') },
-  { key: 'actions', label: t('sharePublic.columns.actions') },
+  { key: 'size', label: t('sharePublic.columns.size'), width: '110px' },
 ])
+
+const displayPath = computed(() => {
+  if (share.locked.value || share.isFile.value || share.errorMessage.value) {
+    return '/'
+  }
+  if (!enteredRoot.value) {
+    return '/'
+  }
+  const base = rootDirName.value
+  const current = share.currentPath.value || '/'
+  if (current === '/' || current === '') {
+    return `/${base}`
+  }
+  const trimmed = current.replace(/^\//, '')
+  return `/${base}/${trimmed}`
+})
+
+const getVideoMime = (name: string) => {
+  const ext = name.split('.').pop()?.toLowerCase() || ''
+  const map: Record<string, string> = {
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    mov: 'video/quicktime',
+    mkv: 'video/x-matroska',
+    avi: 'video/x-msvideo',
+    flv: 'video/x-flv',
+    wmv: 'video/x-ms-wmv',
+    m4v: 'video/x-m4v',
+  }
+  return map[ext] || 'video/mp4'
+}
+
+const clearImagePreview = () => {
+  previewUrls.value.forEach((url) => URL.revokeObjectURL(url))
+  previewUrls.value = []
+  previewItems.value = []
+  previewOpen.value = false
+  previewIndex.value = 0
+  previewEntries.value = []
+  previewLoading.value = new Set()
+}
+
+const clearPdfPreview = () => {
+  pdfUrls.value.forEach((url) => URL.revokeObjectURL(url))
+  pdfUrls.value = []
+  pdfSrc.value = null
+  pdfName.value = ''
+  pdfOpen.value = false
+}
+
+const clearVideoPreview = () => {
+  videoUrls.value.forEach((url) => URL.revokeObjectURL(url))
+  videoUrls.value = []
+  videoSrc.value = null
+  videoName.value = ''
+  videoType.value = null
+  videoOpen.value = false
+}
+
+const ensureImagePreview = async (index: number) => {
+  if (index < 0 || index >= previewEntries.value.length) {
+    return
+  }
+  if (previewItems.value[index]?.src) {
+    return
+  }
+  if (previewLoading.value.has(index)) {
+    return
+  }
+  const entry = previewEntries.value[index]
+  if (!entry) {
+    return
+  }
+  previewLoading.value = new Set(previewLoading.value).add(index)
+  try {
+    const result = await previewShare(token, { path: entry.path }, share.accessToken.value ?? undefined)
+    const url = URL.createObjectURL(result.blob)
+    previewUrls.value = [...previewUrls.value, url]
+    const next = [...previewItems.value]
+    next[index] = { src: url, name: entry.name }
+    previewItems.value = next
+  } finally {
+    const next = new Set(previewLoading.value)
+    next.delete(index)
+    previewLoading.value = next
+  }
+}
+
+const openImagePreview = async (name: string, path?: string) => {
+  clearImagePreview()
+  const entries = share.items.value
+    .filter((item) => !item.is_dir && getFileKind(item.name, false) === 'image')
+    .map((item) => ({ name: item.name, path: item.path as string | undefined }))
+  const list = entries.length ? entries : [{ name, path }]
+  previewEntries.value = list
+  previewItems.value = list.map((entry) => ({ src: '', name: entry.name }))
+  const currentIndex = Math.max(0, list.findIndex((entry) => entry.path === path && entry.name === name))
+  previewIndex.value = currentIndex
+  previewOpen.value = true
+  await ensureImagePreview(currentIndex)
+  await Promise.all([ensureImagePreview(currentIndex - 1), ensureImagePreview(currentIndex + 1)])
+}
+
+const openPreviewForFile = async (name: string, path?: string) => {
+  const kind = getFileKind(name, false)
+  if (kind === 'image') {
+    await openImagePreview(name, path)
+    return
+  }
+  if (kind === 'pdf') {
+    const result = await previewShare(token, { path }, share.accessToken.value ?? undefined)
+    const url = URL.createObjectURL(result.blob)
+    pdfUrls.value = [url]
+    pdfSrc.value = url
+    pdfName.value = name
+    pdfOpen.value = true
+    return
+  }
+  if (kind === 'video') {
+    const result = await previewShare(token, { path }, share.accessToken.value ?? undefined)
+    const url = URL.createObjectURL(result.blob)
+    videoUrls.value = [url]
+    videoSrc.value = url
+    videoName.value = name
+    videoType.value = getVideoMime(name)
+    videoOpen.value = true
+    return
+  }
+  await share.preview(path)
+}
+
+const handlePreviewChange = async (index: number) => {
+  await ensureImagePreview(index)
+  await Promise.all([ensureImagePreview(index - 1), ensureImagePreview(index + 1)])
+}
 
 onMounted(async () => {
   await share.loadShare()
   if (share.locked.value && autoCode.value) {
     unlockCode.value = autoCode.value
     void share.unlock(autoCode.value)
+  }
+  if (!share.locked.value && !share.isFile.value && !share.errorMessage.value) {
+    showRootCard()
   }
 })
 
@@ -68,11 +238,76 @@ watch(
   },
 )
 
+watch(
+  () => [share.locked.value, share.isFile.value, share.errorMessage.value, share.share.value],
+  () => {
+    if (!share.locked.value && !share.isFile.value && !share.errorMessage.value && !enteredRoot.value) {
+      showRootCard()
+    }
+  },
+)
+
+watch(
+  () => selection.indeterminate.value,
+  (value) => {
+    if (selectAllRef.value) {
+      selectAllRef.value.indeterminate = value
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => share.items.value,
+  (items) => {
+    const valid = new Set(items.map((item) => `${item.path || ''}|${item.name}`))
+    const next = new Set<string>()
+    selection.selected.value.forEach((key) => {
+      if (valid.has(key)) {
+        next.add(key)
+      }
+    })
+    if (next.size !== selection.selected.value.size) {
+      selection.selected.value = next
+    }
+  },
+  { deep: true },
+)
+
 onBeforeUnmount(() => {
   if (redirectTimer) {
     window.clearInterval(redirectTimer)
   }
 })
+
+const showRootCard = () => {
+  enteredRoot.value = false
+  share.currentPath.value = '/'
+  share.items.value = [
+    {
+      name: rootDirName.value,
+      path: '',
+      is_dir: true,
+      size: 0,
+    },
+  ]
+}
+
+const openRootDirectory = async () => {
+  enteredRoot.value = true
+  await share.loadEntries()
+}
+
+const openDirectory = async (entry: DiskEntry) => {
+  if (!entry.is_dir) {
+    return
+  }
+  if (!enteredRoot.value) {
+    await openRootDirectory()
+    return
+  }
+  await share.loadEntries(entry.path as string)
+}
 </script>
 
 <template>
@@ -132,7 +367,15 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-else-if="share.isFile.value" class="file-card">
-      <div class="file-card__title">{{ (share.share.value as any)?.name }}</div>
+      <div class="file-card__title">
+        <FileTypeIcon
+          class="file-card__icon"
+          :name="(share.share.value as any)?.name || ''"
+          :is-dir="false"
+          :size="28"
+        />
+        {{ (share.share.value as any)?.name }}
+      </div>
       <div class="file-card__meta">
         <span
           >{{ t('sharePublic.labels.size') }}：{{
@@ -154,7 +397,10 @@ onBeforeUnmount(() => {
         </span>
       </div>
       <div class="file-card__actions">
-        <Button variant="secondary" @click="share.preview()">{{
+        <Button
+          variant="secondary"
+          @click="openPreviewForFile((share.share.value as { name?: string } | null)?.name || 'file')"
+        >{{
           t('sharePublic.actions.preview')
         }}</Button>
         <Button @click="share.download()">{{ t('sharePublic.actions.download') }}</Button>
@@ -164,73 +410,133 @@ onBeforeUnmount(() => {
     <div v-else class="share__body">
       <div class="share__panel">
         <div class="share__bar">
-          <div class="share__title">
-            {{ (share.share.value as any)?.name || t('sharePublic.list.title') }}
-          </div>
-          <div class="share__meta">
-            <span
-              >{{ t('sharePublic.labels.owner') }}：{{
-                (share.share.value as any)?.ownerName || '-'
-              }}</span
-            >
-            <span>
-              {{ t('sharePublic.labels.expires') }}：{{
-                (share.share.value as any)?.expiresAt
-                  ? formatTime((share.share.value as any)?.expiresAt)
-                  : t('sharePublic.permanent')
-              }}
-            </span>
+          <div class="share__header">
+            <FileTypeIcon
+              class="share__header-icon"
+              :name="(share.share.value as any)?.name || ''"
+              :is-dir="!share.isFile.value"
+              :size="48"
+            />
+            <div class="share__header-info">
+              <div class="share__title">
+                {{ (share.share.value as any)?.name || t('sharePublic.list.title') }}
+              </div>
+              <div class="share__meta">
+                <span
+                  >{{ t('sharePublic.labels.owner') }}：{{
+                    (share.share.value as any)?.ownerName || '-'
+                  }}</span
+                >
+                <span>
+                  {{ t('sharePublic.labels.expires') }}：{{
+                    (share.share.value as any)?.expiresAt
+                      ? formatTime((share.share.value as any)?.expiresAt)
+                      : t('sharePublic.permanent')
+                  }}
+                </span>
+              </div>
+            </div>
           </div>
           <FileBreadcrumb
-            :path="share.currentPath.value || '/'"
-            @navigate="(path) => share.loadEntries(path === '/' ? undefined : path)"
+            :path="displayPath"
+            @navigate="(path) => {
+              const base = `/${rootDirName}`
+              if (path === '/') {
+                showRootCard()
+                return
+              }
+              if (path === base) {
+                enteredRoot = true
+                share.loadEntries()
+                return
+              }
+              const normalized = path.startsWith(base)
+                ? path.slice(base.length)
+                : path
+              const trimmed = normalized.replace(/^\//, '')
+              enteredRoot = true
+              share.loadEntries(trimmed || undefined)
+            }"
           />
         </div>
         <div class="share__table">
           <Table :columns="columns" :rows="share.items.value" :min-rows="10" scrollable fill>
+            <template #head-select>
+              <div class="select-cell">
+                <input
+                  ref="selectAllRef"
+                  type="checkbox"
+                  :checked="selection.allSelected.value"
+                  @change="selection.toggleAll()"
+                />
+              </div>
+            </template>
+            <template #cell-select="{ row }">
+              <div class="select-cell">
+                <input
+                  type="checkbox"
+                  :checked="selection.isSelected(asEntry(row))"
+                  @click.stop
+                  @change="selection.toggle(asEntry(row))"
+                />
+              </div>
+            </template>
             <template #cell-name="{ row }">
               <button
-                v-if="asEntry(row).is_dir"
                 type="button"
                 class="name name--clickable"
-                @click="share.loadEntries(asEntry(row).path as string)"
+                @click="asEntry(row).is_dir
+                  ? openDirectory(asEntry(row))
+                  : openPreviewForFile(asEntry(row).name, asEntry(row).path as string)"
               >
                 <FileTypeIcon :name="asEntry(row).name" :is-dir="asEntry(row).is_dir" />
                 <span class="name__text">{{ asEntry(row).name }}</span>
               </button>
-              <div v-else class="name">
-                <FileTypeIcon :name="asEntry(row).name" :is-dir="asEntry(row).is_dir" />
-                <span class="name__text">{{ asEntry(row).name }}</span>
+              <div v-if="!asEntry(row).is_dir" class="share-row-actions">
+                <IconButton
+                  size="sm"
+                  variant="ghost"
+                  :aria-label="t('sharePublic.table.download')"
+                  @click="share.download(asEntry(row).path as string)"
+                >
+                  <Download :size="14" />
+                </IconButton>
               </div>
             </template>
             <template #cell-size="{ row }">
               {{ asEntry(row).is_dir ? '-' : formatBytes(asEntry(row).size as number) }}
-            </template>
-            <template #cell-actions="{ row }">
-              <div class="actions">
-                <Button
-                  v-if="!asEntry(row).is_dir"
-                  size="sm"
-                  variant="secondary"
-                  @click="share.download(asEntry(row).path as string)"
-                >
-                  {{ t('sharePublic.table.download') }}
-                </Button>
-                <Button
-                  v-if="!asEntry(row).is_dir"
-                  size="sm"
-                  variant="ghost"
-                  @click="share.preview(asEntry(row).path as string)"
-                >
-                  {{ t('sharePublic.table.preview') }}
-                </Button>
-              </div>
             </template>
           </Table>
         </div>
       </div>
     </div>
   </section>
+
+  <ImagePreview
+    :open="previewOpen"
+    :images="previewItems"
+    :start-index="previewIndex"
+    @change="handlePreviewChange"
+    @update:open="(value) => { if (!value) clearImagePreview() }"
+    @close="clearImagePreview"
+  />
+
+  <PdfPreview
+    :open="pdfOpen"
+    :src="pdfSrc"
+    :name="pdfName"
+    @update:open="(value) => { if (!value) clearPdfPreview() }"
+    @close="clearPdfPreview"
+  />
+
+  <VideoPreview
+    :open="videoOpen"
+    :src="videoSrc"
+    :name="videoName"
+    :type="videoType"
+    @update:open="(value) => { if (!value) clearVideoPreview() }"
+    @close="clearVideoPreview"
+  />
 </template>
 
 <style scoped>
@@ -378,6 +684,24 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-md);
 }
 
+.share__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.share__header-icon {
+  flex: 0 0 auto;
+
+  transform-origin: center;
+  background: transparent;
+}
+
+.share__header-info {
+  display: grid;
+  gap: var(--space-1);
+}
+
 .share__title {
   font-size: 14px;
   font-weight: 600;
@@ -396,6 +720,71 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
+.share__table :deep(.table) {
+  --table-columns: 32px minmax(220px, 1fr) 110px;
+}
+
+.share__table :deep(.table__cell--head) {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+}
+
+.share__table :deep(.table__cell:nth-child(3)) {
+  justify-self: start;
+  text-align: left;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.share__table :deep(.table__cell:first-child) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.share__table :deep(.table__cell) {
+  min-width: 0;
+}
+
+.share__table :deep(.table__row) {
+  position: relative;
+}
+
+.share__table :deep(.table__row:hover) {
+  background: var(--color-surface-2);
+}
+
+.share-row-actions {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-base);
+}
+
+.share__table :deep(.table__row:hover) .share-row-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.share-row-actions :deep(.icon-btn) {
+  color: var(--color-success);
+}
+
+.select-cell {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+}
+
 .name {
   display: inline-flex;
   align-items: center;
@@ -405,7 +794,8 @@ onBeforeUnmount(() => {
 }
 
 .name__text {
-  font-weight: 600;
+  font-weight: 500;
+  font-size: 14px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -426,6 +816,13 @@ onBeforeUnmount(() => {
 .file-card__title {
   font-size: 20px;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.file-card__icon {
+  background: transparent;
 }
 
 .file-card__meta {
@@ -441,15 +838,22 @@ onBeforeUnmount(() => {
   gap: var(--space-2);
 }
 
-.actions {
-  display: flex;
-  gap: var(--space-2);
-  justify-content: flex-end;
-}
-
 @media (max-width: 768px) {
   .share {
     padding: var(--space-4);
+  }
+
+  .share__table :deep(.table) {
+    --table-columns: 32px minmax(0, 1fr);
+  }
+
+  .share__table :deep(.table__cell:nth-child(3)) {
+    display: none;
+  }
+
+  .share-row-actions {
+    opacity: 1;
+    pointer-events: auto;
   }
 }
 </style>
