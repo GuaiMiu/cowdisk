@@ -349,6 +349,7 @@ const imageStyle = computed(() => ({
   justify-content: space-between;
   color: var(--color-overlay-text);
   gap: var(--space-3);
+  z-index: calc(var(--z-overlay, 999) + 1);
 }
 
 .preview__title {
@@ -390,6 +391,7 @@ const imageStyle = computed(() => ({
   color: var(--color-overlay-text);
   font-size: 13px;
   letter-spacing: 0.04em;
+  z-index: calc(var(--z-overlay, 999) + 1);
 }
 
 .preview__arrow {
@@ -406,6 +408,7 @@ const imageStyle = computed(() => ({
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  z-index: calc(var(--z-overlay, 999) + 1);
 }
 
 .preview__arrow--left {
@@ -427,6 +430,7 @@ const imageStyle = computed(() => ({
   border-radius: 999px;
   border: 1px solid var(--color-overlay-line);
   background: var(--color-overlay-soft);
+  z-index: calc(var(--z-overlay, 999) + 1);
 }
 
 .preview__tool {
