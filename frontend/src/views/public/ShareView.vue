@@ -63,6 +63,7 @@ const columns = computed(() => [
   { key: 'select', label: '', width: '32px', align: 'center' as const },
   { key: 'name', label: t('sharePublic.columns.name') },
   { key: 'size', label: t('sharePublic.columns.size'), width: '110px' },
+  { key: 'type', label: t('sharePublic.columns.type'), width: '90px' },
 ])
 
 const displayPath = computed(() => {
@@ -95,6 +96,69 @@ const getVideoMime = (name: string) => {
   }
   return map[ext] || 'video/mp4'
 }
+
+const getTypeLabel = (name: string, isDir: boolean) => {
+  if (isDir) {
+    return t('common.folder')
+  }
+  const kind = getFileKind(name, false)
+  const map: Record<string, string> = {
+    image: t('fileTable.types.image'),
+    video: t('fileTable.types.video'),
+    audio: t('fileTable.types.audio'),
+    pdf: t('fileTable.types.pdf'),
+    doc: t('fileTable.types.doc'),
+    sheet: t('fileTable.types.sheet'),
+    slide: t('fileTable.types.slide'),
+    archive: t('fileTable.types.archive'),
+    code: t('fileTable.types.code'),
+    text: t('fileTable.types.text'),
+    other: t('fileTable.types.other'),
+  }
+  return map[kind] || t('fileTable.types.other')
+}
+
+const sortKey = ref<'name' | 'size' | 'type' | null>(null)
+const sortOrder = ref<'asc' | 'desc'>('asc')
+
+const setSort = (key: 'name' | 'size' | 'type') => {
+  if (sortKey.value === key) {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+    return
+  }
+  sortKey.value = key
+  sortOrder.value = 'asc'
+}
+
+const sortIndicator = (key: 'name' | 'size' | 'type') => {
+  if (sortKey.value !== key) {
+    return ''
+  }
+  return sortOrder.value === 'asc' ? 'asc' : 'desc'
+}
+
+const sortedShareItems = computed(() => {
+  if (!sortKey.value) {
+    return share.items.value
+  }
+  const next = [...share.items.value]
+  const order = sortOrder.value === 'asc' ? 1 : -1
+  next.sort((a, b) => {
+    if (a.is_dir !== b.is_dir) {
+      return a.is_dir ? -1 : 1
+    }
+    if (sortKey.value === 'name') {
+      return order * a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+    }
+    if (sortKey.value === 'size') {
+      return order * ((a.size || 0) - (b.size || 0))
+    }
+    const kindA = getFileKind(a.name, a.is_dir)
+    const kindB = getFileKind(b.name, b.is_dir)
+    return order * kindA.localeCompare(kindB, undefined, { numeric: true, sensitivity: 'base' })
+  })
+  return next
+})
 
 const clearImagePreview = () => {
   previewUrls.value.forEach((url) => URL.revokeObjectURL(url))
@@ -367,34 +431,45 @@ const openDirectory = async (entry: DiskEntry) => {
     </div>
 
     <div v-else-if="share.isFile.value" class="file-card">
-      <div class="file-card__title">
+      <div class="file-card__header">
         <FileTypeIcon
           class="file-card__icon"
           :name="(share.share.value as any)?.name || ''"
           :is-dir="false"
           :size="28"
         />
-        {{ (share.share.value as any)?.name }}
+        <div class="file-card__header-info">
+          <div class="file-card__title" :title="(share.share.value as any)?.name || ''">
+            <span class="file-card__name">{{ (share.share.value as any)?.name }}</span>
+          </div>
+          <div class="file-card__subtitle">
+            {{ t('sharePublic.labels.owner') }}：{{ (share.share.value as any)?.ownerName || '-' }}
+          </div>
+        </div>
       </div>
-      <div class="file-card__meta">
-        <span
-          >{{ t('sharePublic.labels.size') }}：{{
-            share.fileMeta.value?.size ? formatBytes(share.fileMeta.value.size) : '-'
-          }}</span
-        >
-        <span>{{ t('sharePublic.labels.type') }}：{{ share.fileMeta.value?.mime || '-' }}</span>
-        <span
-          >{{ t('sharePublic.labels.owner') }}：{{
-            (share.share.value as any)?.ownerName || '-'
-          }}</span
-        >
-        <span>
-          {{ t('sharePublic.labels.expires') }}：{{
-            (share.share.value as any)?.expiresAt
-              ? formatTime((share.share.value as any)?.expiresAt)
-              : t('sharePublic.permanent')
-          }}
-        </span>
+        <div class="file-card__meta">
+        <div class="file-card__meta-item">
+          <span class="file-card__meta-label">{{ t('sharePublic.labels.size') }}</span>
+          <span class="file-card__meta-value">
+            {{ share.fileMeta.value?.size ? formatBytes(share.fileMeta.value.size) : '-' }}
+          </span>
+        </div>
+        <div class="file-card__meta-item">
+          <span class="file-card__meta-label">{{ t('sharePublic.labels.type') }}</span>
+          <span class="file-card__meta-value">
+            {{ getTypeLabel((share.share.value as any)?.name || '', false) }}
+          </span>
+        </div>
+        <div class="file-card__meta-item">
+          <span class="file-card__meta-label">{{ t('sharePublic.labels.expires') }}</span>
+          <span class="file-card__meta-value">
+            {{
+              (share.share.value as any)?.expiresAt
+                ? formatTime((share.share.value as any)?.expiresAt)
+                : t('sharePublic.permanent')
+            }}
+          </span>
+        </div>
       </div>
       <div class="file-card__actions">
         <Button
@@ -460,7 +535,7 @@ const openDirectory = async (entry: DiskEntry) => {
           />
         </div>
         <div class="share__table">
-          <Table :columns="columns" :rows="share.items.value" :min-rows="10" scrollable fill>
+          <Table :columns="columns" :rows="sortedShareItems" :min-rows="10" scrollable fill>
             <template #head-select>
               <div class="select-cell">
                 <input
@@ -470,6 +545,39 @@ const openDirectory = async (entry: DiskEntry) => {
                   @change="selection.toggleAll()"
                 />
               </div>
+            </template>
+            <template #head-name>
+              <button
+                type="button"
+                class="table__sort"
+                :class="[`is-${sortIndicator('name')}`, { 'is-active': sortKey === 'name' }]"
+                @click="setSort('name')"
+              >
+                {{ t('sharePublic.columns.name') }}
+                <span class="table__sort-indicator"></span>
+              </button>
+            </template>
+            <template #head-size>
+              <button
+                type="button"
+                class="table__sort"
+                :class="[`is-${sortIndicator('size')}`, { 'is-active': sortKey === 'size' }]"
+                @click="setSort('size')"
+              >
+                {{ t('sharePublic.columns.size') }}
+                <span class="table__sort-indicator"></span>
+              </button>
+            </template>
+            <template #head-type>
+              <button
+                type="button"
+                class="table__sort"
+                :class="[`is-${sortIndicator('type')}`, { 'is-active': sortKey === 'type' }]"
+                @click="setSort('type')"
+              >
+                {{ t('sharePublic.columns.type') }}
+                <span class="table__sort-indicator"></span>
+              </button>
             </template>
             <template #cell-select="{ row }">
               <div class="select-cell">
@@ -505,6 +613,9 @@ const openDirectory = async (entry: DiskEntry) => {
             </template>
             <template #cell-size="{ row }">
               {{ asEntry(row).is_dir ? '-' : formatBytes(asEntry(row).size as number) }}
+            </template>
+            <template #cell-type="{ row }">
+              {{ getTypeLabel(asEntry(row).name, asEntry(row).is_dir) }}
             </template>
           </Table>
         </div>
@@ -652,6 +763,7 @@ const openDirectory = async (entry: DiskEntry) => {
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
+  width: min(600px, 100%);
 }
 
 .share__body {
@@ -721,7 +833,7 @@ const openDirectory = async (entry: DiskEntry) => {
 }
 
 .share__table :deep(.table) {
-  --table-columns: 32px minmax(220px, 1fr) 110px;
+  --table-columns: 32px minmax(220px, 1fr) 110px 90px;
   width: 100%;
   min-width: 0;
 }
@@ -732,7 +844,42 @@ const openDirectory = async (entry: DiskEntry) => {
   color: var(--color-muted);
 }
 
-.share__table :deep(.table__cell:nth-child(3)) {
+.share__table :deep(.table__sort) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.share__table :deep(.table__sort-indicator) {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 6px solid var(--color-muted);
+  opacity: 0;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.share__table :deep(.table__sort.is-active) .table__sort-indicator {
+  opacity: 1;
+}
+
+.share__table :deep(.table__sort.is-asc) .table__sort-indicator {
+  transform: rotate(180deg);
+}
+
+.share__table :deep(.table__sort.is-desc) .table__sort-indicator {
+  transform: rotate(0deg);
+}
+
+.share__table :deep(.table__cell:nth-child(3)),
+.share__table :deep(.table__cell:nth-child(4)) {
   justify-self: start;
   text-align: left;
   font-size: 12px;
@@ -813,29 +960,75 @@ const openDirectory = async (entry: DiskEntry) => {
   color: var(--color-primary);
 }
 
-.file-card__title {
-  font-size: 20px;
-  font-weight: 600;
-  display: inline-flex;
+.file-card__header {
+  display: flex;
   align-items: center;
   gap: var(--space-3);
+}
+
+.file-card__header-info {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.file-card__title {
+  font-size: 18px;
+  font-weight: 600;
+  min-width: 0;
+}
+
+.file-card__subtitle {
+  font-size: 12px;
+  color: var(--color-muted);
 }
 
 .file-card__icon {
   background: transparent;
 }
 
+.file-card__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .file-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
   color: var(--color-muted);
+  font-size: 12px;
+}
+
+.file-card__meta-item {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.file-card__meta-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.file-card__meta-value {
   font-size: 13px;
+  color: var(--color-text);
 }
 
 .file-card__actions {
   display: flex;
   gap: var(--space-2);
+  justify-content: space-between;
 }
 
 @media (max-width: 768px) {
@@ -843,11 +1036,37 @@ const openDirectory = async (entry: DiskEntry) => {
     padding: var(--space-4);
   }
 
+  .file-card {
+    width: 100%;
+  }
+
+  .file-card__title {
+    font-size: 16px;
+  }
+
+  .file-card__meta {
+    grid-template-columns: 1fr;
+  }
+
+  .file-card__header :deep(.file-icon) {
+    width: 22px;
+    height: 22px;
+  }
+
+  .file-card__header :deep(.file-icon svg) {
+    width: 14px;
+    height: 14px;
+  }
+
   .share__table :deep(.table) {
     --table-columns: 32px minmax(0, 1fr);
   }
 
   .share__table :deep(.table__cell:nth-child(3)) {
+    display: none;
+  }
+
+  .share__table :deep(.table__cell:nth-child(4)) {
     display: none;
   }
 }

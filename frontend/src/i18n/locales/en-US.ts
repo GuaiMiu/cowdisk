@@ -434,6 +434,19 @@ export default {
       type: 'Type',
       updatedAt: 'Updated',
     },
+    types: {
+      image: 'Image',
+      video: 'Video',
+      audio: 'Audio',
+      pdf: 'PDF',
+      doc: 'Document',
+      sheet: 'Spreadsheet',
+      slide: 'Presentation',
+      archive: 'Archive',
+      code: 'Code',
+      text: 'Text',
+      other: 'File',
+    },
     placeholders: {
       newFolder: 'New folder',
       rename: 'Enter new name',
@@ -678,6 +691,7 @@ export default {
       name: 'Name',
       size: 'Size',
       actions: 'Actions',
+      type: 'Type',
     },
     unavailable: {
       title: 'Share unavailable',

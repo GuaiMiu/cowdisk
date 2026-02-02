@@ -434,6 +434,19 @@ export default {
       type: '类型',
       updatedAt: '更新时间',
     },
+    types: {
+      image: '图片',
+      video: '视频',
+      audio: '音频',
+      pdf: 'PDF',
+      doc: '文档',
+      sheet: '表格',
+      slide: '演示',
+      archive: '压缩包',
+      code: '代码',
+      text: '文本',
+      other: '文件',
+    },
     placeholders: {
       newFolder: '新建文件夹',
       rename: '输入新名称',
@@ -678,6 +691,7 @@ export default {
       name: '名称',
       size: '大小',
       actions: '操作',
+      type: '类型',
     },
     unavailable: {
       title: '分享不可用',

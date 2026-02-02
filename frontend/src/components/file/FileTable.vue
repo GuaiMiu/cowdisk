@@ -251,10 +251,21 @@ const formatEntryType = (entry: DiskEntry) => {
   if (entry.is_dir) {
     return t('common.folder')
   }
-  const name = entry.name || ''
-  const parts = name.split('.')
-  const ext = parts.length > 1 ? parts[parts.length - 1] : ''
-  return ext ? ext.toUpperCase() : t('common.file')
+  const kind = getFileKind(entry.name, entry.is_dir)
+  const map: Record<string, string> = {
+    image: t('fileTable.types.image'),
+    video: t('fileTable.types.video'),
+    audio: t('fileTable.types.audio'),
+    pdf: t('fileTable.types.pdf'),
+    doc: t('fileTable.types.doc'),
+    sheet: t('fileTable.types.sheet'),
+    slide: t('fileTable.types.slide'),
+    archive: t('fileTable.types.archive'),
+    code: t('fileTable.types.code'),
+    text: t('fileTable.types.text'),
+    other: t('fileTable.types.other'),
+  }
+  return map[kind] || t('fileTable.types.other')
 }
 
 const onNameClick = (entry: DiskEntry) => {
