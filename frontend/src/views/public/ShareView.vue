@@ -668,8 +668,8 @@ const openDirectory = async (entry: DiskEntry) => {
 }
 
 .share__panel {
-  width: min(1200px, 96vw);
   height: min(78vh, 100%);
+  width: min(90vw, 1200px);
   display: grid;
   gap: var(--space-3);
   grid-template-rows: auto 1fr;
@@ -722,6 +722,8 @@ const openDirectory = async (entry: DiskEntry) => {
 
 .share__table :deep(.table) {
   --table-columns: 32px minmax(220px, 1fr) 110px;
+  width: 100%;
+  min-width: 0;
 }
 
 .share__table :deep(.table__cell--head) {
@@ -759,20 +761,18 @@ const openDirectory = async (entry: DiskEntry) => {
 
 .share-row-actions {
   position: absolute;
-  left: 50%;
+  right: var(--space-3);
   top: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--transition-base);
-}
-
-.share__table :deep(.table__row:hover) .share-row-actions {
   opacity: 1;
   pointer-events: auto;
+}
+
+.share__table :deep(.table__cell:nth-child(2)) {
+  padding-right: 56px;
 }
 
 .share-row-actions :deep(.icon-btn) {
@@ -849,11 +849,6 @@ const openDirectory = async (entry: DiskEntry) => {
 
   .share__table :deep(.table__cell:nth-child(3)) {
     display: none;
-  }
-
-  .share-row-actions {
-    opacity: 1;
-    pointer-events: auto;
   }
 }
 </style>
