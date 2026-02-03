@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Drawer from '@/components/common/Drawer.vue'
 import Button from '@/components/common/Button.vue'
@@ -24,14 +24,15 @@ const hasActive = computed(() =>
   uploadsStore.items.some((item) => ['queued', 'uploading', 'paused'].includes(item.status)),
 )
 
-watch(
-  () => [props.open, uploadsStore.items.length, hasActive.value],
-  ([open]) => {
-    if (open && uploadsStore.items.length > 0 && !hasActive.value) {
-      emit('close')
-    }
-  },
-)
+const wasActive = ref(hasActive.value)
+
+// 只在“从活跃 -> 全部完成”的瞬间自动关闭，避免用户手动打开后立刻被关闭
+watch(hasActive, (active) => {
+  if (wasActive.value && !active && props.open) {
+    emit('close')
+  }
+  wasActive.value = active
+})
 </script>
 
 <template>
