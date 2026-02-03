@@ -1,8 +1,10 @@
 import type { Router } from 'vue-router'
 import NProgress from 'nprogress'
 import { useAuthStore } from '@/stores/auth'
+import { useMessage } from '@/stores/message'
 import { buildFullPath } from '@/router/menu'
 import type { MenuRoutersOut } from '@/types/menu'
+import { i18n } from '@/i18n'
 
 const normalizePerms = (perms: unknown) => {
   if (!perms) {
@@ -18,6 +20,7 @@ const normalizePerms = (perms: unknown) => {
 }
 
 const isAdminRoute = (path: string) => path === '/admin' || path.startsWith('/admin/')
+let notifiedLoggedIn = false
 
 const flattenMenus = (items: MenuRoutersOut[], parentPath = '', basePath = '') => {
   const result: string[] = []
@@ -42,7 +45,18 @@ export const setupRouterGuards = (router: Router) => {
       NProgress.start()
     }
     const authStore = useAuthStore()
+    if (!authStore.token) {
+      notifiedLoggedIn = false
+    }
     if (!to.meta.requiresAuth) {
+      if (to.path === '/login' && authStore.token) {
+        const message = useMessage()
+        if (!notifiedLoggedIn) {
+          message.info(i18n.global.t('auth.toasts.alreadyLoggedIn'))
+          notifiedLoggedIn = true
+        }
+        return authStore.landingPath()
+      }
       return true
     }
 
