@@ -20,7 +20,12 @@ uv run python -m app.main
 ```
 
 Server defaults to `http://127.0.0.1:8000`.
-日志配置可通过 `backend/.env` 调整：`UVICORN_LOG_LEVEL`、`UVICORN_LOG_DIR`、`UVICORN_APP_LOG_FILE`、`UVICORN_ACCESS_LOG_FILE`、`UVICORN_LOG_MAX_BYTES`、`UVICORN_LOG_BACKUP_COUNT`（默认目录 `logs`；Docker 中为 `/app/logs`）。
+日志配置可通过 `backend/.env` 调整：`UVICORN_LOG_LEVEL`、`UVICORN_LOG_DIR`、`APP_LOG_SUBDIR`、`UVICORN_LOG_SUBDIR`、`UVICORN_APP_LOG_FILE`、`APP_ERROR_LOG_FILE`、`UVICORN_SERVER_LOG_FILE`、`UVICORN_ACCESS_LOG_FILE`、`UVICORN_LOG_MAX_BYTES`、`UVICORN_LOG_BACKUP_COUNT`（默认目录 `logs`；Docker 中为 `/app/logs`）。
+默认日志结构：
+- `logs/app/info.log`
+- `logs/app/error.log`
+- `logs/uv/server.log`
+- `logs/uv/access.log`
 
 ## Configuration Center
 

@@ -300,7 +300,7 @@ REGISTRY: dict[str, ConfigSpec] = {
         key=ConfigKey.DATABASE_TYPE,
         group="infra",
         value_type="string",
-        default="",
+        default="sqlite",
         description="数据库类型",
         editable=False,
         env_key="DATABASE_TYPE",
@@ -310,7 +310,7 @@ REGISTRY: dict[str, ConfigSpec] = {
         key=ConfigKey.DATABASE_HOST,
         group="infra",
         value_type="string",
-        default="",
+        default="127.0.0.1",
         description="数据库地址",
         editable=False,
         env_key="DATABASE_HOST",
@@ -320,7 +320,7 @@ REGISTRY: dict[str, ConfigSpec] = {
         key=ConfigKey.DATABASE_PORT,
         group="infra",
         value_type="int",
-        default=0,
+        default=3306,
         description="数据库端口",
         editable=False,
         env_key="DATABASE_PORT",
@@ -350,7 +350,7 @@ REGISTRY: dict[str, ConfigSpec] = {
         key=ConfigKey.DATABASE_URL,
         group="infra",
         value_type="string",
-        default="",
+        default="sqlite+aiosqlite:///./data.db",
         description="数据库连接 URL",
         editable=False,
         env_key="DATABASE_URL",
@@ -370,7 +370,7 @@ REGISTRY: dict[str, ConfigSpec] = {
         key=ConfigKey.REDIS_HOST,
         group="infra",
         value_type="string",
-        default="",
+        default="127.0.0.1",
         description="Redis 地址",
         editable=False,
         env_key="REDIS_HOST",
@@ -380,7 +380,7 @@ REGISTRY: dict[str, ConfigSpec] = {
         key=ConfigKey.REDIS_PORT,
         group="infra",
         value_type="int",
-        default=0,
+        default=6379,
         description="Redis 端口",
         editable=False,
         env_key="REDIS_PORT",
@@ -403,3 +403,15 @@ GROUPS: tuple[str, ...] = tuple(sorted({spec.group for spec in REGISTRY.values()
 STATIC_ENV_KEYS: set[str] = {
     key for key, spec in REGISTRY.items() if spec.allow_env_after_install
 }
+
+
+def get_spec(key: str) -> ConfigSpec:
+    spec = REGISTRY.get(key)
+    if spec is None:
+        raise KeyError(f"unknown config key: {key}")
+    return spec
+
+
+def get_default(key: str, fallback: Any = None) -> Any:
+    spec = REGISTRY.get(key)
+    return spec.default if spec is not None else fallback

@@ -13,9 +13,15 @@ from sqlalchemy import BigInteger, Column
 from sqlmodel import SQLModel, Field, Relationship
 
 from app.modules.admin.models.role import UserRoleLink
-from app.core.config import settings
 from app.enum.user import UserStatusEnum
+from app.modules.system.typed.keys import ConfigKey
+from app.modules.system.typed.specs import get_default
 from app.utils.password import PwdUtil
+
+
+def default_total_space_bytes() -> int:
+    quota_gb = int(get_default(ConfigKey.AUTH_DEFAULT_USER_QUOTA_GB, 10))
+    return max(quota_gb, 0) * 1024 * 1024 * 1024
 
 
 class UserBase(SQLModel):
@@ -25,7 +31,7 @@ class UserBase(SQLModel):
     mail: EmailStr = Field(default=None, description="用户邮箱")
     is_superuser: bool = Field(default=False, description="是否为超级管理员")
     total_space: int = Field(
-        default=settings.USER_DEFAULT_SPACE,
+        default=default_total_space_bytes(),
         sa_column=Column(BigInteger()),
         description="总空间 (单位: 字节)",
     )

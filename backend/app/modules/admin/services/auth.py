@@ -22,7 +22,7 @@ from app.modules.admin.dao.menu import menu_curd
 from app.modules.admin.dao.user import user_crud
 from app.modules.admin.models.menu import Menu
 from app.modules.admin.models.role import Role
-from app.modules.admin.models.user import User
+from app.modules.admin.models.user import User, default_total_space_bytes
 from app.modules.admin.schemas.auth import UserLoginIn, UserRegisterIn, TokenPayload
 from app.core.config import settings
 from app.core.database import get_async_redis, get_async_session
@@ -170,9 +170,9 @@ class AuthService:
             try:
                 user_model.total_space = max(int(quota_gb), 0) * 1024 * 1024 * 1024
             except (TypeError, ValueError):
-                user_model.total_space = settings.USER_DEFAULT_SPACE or 0
+                user_model.total_space = default_total_space_bytes()
         else:
-            user_model.total_space = settings.USER_DEFAULT_SPACE or 0
+            user_model.total_space = default_total_space_bytes()
         default_role = (
             await db.exec(
                 select(Role).where(

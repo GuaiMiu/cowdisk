@@ -17,6 +17,8 @@ from app.modules.admin.models.user import User
 from app.modules.system.deps import get_config
 from app.modules.system.service.branding import BrandingService
 from app.modules.system.typed.config import Config
+from app.modules.system.typed.keys import ConfigKey
+from app.modules.system.typed.specs import get_default
 from app.modules.system.services.install_state import InstallStateService
 from app.modules.system.services.setup import SetupService
 from app.shared.deps import require_permissions, require_user
@@ -175,7 +177,9 @@ async def get_setup_defaults():
 async def get_public_config(
     config: Config = Depends(get_config),
 ):
-    site_name = (settings.APP_NAME or "").strip() or "CowDisk"
+    site_name = (settings.APP_NAME or "").strip() or str(
+        get_default(ConfigKey.SYSTEM_SITE_NAME, "CowDisk")
+    )
     site_logo_url = ""
     site_favicon_url = ""
     login_background_url = ""

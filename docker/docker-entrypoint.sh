@@ -6,6 +6,8 @@ log() {
   printf '%s [entrypoint] %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$*"
 }
 
+mkdir -p /app/logs/app /app/logs/uv /app/logs/nginx
+
 cd /app/backend
 log "starting api process"
 python -m app.main &

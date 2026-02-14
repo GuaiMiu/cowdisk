@@ -19,7 +19,7 @@ ENV PATH="/app/backend/.venv/bin:$PATH"
 ENV PYTHONPATH=/app/backend
 
 RUN apk add --no-cache nginx
-RUN mkdir -p /app/frontend /app/data /app/logs /app/config
+RUN mkdir -p /app/frontend /app/data /app/logs /app/logs/app /app/logs/uv /app/logs/nginx /app/config
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=backend/uv.lock,target=uv.lock \

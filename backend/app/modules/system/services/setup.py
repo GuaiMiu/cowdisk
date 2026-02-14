@@ -24,6 +24,7 @@ from app.core.exception import ServiceException
 from app.modules.system.service.config import ConfigCenterService
 from app.modules.system.services.install_state import InstallStateService
 from app.modules.system.typed.keys import ConfigKey
+from app.modules.system.typed.specs import get_default
 from app.modules.admin.models.user import User
 
 
@@ -51,15 +52,20 @@ class SetupService:
         "jwt_secret_key": "JWT_SECRET_KEY",
     }
 
-    SETUP_DEFAULTS = {
-        "app_name": "CowDisk",
-        "database_type": "sqlite",
-        "database_host": "127.0.0.1",
-        "database_port": 3306,
-        "redis_enable": False,
-        "redis_host": "127.0.0.1",
-        "redis_port": 6379,
-        "redis_db": 0,
+    SETUP_REGISTRY_KEY_MAP = {
+        "app_name": ConfigKey.SYSTEM_SITE_NAME,
+        "allow_register": ConfigKey.AUTH_ALLOW_REGISTER,
+        "storage_path": ConfigKey.STORAGE_PATH,
+        "database_type": ConfigKey.DATABASE_TYPE,
+        "database_host": ConfigKey.DATABASE_HOST,
+        "database_port": ConfigKey.DATABASE_PORT,
+        "database_user": ConfigKey.DATABASE_USER,
+        "database_name": ConfigKey.DATABASE_NAME,
+        "database_url": ConfigKey.DATABASE_URL,
+        "redis_enable": ConfigKey.REDIS_ENABLE,
+        "redis_host": ConfigKey.REDIS_HOST,
+        "redis_port": ConfigKey.REDIS_PORT,
+        "redis_db": ConfigKey.REDIS_DB,
     }
 
     PROGRESS_TITLES = {
@@ -70,6 +76,13 @@ class SetupService:
     }
 
     _progress: dict[str, dict[str, object]] = {}
+
+    @classmethod
+    def _default_for(cls, key: str, fallback: object = None) -> object:
+        registry_key = cls.SETUP_REGISTRY_KEY_MAP.get(key)
+        if not registry_key:
+            return fallback
+        return get_default(registry_key, fallback)
 
     @staticmethod
     def _as_bool(value: object, fallback: bool = False) -> bool:
@@ -137,24 +150,42 @@ class SetupService:
     @classmethod
     def get_form_defaults(cls) -> dict[str, object]:
         merged = cls._resolve_setup_payload({})
-        db_type = (merged.get("database_type") or "sqlite").strip().lower()
-        database_url = merged.get("database_url") or "sqlite+aiosqlite:///./data.db"
+        default_db_type = str(cls._default_for("database_type", "sqlite"))
+        db_type = (merged.get("database_type") or default_db_type).strip().lower()
+        database_url = merged.get("database_url") or cls._default_for(
+            "database_url", "sqlite+aiosqlite:///./data.db"
+        )
         return {
-            "app_name": str(merged.get("app_name") or "CowDisk"),
+            "app_name": str(
+                merged.get("app_name")
+                or cls._default_for("app_name", settings.APP_NAME or "CowDisk")
+            ),
             "database_type": db_type if db_type in {"sqlite", "mysql"} else "sqlite",
-            "database_host": str(merged.get("database_host") or "127.0.0.1"),
-            "database_port": cls._as_int(merged.get("database_port"), 3306),
+            "database_host": str(
+                merged.get("database_host") or cls._default_for("database_host", "127.0.0.1")
+            ),
+            "database_port": cls._as_int(
+                merged.get("database_port"), int(cls._default_for("database_port", 3306))
+            ),
             "database_user": str(merged.get("database_user") or ""),
             "database_name": str(merged.get("database_name") or ""),
             "database_url": str(database_url),
             "superuser_name": str(settings.SUPERUSER_NAME or "admin"),
             "superuser_mail": str(settings.SUPERUSER_MAIL or "admin@example.com"),
-            "allow_register": cls._as_bool(merged.get("allow_register"), True),
-            "redis_enable": cls._as_bool(merged.get("redis_enable"), False),
-            "redis_host": str(merged.get("redis_host") or "127.0.0.1"),
-            "redis_port": cls._as_int(merged.get("redis_port"), 6379),
-            "redis_db": cls._as_int(merged.get("redis_db"), 0),
-            "storage_path": str(merged.get("storage_path") or "/app/data"),
+            "allow_register": cls._as_bool(
+                merged.get("allow_register"), bool(cls._default_for("allow_register", True))
+            ),
+            "redis_enable": cls._as_bool(
+                merged.get("redis_enable"), bool(cls._default_for("redis_enable", False))
+            ),
+            "redis_host": str(
+                merged.get("redis_host") or cls._default_for("redis_host", "127.0.0.1")
+            ),
+            "redis_port": cls._as_int(
+                merged.get("redis_port"), int(cls._default_for("redis_port", 6379))
+            ),
+            "redis_db": cls._as_int(merged.get("redis_db"), int(cls._default_for("redis_db", 0))),
+            "storage_path": str(merged.get("storage_path") or cls._default_for("storage_path", "/app/data")),
         }
 
     @classmethod
@@ -176,7 +207,7 @@ class SetupService:
             env_value = _get_env_value(key)
             if env_value is not None and env_value != "":
                 return env_value
-            return cls.SETUP_DEFAULTS.get(key)
+            return cls._default_for(key)
 
         resolved = dict(payload)
         for key in cls.SETUP_ENV_MAP:
@@ -190,14 +221,16 @@ class SetupService:
         """
         db_type = (payload.get("database_type") or "").strip().lower()
         if db_type == "sqlite":
-            return payload.get("database_url") or "sqlite+aiosqlite:///./data.db"
+            return payload.get("database_url") or str(
+                cls._default_for("database_url", "sqlite+aiosqlite:///./data.db")
+            )
         db_url = payload.get("database_url")
         if db_url:
             return db_url
         user = payload.get("database_user") or ""
         password = payload.get("database_password") or ""
-        host = payload.get("database_host") or "127.0.0.1"
-        port = payload.get("database_port") or 3306
+        host = payload.get("database_host") or cls._default_for("database_host", "127.0.0.1")
+        port = payload.get("database_port") or cls._default_for("database_port", 3306)
         name = payload.get("database_name") or ""
         return f"mysql+aiomysql://{user}:{password}@{host}:{port}/{name}"
 
@@ -320,7 +353,6 @@ class SetupService:
                 }
             )
         drop_keys = {
-            "USER_DEFAULT_SPACE",
             "SUPERUSER_NAME",
             "SUPERUSER_PASSWORD",
             "SUPERUSER_MAIL",
@@ -488,7 +520,7 @@ class SetupService:
         mail = (payload.get("superuser_mail") or "").strip()
         if not username or not password or not mail:
             raise ServiceException(msg="超级管理员信息不完整")
-        default_quota_gb = 10
+        default_quota_gb = int(get_default(ConfigKey.AUTH_DEFAULT_USER_QUOTA_GB, 10))
         total_space = max(int(default_quota_gb), 0) * 1024 * 1024 * 1024
         user = User(
             username=username,
@@ -515,9 +547,9 @@ class SetupService:
     async def _check_redis(cls, payload: dict) -> tuple[bool, str, bool]:
         if not payload.get("redis_enable"):
             return True, "Redis 未启用，已跳过检查", True
-        host = payload.get("redis_host") or "127.0.0.1"
-        port = payload.get("redis_port") or 6379
-        db = payload.get("redis_db") or 0
+        host = payload.get("redis_host") or cls._default_for("redis_host", "127.0.0.1")
+        port = payload.get("redis_port") or cls._default_for("redis_port", 6379)
+        db = payload.get("redis_db") or cls._default_for("redis_db", 0)
         password = payload.get("redis_password") or None
         client = aioredis.Redis(
             host=host,
