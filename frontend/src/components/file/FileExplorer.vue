@@ -44,6 +44,15 @@ const uploader = useUploader()
 const shareActions = useShareActions()
 const message = useMessage()
 const uploadsStore = useUploadsStore()
+const queuePendingCount = computed(
+  () =>
+    uploadsStore.items.filter((item) =>
+      ['queued', 'uploading', 'paused'].includes(item.status),
+    ).length,
+)
+const queueErrorCount = computed(
+  () => uploadsStore.items.filter((item) => item.status === 'error').length,
+)
 
 const queueOpen = ref(false)
 const shareModal = ref(false)
@@ -244,7 +253,7 @@ const openUpload = () => {
     const files = input.files ? Array.from(input.files) : []
     if (files.length) {
       uploader.enqueue(files, explorer.path.value, explorer.parentId.value ?? null)
-      queueOpen.value = true
+      uploader.notifyQueue()
     }
   }
   input.click()
@@ -259,7 +268,7 @@ const openFolderUpload = () => {
     const files = input.files ? Array.from(input.files) : []
     if (files.length) {
       uploader.enqueue(files, explorer.path.value, explorer.parentId.value ?? null)
-      queueOpen.value = true
+      uploader.notifyQueue()
     }
   }
   input.click()
@@ -775,12 +784,14 @@ watch(
   <section class="explorer">
     <FileToolbar
       :selected-count="selection.selectedItems.value.length"
+      :queue-pending-count="queuePendingCount"
+      :queue-error-count="queueErrorCount"
       @new-folder="openFolderModal"
       @new-text="openNewTextInline"
       @upload="openUpload"
       @upload-folder="openFolderUpload"
       @refresh="explorer.refresh"
-      @toggle-queue="queueOpen = true"
+      @toggle-queue="queueOpen = !queueOpen"
       @delete-selected="handleDelete(selection.selectedItems.value)"
       @move-selected="openMoveSelected"
     />

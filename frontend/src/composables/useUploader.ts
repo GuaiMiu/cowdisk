@@ -13,16 +13,14 @@ import {
   mkdir,
 } from '@/api/modules/userDisk'
 import { useMessage } from '@/stores/message'
+import { AppError } from '@/api/errors'
 import type { DiskUploadPolicyOut } from '@/types/disk'
 
 const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024
-const MAX_CONCURRENT_UPLOADS = Math.min(
-  6,
-  Math.max(3, Number(import.meta.env.VITE_UPLOAD_CONCURRENCY ?? 4)),
-)
 
 const sharedRunning = ref(false)
 const sharedAbortMap = new Map<string, AbortController>()
+const speedMeterMap = new Map<string, UploadSpeedMeter>()
 let uploadPolicyCache: DiskUploadPolicyOut | null = null
 let uploadPolicyInFlight: Promise<DiskUploadPolicyOut | null> | null = null
 
@@ -49,6 +47,7 @@ export const useUploader = () => {
     if (controller) {
       controller.abort()
     }
+    clearSpeedMeter(id)
     uploadsStore.update(id, { status: 'cancelled', error: '已取消', speed: 0 })
     const item = uploadsStore.items.find((entry) => entry.id === id)
     if (item?.uploadId) {
@@ -62,15 +61,18 @@ export const useUploader = () => {
     if (controller) {
       controller.abort()
     }
+    clearSpeedMeter(id)
     uploadsStore.update(id, { status: 'paused', error: undefined, speed: 0 })
   }
 
   const resume = (id: string) => {
+    clearSpeedMeter(id)
     uploadsStore.update(id, { status: 'queued', error: undefined, speed: 0 })
     void processQueue()
   }
 
   const retry = (id: string) => {
+    clearSpeedMeter(id)
     uploadsStore.update(id, { status: 'queued', progress: 0, error: undefined, speed: 0 })
     void processQueue()
   }
@@ -81,9 +83,10 @@ export const useUploader = () => {
     }
     running.value = true
     try {
+      const queueConcurrency = await resolveQueueConcurrency()
       const active = new Set<Promise<void>>()
       while (true) {
-        while (active.size < MAX_CONCURRENT_UPLOADS) {
+        while (active.size < queueConcurrency) {
           const next = uploadsStore.takeNextQueued()
           if (!next) {
             break
@@ -110,6 +113,7 @@ export const useUploader = () => {
   }
 
   const uploadItem = async (item: (typeof uploadsStore.items)[number]) => {
+    clearSpeedMeter(item.id)
     uploadsStore.update(item.id, { status: 'uploading', progress: 0, error: undefined, speed: 0 })
     const controller = new AbortController()
     abortMap.set(item.id, controller)
@@ -118,11 +122,12 @@ export const useUploader = () => {
       const thresholdMb = Number(policy?.chunk_upload_threshold_mb ?? 10)
       const chunkThresholdBytes = Math.max(1, thresholdMb) * 1024 * 1024
       if (item.file.size >= chunkThresholdBytes) {
-        await uploadChunked(item, controller.signal)
+        await uploadChunked(item, controller.signal, policy)
       } else {
         uploadsStore.resetChunkState(item.id)
         await uploadSingle(item, controller.signal)
       }
+      flushUploadStats(uploadsStore, item.id, 100, true)
       uploadsStore.update(item.id, { status: 'success', progress: 100, speed: 0 })
     } catch (error) {
       if (controller.signal.aborted) {
@@ -139,6 +144,7 @@ export const useUploader = () => {
         })
       }
     } finally {
+      clearSpeedMeter(item.id)
       abortMap.delete(item.id)
     }
   }
@@ -146,7 +152,6 @@ export const useUploader = () => {
   const uploadSingle = async (item: (typeof uploadsStore.items)[number], signal: AbortSignal) => {
     const filename = getRelativeFilename(item.file)
     const target = await resolveTarget(item, filename)
-    let lastTick = 0
     let lastProgress = 0
     let lastLoaded = 0
     await uploadFiles(
@@ -162,27 +167,30 @@ export const useUploader = () => {
           if (!event.total) {
             return
           }
-          const progress = Math.round((event.loaded / event.total) * 100)
+          const meter = getSpeedMeter(item.id)
           const now = Date.now()
-          const deltaBytes = event.loaded - lastLoaded
-          const deltaTime = now - lastTick
-          const speed = deltaTime > 0 ? Math.max(0, Math.round(deltaBytes / (deltaTime / 1000))) : 0
-          if (progress === lastProgress) {
+          const progress = Math.round((event.loaded / event.total) * 100)
+          const deltaBytes = Math.max(0, event.loaded - lastLoaded)
+          if (deltaBytes > 0) {
+            meter.record(deltaBytes, now)
+          }
+          if (progress === lastProgress && !shouldFlushSpeed(item.id, now, false)) {
+            lastLoaded = event.loaded
             return
           }
-          if (progress < 100 && now - lastTick < 120) {
-            return
-          }
-          lastTick = now
           lastProgress = progress
           lastLoaded = event.loaded
-          uploadsStore.update(item.id, { progress, speed })
+          flushUploadStats(uploadsStore, item.id, progress, progress >= 100)
         },
       },
     )
   }
 
-  const uploadChunked = async (item: (typeof uploadsStore.items)[number], signal: AbortSignal) => {
+  const uploadChunked = async (
+    item: (typeof uploadsStore.items)[number],
+    signal: AbortSignal,
+    policy: DiskUploadPolicyOut | null,
+  ) => {
     if (signal.aborted) {
       throw new Error('取消上传')
     }
@@ -194,6 +202,7 @@ export const useUploader = () => {
     let totalParts = totalChunks
     let maxParallelChunks = 1
     let resumableEnabled = true
+    let effectivePolicy = policy
     if (!uploadId || item.totalChunks !== totalChunks) {
       const init = await initChunkUpload(
         {
@@ -209,7 +218,9 @@ export const useUploader = () => {
       uploadId = init.upload_id
       partSize = init.part_size || DEFAULT_CHUNK_SIZE
       totalParts = init.total_parts || totalChunks
-      maxParallelChunks = Math.max(1, Math.min(Number(init.upload_config?.max_parallel_chunks || 1), 8))
+      effectivePolicy = init.upload_config || policy
+      const policyParallel = Number(init.upload_config?.max_parallel_chunks || 1)
+      maxParallelChunks = Math.max(1, policyParallel)
       resumableEnabled = init.upload_config?.enable_resumable !== false
       uploadsStore.update(item.id, {
         uploadId,
@@ -217,6 +228,7 @@ export const useUploader = () => {
         uploadedChunks: [],
       })
     }
+    const retryPolicy = normalizeRetryPolicy(effectivePolicy)
     const uploadedSet = new Set(item.uploadedChunks ?? [])
     if (resumableEnabled && uploadId && uploadedSet.size === 0) {
       try {
@@ -233,7 +245,7 @@ export const useUploader = () => {
     }
     if (uploadedSet.size > 0) {
       const progress = Math.round((uploadedSet.size / totalParts) * 100)
-      uploadsStore.update(item.id, { progress })
+      flushUploadStats(uploadsStore, item.id, progress, true)
     }
     const pendingParts: number[] = []
     for (let partNumber = 1; partNumber <= totalParts; partNumber += 1) {
@@ -242,8 +254,9 @@ export const useUploader = () => {
       }
     }
     let cursor = 0
+    let fatalError: unknown = null
     const uploadOnePart = async () => {
-      while (cursor < pendingParts.length) {
+      while (cursor < pendingParts.length && !fatalError) {
         if (signal.aborted) {
           throw new Error('取消上传')
         }
@@ -256,20 +269,31 @@ export const useUploader = () => {
         const start = (partNumber - 1) * partSize
         const end = Math.min(start + partSize, item.file.size)
         const chunk = item.file.slice(start, end)
-        const startedAt = Date.now()
-        await uploadChunk({ upload_id: uploadId, part_number: partNumber, chunk }, { signal })
-        const elapsed = Math.max(1, Date.now() - startedAt)
-        const speed = Math.round(chunk.size / (elapsed / 1000))
-        uploadsStore.markChunkUploaded(item.id, partNumber)
-        uploadedSet.add(partNumber)
-        const progress = Math.round((uploadedSet.size / totalParts) * 100)
-        uploadsStore.update(item.id, { progress, speed })
+        try {
+          await uploadChunkWithRetry(
+            { upload_id: uploadId, part_number: partNumber, chunk },
+            { signal },
+            retryPolicy,
+          )
+          const now = Date.now()
+          getSpeedMeter(item.id).record(chunk.size, now)
+          uploadsStore.markChunkUploaded(item.id, partNumber)
+          uploadedSet.add(partNumber)
+          const progress = Math.round((uploadedSet.size / totalParts) * 100)
+          flushUploadStats(uploadsStore, item.id, progress, progress >= 100)
+        } catch (error) {
+          fatalError = error
+          return
+        }
       }
     }
     const workers = Array.from({ length: Math.min(maxParallelChunks, pendingParts.length || 1) }, () =>
       uploadOnePart(),
     )
     await Promise.all(workers)
+    if (fatalError) {
+      throw fatalError
+    }
     await completeChunkUpload(
       uploadId,
       {
@@ -332,14 +356,15 @@ export const useUploader = () => {
   }
 
   const notifyQueue = () => {
-    const queued = uploadsStore.items.reduce(
-      (count, item) => count + (item.status === 'queued' ? 1 : 0),
+    const pending = uploadsStore.items.reduce(
+      (count, item) =>
+        count + (item.status === 'queued' || item.status === 'uploading' || item.status === 'paused' ? 1 : 0),
       0,
     )
-    if (queued > 0) {
+    if (pending > 0) {
       message.info(
         t('uploadQueue.queueUpdatedTitle'),
-        t('uploadQueue.queueUpdatedMessage', { count: queued }),
+        t('uploadQueue.queueUpdatedMessage', { count: pending }),
       )
     }
   }
@@ -355,6 +380,178 @@ export const useUploader = () => {
     notifyQueue,
   }
 }
+
+const shouldFlushSpeed = (id: string, now: number, force: boolean) => {
+  if (force) {
+    return true
+  }
+  const meter = speedMeterMap.get(id)
+  if (!meter) {
+    return true
+  }
+  return now - meter.lastFlushAt >= 1000
+}
+
+const flushUploadStats = (
+  uploadsStore: ReturnType<typeof useUploadsStore>,
+  id: string,
+  progress: number,
+  force = false,
+) => {
+  const now = Date.now()
+  if (!shouldFlushSpeed(id, now, force)) {
+    return
+  }
+  const meter = getSpeedMeter(id)
+  meter.lastFlushAt = now
+  uploadsStore.update(id, { progress, speed: Math.round(meter.getRate(now)) })
+}
+
+const getSpeedMeter = (id: string) => {
+  const existing = speedMeterMap.get(id)
+  if (existing) {
+    return existing
+  }
+  const created = new UploadSpeedMeter(5000, 0.25)
+  speedMeterMap.set(id, created)
+  return created
+}
+
+const clearSpeedMeter = (id: string) => {
+  speedMeterMap.delete(id)
+}
+
+class UploadSpeedMeter {
+  private samples: Array<{ at: number; bytes: number }> = []
+  private smoothedRate = 0
+  private readonly windowMs: number
+  private readonly emaAlpha: number
+  lastFlushAt = 0
+
+  constructor(windowMs: number, emaAlpha: number) {
+    this.windowMs = windowMs
+    this.emaAlpha = emaAlpha
+  }
+
+  record(bytes: number, at: number) {
+    if (bytes <= 0) {
+      return
+    }
+    this.samples.push({ at, bytes })
+    this.prune(at)
+    const rawRate = this.computeRawRate(at)
+    if (rawRate <= 0) {
+      return
+    }
+    this.smoothedRate =
+      this.smoothedRate > 0
+        ? this.emaAlpha * rawRate + (1 - this.emaAlpha) * this.smoothedRate
+        : rawRate
+  }
+
+  getRate(at: number) {
+    this.prune(at)
+    if (this.samples.length === 0) {
+      return 0
+    }
+    return this.smoothedRate > 0 ? this.smoothedRate : this.computeRawRate(at)
+  }
+
+  private prune(at: number) {
+    const minTs = at - this.windowMs
+    while (this.samples.length > 0 && this.samples[0]!.at < minTs) {
+      this.samples.shift()
+    }
+    if (this.samples.length === 0) {
+      this.smoothedRate = 0
+    }
+  }
+
+  private computeRawRate(at: number) {
+    if (this.samples.length === 0) {
+      return 0
+    }
+    let totalBytes = 0
+    for (const sample of this.samples) {
+      totalBytes += sample.bytes
+    }
+    const firstAt = this.samples[0]!.at
+    const durationMs = Math.max(1000, Math.min(this.windowMs, at - firstAt))
+    return totalBytes / (durationMs / 1000)
+  }
+}
+
+const uploadChunkWithRetry = async (
+  payload: { upload_id: string; part_number: number; chunk: Blob },
+  options: { signal: AbortSignal },
+  retryPolicy: { maxRetries: number; baseDelayMs: number; maxDelayMs: number },
+) => {
+  let attempt = 0
+  while (true) {
+    try {
+      await uploadChunk(payload, options)
+      return
+    } catch (error) {
+      if (options.signal.aborted) {
+        throw error
+      }
+      if (!isRetriableUploadError(error) || attempt >= retryPolicy.maxRetries) {
+        throw error
+      }
+      const delay = computeRetryDelay(attempt, retryPolicy)
+      await sleep(delay, options.signal)
+      attempt += 1
+    }
+  }
+}
+
+const isRetriableUploadError = (error: unknown) => {
+  if (error instanceof AppError) {
+    return (
+      error.transient === true ||
+      error.code === 408 ||
+      error.code === 429 ||
+      (typeof error.code === 'number' && error.code >= 500)
+    )
+  }
+  if (!(error instanceof Error)) {
+    return false
+  }
+  return /network|timeout|timed out|连接中断|请求超时/i.test(error.message)
+}
+
+const computeRetryDelay = (
+  attempt: number,
+  retryPolicy: { maxRetries: number; baseDelayMs: number; maxDelayMs: number },
+) => {
+  const base = retryPolicy.baseDelayMs * 2 ** attempt
+  const jitter = Math.floor(Math.random() * 250)
+  return Math.min(base + jitter, retryPolicy.maxDelayMs)
+}
+
+const normalizeRetryPolicy = (policy: DiskUploadPolicyOut | null) => {
+  const maxRetries = Math.max(0, Number(policy?.chunk_retry_max ?? 3))
+  const baseDelayMs = Math.max(100, Number(policy?.chunk_retry_base_ms ?? 600))
+  const maxDelayMs = Math.max(baseDelayMs, Number(policy?.chunk_retry_max_ms ?? 6000))
+  return { maxRetries, baseDelayMs, maxDelayMs }
+}
+
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup()
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      cleanup()
+      reject(new Error('取消上传'))
+    }
+    const cleanup = () => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', onAbort)
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
 
 const ensureUploadPolicy = async (signal?: AbortSignal): Promise<DiskUploadPolicyOut | null> => {
   if (uploadPolicyCache) {
@@ -373,6 +570,11 @@ const ensureUploadPolicy = async (signal?: AbortSignal): Promise<DiskUploadPolic
       uploadPolicyInFlight = null
     })
   return uploadPolicyInFlight
+}
+
+const resolveQueueConcurrency = async () => {
+  const policy = await ensureUploadPolicy()
+  return Math.max(1, Number(policy?.max_concurrency_per_user || 1))
 }
 
 const getRelativeFilename = (file: File) => {

@@ -434,7 +434,7 @@ export default {
         exportBtn: 'Export All Config',
         importTitle: 'Config Import',
         importDesc: 'Paste JSON for batch import, supports items list format.',
-        importPlaceholder: 'Example: { "items": [ { "key": "system.site_name", "value": "CowDisk" } ] }',
+        importPlaceholder: 'Example: items array, each item includes key and value',
         refreshTab: 'Refresh Current Tab',
         dryRun: 'Dry Run',
         importBtn: 'Run Import',
@@ -712,6 +712,14 @@ export default {
   uploadQueue: {
     title: 'Upload Queue',
     empty: 'No uploads',
+    status: {
+      queued: 'Queued',
+      uploading: 'Uploading',
+      paused: 'Paused',
+      success: 'Uploaded',
+      error: 'Failed',
+      cancelled: 'Cancelled',
+    },
     retry: 'Retry',
     pause: 'Pause',
     resume: 'Resume',

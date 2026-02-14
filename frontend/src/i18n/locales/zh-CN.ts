@@ -434,7 +434,7 @@ export default {
         exportBtn: '导出全部配置',
         importTitle: '配置导入',
         importDesc: '粘贴 JSON 后批量导入，支持 items 列表结构。',
-        importPlaceholder: '示例: { "items": [ { "key": "system.site_name", "value": "CowDisk" } ] }',
+        importPlaceholder: '示例：items 数组，每项包含 key 和 value',
         refreshTab: '刷新当前页签',
         dryRun: '预检查',
         importBtn: '执行导入',
@@ -712,6 +712,14 @@ export default {
   uploadQueue: {
     title: '上传队列',
     empty: '暂无上传任务',
+    status: {
+      queued: '排队中',
+      uploading: '上传中',
+      paused: '已暂停',
+      success: '上传成功',
+      error: '上传失败',
+      cancelled: '已取消',
+    },
     retry: '重试',
     pause: '暂停',
     resume: '继续',

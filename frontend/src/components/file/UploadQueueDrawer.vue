@@ -20,19 +20,33 @@ const uploadsStore = useUploadsStore()
 const { retry, cancel, pause, resume } = useUploader()
 const { t } = useI18n({ useScope: 'global' })
 
-const hasActive = computed(() =>
-  uploadsStore.items.some((item) => ['queued', 'uploading', 'paused'].includes(item.status)),
+const hasProcessing = computed(() =>
+  uploadsStore.items.some((item) => ['queued', 'uploading'].includes(item.status)),
+)
+const hasActionable = computed(() =>
+  uploadsStore.items.some((item) => ['paused', 'error'].includes(item.status)),
 )
 
-const wasActive = ref(hasActive.value)
+const wasProcessing = ref(hasProcessing.value)
 
-// 只在“从活跃 -> 全部完成”的瞬间自动关闭，避免用户手动打开后立刻被关闭
-watch(hasActive, (active) => {
-  if (wasActive.value && !active && props.open) {
+// 仅在“处理中 -> 全部结束”且无可操作项（暂停/失败）时自动关闭
+watch(hasProcessing, (processing) => {
+  if (wasProcessing.value && !processing && !hasActionable.value && props.open) {
     emit('close')
   }
-  wasActive.value = active
+  wasProcessing.value = processing
 })
+
+const statusLabelMap: Record<string, string> = {
+  queued: t('uploadQueue.status.queued'),
+  uploading: t('uploadQueue.status.uploading'),
+  paused: t('uploadQueue.status.paused'),
+  success: t('uploadQueue.status.success'),
+  error: t('uploadQueue.status.error'),
+  cancelled: t('uploadQueue.status.cancelled'),
+}
+
+const getStatusLabel = (status: string) => statusLabelMap[status] || status
 </script>
 
 <template>
@@ -43,7 +57,7 @@ watch(hasActive, (active) => {
         <div class="queue__meta">
           <div class="queue__name">{{ item.file.name }}</div>
           <div class="queue__status">
-            <span>{{ item.status }}</span>
+            <span>{{ getStatusLabel(item.status) }}</span>
             <span v-if="item.status === 'uploading'" class="queue__speed">
               {{ formatBytes(item.speed ?? 0) }}/s
             </span>
@@ -140,6 +154,8 @@ watch(hasActive, (active) => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .queue__speed {

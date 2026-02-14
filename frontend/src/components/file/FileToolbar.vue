@@ -16,6 +16,8 @@ import {
 
 const props = defineProps<{
   selectedCount: number
+  queuePendingCount: number
+  queueErrorCount: number
 }>()
 
 const emit = defineEmits<{
@@ -109,13 +111,21 @@ const { t } = useI18n({ useScope: 'global' })
       </Button>
     </div>
     <div class="toolbar__right">
-      <IconButton
-        :aria-label="t('fileToolbar.uploadQueue')"
-        variant="secondary"
-        @click="emit('toggle-queue')"
-      >
-        <ListChecks :size="18" />
-      </IconButton>
+      <div class="queue-trigger">
+        <IconButton
+          :aria-label="t('fileToolbar.uploadQueue')"
+          variant="secondary"
+          @click="emit('toggle-queue')"
+        >
+          <ListChecks :size="18" />
+        </IconButton>
+        <span v-if="props.queuePendingCount > 0" class="queue-trigger__badge">
+          {{ props.queuePendingCount > 99 ? '99+' : props.queuePendingCount }}
+        </span>
+        <span v-else-if="props.queueErrorCount > 0" class="queue-trigger__badge queue-trigger__badge--error">
+          !
+        </span>
+      </div>
       <IconButton
         :aria-label="t('fileToolbar.refresh')"
         variant="secondary"
@@ -145,6 +155,37 @@ const { t } = useI18n({ useScope: 'global' })
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
+}
+
+.queue-trigger {
+  position: relative;
+  display: inline-flex;
+}
+
+.queue-trigger__badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border: 1px solid var(--color-surface);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.queue-trigger__badge--error {
+  min-width: 16px;
+  width: 16px;
+  padding: 0;
+  background: var(--color-danger);
+  color: var(--color-on-danger);
 }
 
 .menu {
