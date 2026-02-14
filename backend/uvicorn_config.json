@@ -26,7 +26,7 @@
 
         "file": {
             "class": "logging.FileHandler",
-            "filename": "/app/logs/app.log",
+            "filename": "logs/app.log",
             "formatter": "default",
             "mode": "a",
             "encoding": "utf-8"

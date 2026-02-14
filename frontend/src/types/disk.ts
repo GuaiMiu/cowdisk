@@ -44,6 +44,10 @@ export type DiskUploadPolicyOut = {
   chunk_size_mb: number
   chunk_upload_threshold_mb: number
   max_parallel_chunks: number
+  max_concurrency_per_user: number
+  chunk_retry_max: number
+  chunk_retry_base_ms: number
+  chunk_retry_max_ms: number
   enable_resumable: boolean
   max_single_file_mb: number
 }

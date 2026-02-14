@@ -23,6 +23,9 @@ class ConfigKey:
     UPLOAD_MAX_PARALLEL_CHUNKS = "upload.max_parallel_chunks"
     UPLOAD_ENABLE_RESUMABLE = "upload.enable_resumable"
     UPLOAD_MAX_CONCURRENCY_PER_USER = "upload.max_concurrency_per_user"
+    UPLOAD_CHUNK_RETRY_MAX = "upload.chunk_retry_max"
+    UPLOAD_CHUNK_RETRY_BASE_MS = "upload.chunk_retry_base_ms"
+    UPLOAD_CHUNK_RETRY_MAX_MS = "upload.chunk_retry_max_ms"
 
     PREVIEW_MAX_DURATION_SECONDS = "preview.max_duration_seconds"
 

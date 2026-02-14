@@ -19,7 +19,6 @@ from uuid import uuid4
 from dataclasses import dataclass
 from hashlib import sha1
 from pathlib import Path, PurePosixPath
-from uuid import uuid4
 
 from fastapi import Request, UploadFile
 from starlette.background import BackgroundTask
@@ -1028,11 +1027,20 @@ class FileService:
         """
         if part_number <= 0:
             raise ServiceException(msg="分片编号不合法")
+        total_parts = cls._parse_upload_id(upload_id)
+        if not total_parts:
+            raise ServiceException(msg="上传会话ID不合法")
+        if part_number > total_parts:
+            raise ServiceException(msg="分片编号超出范围")
         storage = await cls.get_default_storage(db)
         backend = get_storage_backend(storage)
         state = backend.get_upload_session_state(user_id, upload_id)
         if not state.get("exists"):
             raise ServiceException(msg="上传会话不存在")
+        if state.get("done"):
+            raise ServiceException(msg="上传会话已完成")
+        if state.get("locked"):
+            raise ServiceException(msg="上传正在合并")
         try:
             size = await cls._with_upload_limit(
                 user_id,

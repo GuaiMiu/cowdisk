@@ -71,6 +71,15 @@ class UploadTypedConfig(_GroupBase):
     async def max_concurrency_per_user(self) -> int:
         return await self._cfg.get_int(ConfigKey.UPLOAD_MAX_CONCURRENCY_PER_USER)
 
+    async def chunk_retry_max(self) -> int:
+        return await self._cfg.get_int(ConfigKey.UPLOAD_CHUNK_RETRY_MAX)
+
+    async def chunk_retry_base_ms(self) -> int:
+        return await self._cfg.get_int(ConfigKey.UPLOAD_CHUNK_RETRY_BASE_MS)
+
+    async def chunk_retry_max_ms(self) -> int:
+        return await self._cfg.get_int(ConfigKey.UPLOAD_CHUNK_RETRY_MAX_MS)
+
 
 class PreviewTypedConfig(_GroupBase):
     async def max_duration_seconds(self) -> int:

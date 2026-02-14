@@ -169,6 +169,10 @@ class UploadConfigOut(BaseModel):
     chunk_size_mb: int
     chunk_upload_threshold_mb: int
     max_parallel_chunks: int
+    max_concurrency_per_user: int
+    chunk_retry_max: int
+    chunk_retry_base_ms: int
+    chunk_retry_max_ms: int
     enable_resumable: bool
     max_single_file_mb: int
 

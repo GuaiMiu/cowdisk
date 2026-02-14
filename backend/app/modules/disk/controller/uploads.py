@@ -48,6 +48,20 @@ async def _with_config(
         FileService.unbind_config(token)
 
 
+async def _build_upload_policy(config: Config) -> dict[str, Any]:
+    return {
+        "chunk_size_mb": await config.upload.chunk_size_mb(),
+        "chunk_upload_threshold_mb": await config.upload.chunk_upload_threshold_mb(),
+        "max_parallel_chunks": await config.upload.max_parallel_chunks(),
+        "max_concurrency_per_user": await config.upload.max_concurrency_per_user(),
+        "chunk_retry_max": await config.upload.chunk_retry_max(),
+        "chunk_retry_base_ms": await config.upload.chunk_retry_base_ms(),
+        "chunk_retry_max_ms": await config.upload.chunk_retry_max_ms(),
+        "enable_resumable": await config.upload.enable_resumable(),
+        "max_single_file_mb": await config.upload.max_single_file_mb(),
+    }
+
+
 @uploads_router.post(
     "",
     summary="初始化分片上传",
@@ -81,13 +95,7 @@ async def init_upload(
         part_size=data.part_size,
         overwrite=data.overwrite,
     )
-    upload_config = {
-        "chunk_size_mb": await config.upload.chunk_size_mb(),
-        "chunk_upload_threshold_mb": await config.upload.chunk_upload_threshold_mb(),
-        "max_parallel_chunks": await config.upload.max_parallel_chunks(),
-        "enable_resumable": await config.upload.enable_resumable(),
-        "max_single_file_mb": await config.upload.max_single_file_mb(),
-    }
+    upload_config = await _build_upload_policy(config)
     return ResponseModel.success(
         data=DiskUploadInitOut(**result, upload_config=upload_config)
     )
@@ -100,13 +108,7 @@ async def init_upload(
     dependencies=[require_permissions(["disk:upload:init"])],
 )
 async def get_upload_policy(config: Config = Depends(get_config)):
-    data = {
-        "chunk_size_mb": await config.upload.chunk_size_mb(),
-        "chunk_upload_threshold_mb": await config.upload.chunk_upload_threshold_mb(),
-        "max_parallel_chunks": await config.upload.max_parallel_chunks(),
-        "enable_resumable": await config.upload.enable_resumable(),
-        "max_single_file_mb": await config.upload.max_single_file_mb(),
-    }
+    data = await _build_upload_policy(config)
     return ResponseModel.success(data=data)
 
 

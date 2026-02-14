@@ -47,7 +47,10 @@ export const mkdir = (payload: DiskMkdirIn) =>
     data: payload,
   })
 
-const uploadTimeout = Number(import.meta.env.VITE_UPLOAD_TIMEOUT ?? 1800000)
+const uploadRequestTimeout = Number(import.meta.env.VITE_UPLOAD_TIMEOUT ?? 1800000)
+const uploadChunkTimeout = Number(
+  import.meta.env.VITE_UPLOAD_CHUNK_TIMEOUT ?? import.meta.env.VITE_UPLOAD_TIMEOUT ?? 1800000,
+)
 
 export const uploadFiles = (
   payload: {
@@ -78,8 +81,7 @@ export const uploadFiles = (
       url: '/api/v1/me/files/upload',
       method: 'POST',
       data: formData,
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: uploadTimeout,
+      timeout: uploadRequestTimeout,
     },
     {
       onUploadProgress: options?.onUploadProgress,
@@ -118,7 +120,7 @@ export const uploadChunk = (
       url: `/api/v1/me/uploads/${payload.upload_id}/parts/${payload.part_number}`,
       method: 'PUT',
       data: formData,
-      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: uploadChunkTimeout,
     },
     options,
   )
@@ -134,6 +136,7 @@ export const completeChunkUpload = (
       url: `/api/v1/me/uploads/${upload_id}/finalize`,
       method: 'POST',
       data: payload,
+      timeout: uploadRequestTimeout,
     },
     options,
   )
@@ -146,6 +149,7 @@ export const cancelChunkUpload = (
     {
       url: `/api/v1/me/uploads/${upload_id}`,
       method: 'DELETE',
+      timeout: uploadRequestTimeout,
     },
     options,
   )
@@ -155,6 +159,7 @@ export const getUploadStatus = (upload_id: string, options?: { signal?: AbortSig
     {
       url: `/api/v1/me/uploads/${upload_id}`,
       method: 'GET',
+      timeout: uploadRequestTimeout,
     },
     options,
   )
