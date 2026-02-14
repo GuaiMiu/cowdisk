@@ -53,6 +53,16 @@ class Config(CustomBaseSettings):
     APP_DEBUG: bool = False
     APP_HOST: str = "127.0.0.1"
     APP_PORT: int = 8000
+    # 日志
+    UVICORN_LOG_LEVEL: str = "INFO"
+    # 统一日志目录（相对路径基于 backend 目录）
+    UVICORN_LOG_DIR: str = "logs"
+    UVICORN_APP_LOG_FILE: str = "app.log"
+    UVICORN_ACCESS_LOG_FILE: str = "access.log"
+    # 兼容旧配置：若设置则仅覆盖 app 日志文件路径
+    UVICORN_LOG_FILE: str | None = None
+    UVICORN_LOG_MAX_BYTES: int = 10 * 1024 * 1024
+    UVICORN_LOG_BACKUP_COUNT: int = 10
 
     # JWT
     JWT_SECRET_KEY: str | None = None

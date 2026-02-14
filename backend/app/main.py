@@ -15,6 +15,7 @@ from app.api.index import index_router
 from app.api.v1.main_router import api_router
 from app.core.config import settings
 from app.core.init import app_init
+from app.core.logging import build_uvicorn_log_config, normalized_uvicorn_log_level
 from app.core.middleware import handle_middleware
 from app.handle import handle_exception
 
@@ -63,7 +64,7 @@ if __name__ == "__main__":
         port=settings.APP_PORT,
         proxy_headers=True,
         forwarded_allow_ips="*",
-        log_config="uvicorn_config.json",
-        log_level="debug",
+        log_config=build_uvicorn_log_config(),
+        log_level=normalized_uvicorn_log_level().lower(),
         workers=None if settings.APP_DEBUG else 1,
     )

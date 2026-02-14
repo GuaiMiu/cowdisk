@@ -69,7 +69,7 @@ def _build_async_database_url() -> str:
         settings.DATABASE_NAME,
     ]
     if any(field in (None, "") for field in required_fields):
-        logger.warning("数据库未配置完成，跳过数据库连接")
+        # logger.warning("数据库未配置完成，跳过数据库连接")
         return ""
 
     return (

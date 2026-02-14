@@ -14,6 +14,10 @@ ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 ENV PYTHONUNBUFFERED=1
 ENV DISK_ROOT=/app/data
+ENV UVICORN_LOG_DIR=/app/logs
+ENV PATH="/app/backend/.venv/bin:$PATH"
+ENV PYTHONPATH=/app/backend
+
 RUN apk add --no-cache nginx
 RUN mkdir -p /app/frontend /app/data /app/logs /app/config
 
@@ -32,10 +36,6 @@ COPY --from=frontend-builder /frontend/dist /app/frontend
 COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
-
-
-ENV PATH="/app/backend/.venv/bin:$PATH"
-ENV PYTHONPATH=/app/backend
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD wget -q -O /dev/null http://127.0.0.1/api/v1/system/setup/status || exit 1

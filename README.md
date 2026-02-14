@@ -16,10 +16,11 @@ settings in `backend/.env` before switching away from the default SQLite setup.
 ```powershell
 cd backend
 uv sync
-uv run python -m uvicorn app.main:app --reload
+uv run python -m app.main
 ```
 
 Server defaults to `http://127.0.0.1:8000`.
+日志配置可通过 `backend/.env` 调整：`UVICORN_LOG_LEVEL`、`UVICORN_LOG_DIR`、`UVICORN_APP_LOG_FILE`、`UVICORN_ACCESS_LOG_FILE`、`UVICORN_LOG_MAX_BYTES`、`UVICORN_LOG_BACKUP_COUNT`（默认目录 `logs`；Docker 中为 `/app/logs`）。
 
 ## Configuration Center
 
