@@ -5,7 +5,6 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
 import Table from '@/components/common/Table.vue'
 import Tag from '@/components/common/Tag.vue'
-import Pagination from '@/components/common/Pagination.vue'
 import Modal from '@/components/common/Modal.vue'
 import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
@@ -44,9 +43,6 @@ const boolOptions = computed(() => [
 const formOpen = ref(false)
 const deleteConfirm = ref(false)
 const currentMenu = ref<MenuOut | null>(null)
-const keyword = ref('')
-const statusFilter = ref('all')
-const typeFilter = ref('all')
 const toggling = ref(new Set<number>())
 
 const form = reactive({
@@ -79,24 +75,6 @@ const parentOptions = computed(() => [
     value: String(item.id || 0),
   })),
 ])
-
-const filteredMenus = computed(() => {
-  const keywordValue = keyword.value.trim().toLowerCase()
-  return menuStore.items.value.filter((menu) => {
-    const statusMatch =
-      statusFilter.value === 'all' || (statusFilter.value === 'true' ? !!menu.status : !menu.status)
-    const typeMatch = typeFilter.value === 'all' || String(menu.type ?? '') === typeFilter.value
-    if (!statusMatch || !typeMatch) {
-      return false
-    }
-    if (!keywordValue) {
-      return true
-    }
-    return [menu.name, menu.permission_char, menu.router_path]
-      .filter(Boolean)
-      .some((field) => String(field).toLowerCase().includes(keywordValue))
-  })
-})
 
 type TreeNode = MenuOut & { children?: TreeNode[]; _level?: number }
 
@@ -139,7 +117,7 @@ const toggleCollapse = (id: number) => {
 }
 
 const treeRows = computed(() => {
-  const source = filteredMenus.value
+  const source = menuStore.items.value
   if (!source.length) {
     return [] as Array<MenuOut & { _level: number }>
   }
@@ -178,7 +156,7 @@ const treeRows = computed(() => {
 
 const treeMap = computed(() => {
   const map = new Map<number, TreeNode>()
-  const source = filteredMenus.value
+  const source = menuStore.items.value
   source.forEach((item) => {
     if (item.id) {
       map.set(item.id, { ...item })
@@ -329,41 +307,14 @@ onMounted(() => {
   <section class="page">
     <PageHeader :title="t('admin.menu.title')" :subtitle="t('admin.menu.subtitle')">
       <template #actions>
-        <Button variant="secondary" @click="menuStore.fetchMenus(menuStore.page.value)">
+        <Button variant="secondary" @click="menuStore.fetchMenus()">
           {{ t('admin.menu.refresh') }}
         </Button>
-        <Button v-permission="'system:menu:add'" @click="openCreate">{{
+        <Button v-permission="'system:menu:create'" @click="openCreate">{{
           t('admin.menu.add')
         }}</Button>
       </template>
     </PageHeader>
-
-    <div class="filters">
-      <Input
-        v-model="keyword"
-        :label="t('admin.menu.searchLabel')"
-        :placeholder="t('admin.menu.searchPlaceholder')"
-      />
-      <Select
-        v-model="typeFilter"
-        :label="t('admin.menu.typeLabel')"
-        :options="[
-          { label: t('admin.menu.typeOptions.all'), value: 'all' },
-          { label: t('admin.menu.typeOptions.directory'), value: '1' },
-          { label: t('admin.menu.typeOptions.menu'), value: '2' },
-          { label: t('admin.menu.typeOptions.button'), value: '3' },
-        ]"
-      />
-      <Select
-        v-model="statusFilter"
-        :label="t('admin.menu.statusLabel')"
-        :options="[
-          { label: t('admin.menu.statusOptions.all'), value: 'all' },
-          { label: t('admin.menu.statusOptions.enabled'), value: 'true' },
-          { label: t('admin.menu.statusOptions.disabled'), value: 'false' },
-        ]"
-      />
-    </div>
 
     <div class="table-wrap">
       <Table :columns="columns" :rows="treeRows" :min-rows="menuStore.size.value" scrollable fill>
@@ -377,7 +328,8 @@ onMounted(() => {
             >
               {{ collapsed.has(Number(row.id ?? 0)) ? '▸' : '▾' }}
             </button>
-            <span class="tree-label">{{ row.name }}</span>
+            <span v-else class="tree-toggle tree-toggle--placeholder"></span>
+            <span class="tree-label" :class="`tree-label--type-${row.type ?? 2}`">{{ row.name }}</span>
           </span>
         </template>
         <template #cell-type="{ row }">
@@ -403,7 +355,7 @@ onMounted(() => {
             <Button
               size="sm"
               variant="secondary"
-              v-permission="'system:menu:edit'"
+              v-permission="'system:menu:update'"
               @click="openEdit(row)"
             >
               {{ t('common.edit') }}
@@ -421,18 +373,6 @@ onMounted(() => {
       </Table>
     </div>
 
-    <Pagination
-      :total="menuStore.total.value"
-      :page-size="menuStore.size.value"
-      :current-page="menuStore.page.value"
-      @update:currentPage="menuStore.fetchMenus"
-      @update:pageSize="
-        (size) => {
-          menuStore.size.value = size
-          menuStore.fetchMenus(1)
-        }
-      "
-    />
   </section>
 
   <Modal
@@ -527,7 +467,7 @@ onMounted(() => {
   gap: var(--space-4);
   height: 100%;
   min-height: 0;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto 1fr;
   overflow: hidden;
 }
 
@@ -546,16 +486,6 @@ onMounted(() => {
 .form {
   display: grid;
   gap: var(--space-3);
-}
-
-.filters {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(160px, 200px) minmax(160px, 200px);
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
 }
 
 .tree-name {
@@ -583,9 +513,24 @@ onMounted(() => {
   font-weight: 600;
 }
 
-@media (max-width: 768px) {
-  .filters {
-    grid-template-columns: 1fr;
-  }
+.tree-label--type-1 {
+  font-weight: 700;
 }
+
+.tree-label--type-2 {
+  font-weight: 600;
+}
+
+.tree-label--type-3 {
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.tree-toggle--placeholder {
+  opacity: 0;
+  cursor: default;
+  pointer-events: none;
+}
+
 </style>
+

@@ -15,7 +15,7 @@ import { usePublicShare } from '@/composables/usePublicShare'
 import { useSelection } from '@/composables/useSelection'
 import { formatBytes, formatTime } from '@/utils/format'
 import { getFileKind } from '@/utils/fileType'
-import type { DiskEntry } from '@/types/disk'
+import type { ShareEntry } from '@/types/share'
 import { previewShare } from '@/api/modules/shares'
 import { Download } from 'lucide-vue-next'
 
@@ -29,7 +29,7 @@ const autoCode = computed(() => {
 })
 const redirectCount = ref(5)
 let redirectTimer: number | null = null
-const asEntry = (row: unknown) => row as DiskEntry
+const asEntry = (row: unknown) => row as ShareEntry
 const { t } = useI18n({ useScope: 'global' })
 const rootDirName = computed(
   () => (share.share.value as { name?: string } | null)?.name || t('sharePublic.list.title'),
@@ -39,7 +39,7 @@ const previewOpen = ref(false)
 const previewItems = ref<Array<{ src: string; name?: string }>>([])
 const previewIndex = ref(0)
 const previewUrls = ref<string[]>([])
-const previewEntries = ref<Array<{ name: string; path?: string }>>([])
+const previewEntries = ref<Array<{ id: number; name: string; path?: string }>>([])
 const previewLoading = ref(new Set<number>())
 const pdfOpen = ref(false)
 const pdfSrc = ref<string | null>(null)
@@ -51,10 +51,8 @@ const videoName = ref('')
 const videoType = ref<string | null>(null)
 const videoUrls = ref<string[]>([])
 const selectAllRef = ref<HTMLInputElement | null>(null)
-const selection = useSelection(
-  () => share.items.value,
-  (item) => `${item.path || ''}|${item.name}`,
-)
+const selection = useSelection(() => share.items.value, (item) => String(item.id))
+const shareStack = ref<Array<{ id: number; name: string }>>([])
 const goHome = () => {
   window.location.href = '/'
 }
@@ -66,20 +64,22 @@ const columns = computed(() => [
   { key: 'type', label: t('sharePublic.columns.type'), width: '90px' },
 ])
 
-const displayPath = computed(() => {
+const rootFolderId = computed(() => (share.share.value as { fileId?: number } | null)?.fileId ?? null)
+const breadcrumbItems = computed(() => {
   if (share.locked.value || share.isFile.value || share.errorMessage.value) {
-    return '/'
+    return []
   }
+  const items = [{ id: null as number | null, label: t('fileBreadcrumb.root') }]
   if (!enteredRoot.value) {
-    return '/'
+    return items
   }
-  const base = rootDirName.value
-  const current = share.currentPath.value || '/'
-  if (current === '/' || current === '') {
-    return `/${base}`
+  if (rootFolderId.value !== null) {
+    items.push({ id: rootFolderId.value, label: rootDirName.value })
   }
-  const trimmed = current.replace(/^\//, '')
-  return `/${base}/${trimmed}`
+  shareStack.value.forEach((item) => {
+    items.push({ id: item.id, label: item.name })
+  })
+  return items
 })
 
 const getVideoMime = (name: string) => {
@@ -203,7 +203,11 @@ const ensureImagePreview = async (index: number) => {
   }
   previewLoading.value = new Set(previewLoading.value).add(index)
   try {
-    const result = await previewShare(token, { path: entry.path }, share.accessToken.value ?? undefined)
+    const result = await previewShare(
+      token,
+      { file_id: entry.id },
+      share.accessToken.value ?? undefined,
+    )
     const url = URL.createObjectURL(result.blob)
     previewUrls.value = [...previewUrls.value, url]
     const next = [...previewItems.value]
@@ -216,47 +220,55 @@ const ensureImagePreview = async (index: number) => {
   }
 }
 
-const openImagePreview = async (name: string, path?: string) => {
+const openImagePreview = async (name: string, fileId?: number, path?: string) => {
   clearImagePreview()
   const entries = share.items.value
     .filter((item) => !item.is_dir && getFileKind(item.name, false) === 'image')
-    .map((item) => ({ name: item.name, path: item.path as string | undefined }))
-  const list = entries.length ? entries : [{ name, path }]
+    .map((item) => ({ id: item.id, name: item.name, path: item.path as string | undefined }))
+  const list = entries.length ? entries : [{ id: fileId ?? 0, name, path }]
   previewEntries.value = list
   previewItems.value = list.map((entry) => ({ src: '', name: entry.name }))
-  const currentIndex = Math.max(0, list.findIndex((entry) => entry.path === path && entry.name === name))
+  const currentIndex = Math.max(0, list.findIndex((entry) => entry.id === fileId))
   previewIndex.value = currentIndex
   previewOpen.value = true
   await ensureImagePreview(currentIndex)
   await Promise.all([ensureImagePreview(currentIndex - 1), ensureImagePreview(currentIndex + 1)])
 }
 
-const openPreviewForFile = async (name: string, path?: string) => {
-  const kind = getFileKind(name, false)
+const openPreviewForFile = async (entry: ShareEntry) => {
+  const kind = getFileKind(entry.name, false)
   if (kind === 'image') {
-    await openImagePreview(name, path)
+    await openImagePreview(entry.name, entry.id, entry.path)
     return
   }
   if (kind === 'pdf') {
-    const result = await previewShare(token, { path }, share.accessToken.value ?? undefined)
+    const result = await previewShare(
+      token,
+      { file_id: entry.id },
+      share.accessToken.value ?? undefined,
+    )
     const url = URL.createObjectURL(result.blob)
     pdfUrls.value = [url]
     pdfSrc.value = url
-    pdfName.value = name
+    pdfName.value = entry.name
     pdfOpen.value = true
     return
   }
   if (kind === 'video') {
-    const result = await previewShare(token, { path }, share.accessToken.value ?? undefined)
+    const result = await previewShare(
+      token,
+      { file_id: entry.id },
+      share.accessToken.value ?? undefined,
+    )
     const url = URL.createObjectURL(result.blob)
     videoUrls.value = [url]
     videoSrc.value = url
-    videoName.value = name
-    videoType.value = getVideoMime(name)
+    videoName.value = entry.name
+    videoType.value = getVideoMime(entry.name)
     videoOpen.value = true
     return
   }
-  await share.preview(path)
+  await share.preview(entry.id)
 }
 
 const handlePreviewChange = async (index: number) => {
@@ -324,7 +336,7 @@ watch(
 watch(
   () => share.items.value,
   (items) => {
-    const valid = new Set(items.map((item) => `${item.path || ''}|${item.name}`))
+    const valid = new Set(items.map((item) => String(item.id)))
     const next = new Set<string>()
     selection.selected.value.forEach((key) => {
       if (valid.has(key)) {
@@ -346,11 +358,14 @@ onBeforeUnmount(() => {
 
 const showRootCard = () => {
   enteredRoot.value = false
-  share.currentPath.value = '/'
+  shareStack.value = []
+  const rootId = (share.share.value as { fileId?: number } | null)?.fileId ?? 0
   share.items.value = [
     {
+      id: rootId,
       name: rootDirName.value,
       path: '',
+      parent_id: null,
       is_dir: true,
       size: 0,
     },
@@ -359,10 +374,12 @@ const showRootCard = () => {
 
 const openRootDirectory = async () => {
   enteredRoot.value = true
-  await share.loadEntries()
+  shareStack.value = []
+  const rootId = rootFolderId.value
+  await share.loadEntries(rootId ?? null)
 }
 
-const openDirectory = async (entry: DiskEntry) => {
+const openDirectory = async (entry: ShareEntry) => {
   if (!entry.is_dir) {
     return
   }
@@ -370,7 +387,30 @@ const openDirectory = async (entry: DiskEntry) => {
     await openRootDirectory()
     return
   }
-  await share.loadEntries(entry.path as string)
+  shareStack.value = [...shareStack.value, { id: entry.id, name: entry.name }]
+  await share.loadEntries(entry.id)
+}
+
+const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
+  if (targetId === null) {
+    showRootCard()
+    return
+  }
+  if (typeof targetId === 'string') {
+    return
+  }
+  if (targetId === rootFolderId.value) {
+    await openRootDirectory()
+    return
+  }
+  const index = shareStack.value.findIndex((item) => item.id === targetId)
+  if (index >= 0) {
+    shareStack.value = shareStack.value.slice(0, index + 1)
+  } else {
+    shareStack.value = []
+  }
+  enteredRoot.value = true
+  await share.loadEntries(targetId)
 }
 </script>
 
@@ -474,11 +514,19 @@ const openDirectory = async (entry: DiskEntry) => {
       <div class="file-card__actions">
         <Button
           variant="secondary"
-          @click="openPreviewForFile((share.share.value as { name?: string } | null)?.name || 'file')"
+          @click="openPreviewForFile({
+            id: (share.share.value as any)?.fileId || 0,
+            name: (share.share.value as any)?.name || 'file',
+            parent_id: null,
+            is_dir: false,
+            size: 0,
+          })"
         >{{
           t('sharePublic.actions.preview')
         }}</Button>
-        <Button @click="share.download()">{{ t('sharePublic.actions.download') }}</Button>
+        <Button @click="share.download((share.share.value as any)?.fileId)">
+          {{ t('sharePublic.actions.download') }}
+        </Button>
       </div>
     </div>
 
@@ -513,25 +561,8 @@ const openDirectory = async (entry: DiskEntry) => {
             </div>
           </div>
           <FileBreadcrumb
-            :path="displayPath"
-            @navigate="(path) => {
-              const base = `/${rootDirName}`
-              if (path === '/') {
-                showRootCard()
-                return
-              }
-              if (path === base) {
-                enteredRoot = true
-                share.loadEntries()
-                return
-              }
-              const normalized = path.startsWith(base)
-                ? path.slice(base.length)
-                : path
-              const trimmed = normalized.replace(/^\//, '')
-              enteredRoot = true
-              share.loadEntries(trimmed || undefined)
-            }"
+            :items="breadcrumbItems"
+            @navigate="handleBreadcrumbNavigate"
           />
         </div>
         <div class="share__table">
@@ -595,7 +626,7 @@ const openDirectory = async (entry: DiskEntry) => {
                 class="name name--clickable"
                 @click="asEntry(row).is_dir
                   ? openDirectory(asEntry(row))
-                  : openPreviewForFile(asEntry(row).name, asEntry(row).path as string)"
+                  : openPreviewForFile(asEntry(row))"
               >
                 <FileTypeIcon :name="asEntry(row).name" :is-dir="asEntry(row).is_dir" />
                 <span class="name__text">{{ asEntry(row).name }}</span>
@@ -605,7 +636,7 @@ const openDirectory = async (entry: DiskEntry) => {
                   size="sm"
                   variant="ghost"
                   :aria-label="t('sharePublic.table.download')"
-                  @click="share.download(asEntry(row).path as string)"
+                  @click="share.download(asEntry(row).id)"
                 >
                   <Download :size="14" />
                 </IconButton>

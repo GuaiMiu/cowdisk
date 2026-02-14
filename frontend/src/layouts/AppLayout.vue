@@ -6,6 +6,7 @@ import { Cloud, Folder, PanelLeftClose, PanelLeftOpen, Share2, Trash2 } from 'lu
 import IconButton from '@/components/common/IconButton.vue'
 import Dropdown from '@/components/common/Dropdown.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useAppStore } from '@/stores/app'
 import { getAvatar } from '@/api/modules/auth'
 import { getLocale, setLocale } from '@/i18n'
 
@@ -25,7 +26,10 @@ const syncSidebarWithViewport = () => {
   sidebarOpen.value = true
 }
 const authStore = useAuthStore()
+const appStore = useAppStore()
 const userLabel = computed(() => authStore.me?.nickname || authStore.me?.username || '')
+const siteName = computed(() => appStore.siteName || 'CowDisk')
+const siteLogoUrl = computed(() => appStore.siteLogoUrl || '')
 const { t } = useI18n({ useScope: 'global' })
 const router = useRouter()
 
@@ -133,8 +137,9 @@ onMounted(() => {
   >
     <aside class="layout__sidebar">
       <div class="brand">
-        <Cloud class="brand__icon" :size="20" />
-        <span class="brand__text">CowDisk</span>
+        <img v-if="siteLogoUrl" :src="siteLogoUrl" alt="logo" class="brand__logo" />
+        <Cloud v-else class="brand__icon" :size="20" />
+        <span class="brand__text" :title="siteName">{{ siteName }}</span>
         <IconButton
           size="sm"
           variant="ghost"
@@ -268,6 +273,9 @@ onMounted(() => {
   gap: var(--space-4);
   padding: var(--space-5);
   overflow: hidden;
+  transition:
+    grid-template-columns 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    gap 220ms ease;
 }
 
 .layout--collapsed {
@@ -281,20 +289,28 @@ onMounted(() => {
 }
 
 .layout--collapsed .brand__text {
-  display: none;
+  opacity: 0;
+  max-width: 0;
+  transform: translateX(-6px);
 }
 
 .layout--collapsed .nav__item span {
-  display: none;
+  opacity: 0;
+  transform: translateX(-4px);
+  width: 0;
+  max-width: 0;
+  overflow: hidden;
 }
 
 .layout--collapsed .nav__item {
   justify-content: center;
   padding: var(--space-2) 0;
+  gap: 0;
 }
 
 .layout--collapsed .brand {
   justify-content: center;
+  gap: 0;
 }
 
 .layout__sidebar {
@@ -312,8 +328,9 @@ onMounted(() => {
   overflow-x: hidden;
   min-height: 0;
   transition:
-    opacity 160ms ease,
-    transform 160ms ease;
+    opacity 220ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .layout__toolbar {
@@ -356,8 +373,25 @@ onMounted(() => {
   color: var(--color-primary);
 }
 
+.brand__logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
 .brand__text {
   line-height: 1;
+  flex: 1;
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition:
+    opacity 180ms ease,
+    transform 220ms ease,
+    max-width 220ms ease;
 }
 
 .nav {
@@ -375,7 +409,15 @@ onMounted(() => {
   color: var(--color-muted);
   transition:
     background var(--transition-base),
-    color var(--transition-base);
+    color var(--transition-base),
+    padding 220ms ease,
+    justify-content 220ms ease;
+}
+
+.nav__item span {
+  transition:
+    opacity 160ms ease,
+    transform 220ms ease;
 }
 
 .nav__icon {

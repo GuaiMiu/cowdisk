@@ -1,0 +1,42 @@
+<script setup lang="ts">
+import PageHeader from '@/components/common/PageHeader.vue'
+import Button from '@/components/common/Button.vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+
+const goFiles = () => {
+  router.push('/app/files')
+}
+</script>
+
+<template>
+  <section class="page">
+    <PageHeader title="上传管理" subtitle="上传入口在网盘文件页完成" />
+    <div class="panel">
+      <p class="panel__desc">请前往网盘文件页进行上传与分片管理。</p>
+      <Button variant="primary" @click="goFiles">前往网盘文件</Button>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.page {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.panel {
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.panel__desc {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+</style>

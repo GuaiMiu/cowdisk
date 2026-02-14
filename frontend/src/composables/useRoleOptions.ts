@@ -10,8 +10,17 @@ export const useRoleOptions = () => {
 
   const load = async () => {
     try {
-      const data = await getRoleList({ page: 1, size: 1000 })
-      options.value = (data.items || []).map((role) => ({
+      const items = []
+      let cursor: string | null | undefined = null
+      for (let i = 0; i < 20; i += 1) {
+        const data = await getRoleList({ cursor, size: 100 })
+        items.push(...(data.items || []))
+        cursor = data.next_page
+        if (!cursor) {
+          break
+        }
+      }
+      options.value = items.map((role) => ({
         id: role.id || 0,
         label: role.name || '未命名角色',
         description: role.permission_char || '',

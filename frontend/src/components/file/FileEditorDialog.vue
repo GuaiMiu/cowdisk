@@ -9,11 +9,10 @@ import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { listDir } from '@/api/modules/userDisk'
 import type { DiskEntry } from '@/types/disk'
 import { getFileKind } from '@/utils/fileType'
-import { toRelativePath } from '@/utils/path'
 
 type TreeNode = {
+  id: number | null
   name: string
-  path: string
   isDir: boolean
   children: TreeNode[]
   expanded: boolean
@@ -25,9 +24,9 @@ type TreeNode = {
 const props = withDefaults(
   defineProps<{
     open: boolean
-    rootPath: string
+    rootId: number | null
     rootName?: string
-    activePath?: string | null
+    activeId?: number | null
     language?: string
     modelValue: string
     loading?: boolean
@@ -35,7 +34,7 @@ const props = withDefaults(
   }>(),
   {
     rootName: '',
-    activePath: null,
+    activeId: null,
     language: 'plaintext',
     loading: false,
     saving: false,
@@ -44,7 +43,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (event: 'update:modelValue', value: string): void
-  (event: 'select', payload: { path: string; name: string }): void
+  (event: 'select', payload: { fileId: number; name: string }): void
   (event: 'save'): void
   (event: 'close'): void
 }>()
@@ -52,8 +51,8 @@ const emit = defineEmits<{
 const { t } = useI18n({ useScope: 'global' })
 
 const rootNode = ref<TreeNode>({
+  id: null,
   name: props.rootName || t('files.rootName'),
-  path: '',
   isDir: true,
   children: [],
   expanded: true,
@@ -61,8 +60,6 @@ const rootNode = ref<TreeNode>({
   loaded: false,
   editable: false,
 })
-
-const normalizedRootPath = computed(() => toRelativePath(props.rootPath || '/'))
 
 const rootLabel = computed(() => props.rootName || t('files.rootName'))
 const sidebarOpen = ref(true)
@@ -80,8 +77,8 @@ const buildNode = (entry: DiskEntry): TreeNode => {
   const kind = getFileKind(entry.name, entry.is_dir)
   const editable = !entry.is_dir && (kind === 'text' || kind === 'code')
   return {
+    id: entry.id,
     name: entry.name,
-    path: entry.path,
     isDir: entry.is_dir,
     children: [],
     expanded: false,
@@ -97,7 +94,7 @@ const loadChildren = async (node: TreeNode) => {
   }
   node.loading = true
   try {
-    const data = await listDir(node.path)
+    const data = await listDir(node.id ?? null)
     node.children = (data.items || []).map((item) => buildNode(item))
     node.loaded = true
   } finally {
@@ -125,7 +122,9 @@ const onNodeClick = (node: TreeNode) => {
   if (!node.editable) {
     return
   }
-  emit('select', { path: node.path, name: node.name })
+  if (node.id !== null) {
+    emit('select', { fileId: node.id, name: node.name })
+  }
 }
 
 const flatNodes = computed(() => {
@@ -184,14 +183,14 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => [props.open, props.rootPath, props.rootName],
+  () => [props.open, props.rootId, props.rootName],
   ([open]) => {
     if (!open) {
       return
     }
     rootNode.value = {
+      id: props.rootId ?? null,
       name: rootLabel.value,
-      path: normalizedRootPath.value,
       isDir: true,
       children: [],
       expanded: true,
@@ -204,7 +203,7 @@ watch(
 )
 
 watch(rootLabel, (value) => {
-  if (rootNode.value.path === normalizedRootPath.value) {
+  if (rootNode.value.id === (props.rootId ?? null)) {
     rootNode.value.name = value
   }
 })
@@ -228,10 +227,10 @@ watch(rootLabel, (value) => {
         <div class="editor__tree">
           <div
             v-for="{ node, level } in visibleNodes"
-            :key="`${node.path || 'root'}`"
+            :key="`${node.id ?? 'root'}`"
             class="editor__row"
             :class="{
-              'is-selected': activePath === node.path,
+              'is-selected': activeId === node.id,
               'is-file': !node.isDir,
               'is-disabled': !node.isDir && !node.editable,
               'is-search': searchMode,
@@ -299,7 +298,7 @@ watch(rootLabel, (value) => {
           </div>
         </div>
 
-        <div v-if="!activePath" class="editor__placeholder">
+        <div v-if="!activeId" class="editor__placeholder">
           {{ t('fileEditorDialog.placeholderSelect') }}
         </div>
         <div v-else-if="loading" class="editor__placeholder">
@@ -323,7 +322,7 @@ watch(rootLabel, (value) => {
 
     <template #footer>
       <Button variant="ghost" @click="emit('close')">{{ t('fileEditorDialog.cancel') }}</Button>
-      <Button :loading="saving" :disabled="!activePath" @click="emit('save')">{{
+      <Button :loading="saving" :disabled="!activeId" @click="emit('save')">{{
         t('fileEditorDialog.save')
       }}</Button>
     </template>

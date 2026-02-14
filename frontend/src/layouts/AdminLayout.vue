@@ -7,12 +7,36 @@ import MenuTree from '@/components/common/MenuTree.vue'
 import IconButton from '@/components/common/IconButton.vue'
 import Dropdown from '@/components/common/Dropdown.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useAppStore } from '@/stores/app'
 import { getAvatar } from '@/api/modules/auth'
 import { getLocale, setLocale } from '@/i18n'
+import type { MenuRoutersOut } from '@/types/menu'
 
 const authStore = useAuthStore()
+const appStore = useAppStore()
 const router = useRouter()
-const menus = computed(() => authStore.routers)
+const filterAdminMenus = (items: MenuRoutersOut[]): MenuRoutersOut[] => {
+  return items
+    .filter((item) => {
+      const perm = item.permission_char || ''
+      const path = (item.router_path || '').trim().toLowerCase()
+      if (perm.startsWith('disk:')) {
+        return false
+      }
+      if (path === 'disk-permissions') {
+        return false
+      }
+      return true
+    })
+    .map((item) => ({
+      ...item,
+      children: item.children ? filterAdminMenus(item.children) : [],
+    }))
+}
+
+const menus = computed(() => filterAdminMenus(authStore.routers))
+const siteName = computed(() => appStore.siteName || 'CowDisk')
+const siteLogoUrl = computed(() => appStore.siteLogoUrl || '')
 const { t } = useI18n({ useScope: 'global' })
 const sidebarOpen = ref(true)
 let mobileQuery: MediaQueryList | null = null
@@ -129,8 +153,9 @@ onMounted(() => {
   >
     <aside class="layout__sidebar">
       <div class="brand">
-        <LayoutGrid class="brand__icon" :size="20" />
-        <span class="brand__text">{{ t('admin.layout.brand') }}</span>
+        <img v-if="siteLogoUrl" :src="siteLogoUrl" alt="logo" class="brand__logo" />
+        <LayoutGrid v-else class="brand__icon" :size="20" />
+        <span class="brand__text" :title="siteName">{{ siteName }}</span>
         <IconButton
           size="sm"
           variant="ghost"
@@ -252,6 +277,9 @@ onMounted(() => {
   gap: var(--space-4);
   padding: var(--space-5);
   overflow: hidden;
+  transition:
+    grid-template-columns 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    gap 220ms ease;
 }
 
 .layout--collapsed {
@@ -265,33 +293,50 @@ onMounted(() => {
 }
 
 .layout--collapsed .brand__text {
-  display: none;
+  opacity: 0;
+  max-width: 0;
+  transform: translateX(-6px);
 }
 
 .layout--collapsed .brand {
   justify-content: center;
+  gap: 0;
 }
 
 .layout--collapsed :deep(.menu__item span) {
-  display: none;
+  opacity: 0;
+  transform: translateX(-4px);
+  width: 0;
+  max-width: 0;
+  overflow: hidden;
 }
 
 .layout--collapsed :deep(.menu__group-title span) {
-  display: none;
+  opacity: 0;
+  transform: translateX(-4px);
+  width: 0;
+  max-width: 0;
+  overflow: hidden;
 }
 
 .layout--collapsed :deep(.menu__chevron) {
-  display: none;
+  opacity: 0;
+  transform: scale(0.9);
+  width: 0;
+  margin-left: 0;
+  overflow: hidden;
 }
 
 .layout--collapsed :deep(.menu__item) {
   justify-content: center;
   padding: var(--space-2) 0;
+  gap: 0;
 }
 
 .layout--collapsed :deep(.menu__group-title) {
   justify-content: center;
   padding: var(--space-2) 0;
+  gap: 0;
 }
 
 .layout__sidebar {
@@ -308,6 +353,10 @@ onMounted(() => {
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
+  transition:
+    opacity 220ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .layout__toolbar {
@@ -350,8 +399,25 @@ onMounted(() => {
   color: var(--color-primary);
 }
 
+.brand__logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
 .brand__text {
   line-height: 1;
+  flex: 1;
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition:
+    opacity 180ms ease,
+    transform 220ms ease,
+    max-width 220ms ease;
 }
 
 .nav {
@@ -368,6 +434,14 @@ onMounted(() => {
   width: 18px;
   height: 18px;
   flex: 0 0 18px;
+}
+
+:deep(.menu__item span),
+:deep(.menu__group-title span),
+:deep(.menu__chevron) {
+  transition:
+    opacity 160ms ease,
+    transform 220ms ease;
 }
 
 .toolbar__title {

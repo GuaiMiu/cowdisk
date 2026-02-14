@@ -92,7 +92,7 @@ const { t } = useI18n({ useScope: 'global' })
       <Button
         v-if="selectedCount > 0"
         variant="secondary"
-        v-permission="'disk:file:rename'"
+        v-permission="'disk:file:move'"
         @click="emit('move-selected')"
       >
         <FolderInput :size="16" />

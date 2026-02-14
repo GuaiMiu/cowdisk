@@ -1,12 +1,13 @@
 import { computed, ref } from 'vue'
 
-export const useSelection = <T extends { path?: string; id?: string }>(
+export const useSelection = <T extends { path?: string; id?: string | number }>(
   items: () => T[],
   keyGetter?: (item: T) => string,
 ) => {
   const selected = ref(new Set<string>())
 
-  const getKey = (item: T) => (keyGetter ? keyGetter(item) : item.path || String(item.id))
+  const getKey = (item: T) =>
+    keyGetter ? keyGetter(item) : (item.id !== undefined ? String(item.id) : item.path || '')
 
   const isSelected = (item: T) => selected.value.has(getKey(item))
 

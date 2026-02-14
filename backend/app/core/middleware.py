@@ -11,6 +11,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.core.config import settings
+from app.audit.middleware import AuditContextMiddleware
 
 
 def handle_middleware(app: FastAPI):
@@ -20,4 +21,5 @@ def handle_middleware(app: FastAPI):
     app.add_middleware(
         TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS.split(",")
     )
+    app.add_middleware(AuditContextMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=9)

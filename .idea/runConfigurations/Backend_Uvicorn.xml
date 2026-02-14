@@ -1,7 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Backend Uvicorn" type="PythonConfigurationType" factoryName="Python">
     <module name="cowdisk" />
-    <option name="ENV_FILES" value="$PROJECT_DIR$/backend/.env" />
+    <option name="ENV_FILES" value="" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
@@ -15,7 +15,7 @@
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="RUN_TOOL" value="true" />
     <option name="SCRIPT_NAME" value="uvicorn" />
-    <option name="PARAMETERS" value="app.main:app --reload" />
+    <option name="PARAMETERS" value="app.main:app --reload --log-config uvicorn_config.json" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="true" />
     <option name="MODULE_MODE" value="true" />

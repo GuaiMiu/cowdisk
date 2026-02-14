@@ -41,7 +41,9 @@ const classes = computed(() => ['input', props.error ? 'input--error' : ''])
       :readonly="readonly"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     />
-    <span v-if="error" class="field__error">{{ error }}</span>
+    <span class="field__error" :class="{ 'field__error--hidden': !error }">
+      {{ error || ' ' }}
+    </span>
   </label>
 </template>
 
@@ -49,6 +51,8 @@ const classes = computed(() => ['input', props.error ? 'input--error' : ''])
 .field {
   display: grid;
   gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
 }
 
 .field__label {
@@ -57,10 +61,14 @@ const classes = computed(() => ['input', props.error ? 'input--error' : ''])
 }
 
 .input {
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
+  line-height: 1.2;
   transition:
     border var(--transition-fast),
     box-shadow var(--transition-fast);
@@ -89,5 +97,11 @@ const classes = computed(() => ['input', props.error ? 'input--error' : ''])
 .field__error {
   font-size: 12px;
   color: var(--color-danger);
+  min-height: 16px;
+  line-height: 1.2;
+}
+
+.field__error--hidden {
+  opacity: 0;
 }
 </style>

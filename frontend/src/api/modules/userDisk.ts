@@ -3,37 +3,46 @@ import type { AxiosRequestConfig } from 'axios'
 import type {
   DiskCompressIn,
   DiskDeleteBatchOut,
-  DiskDownloadTokenIn,
   DiskEntry,
   DiskExtractIn,
-  DiskJobStatus,
   DiskListOut,
   DiskMkdirIn,
-  DiskRenameBatchOut,
-  DiskRenameItem,
+  DiskMoveBody,
+  DiskRenameBody,
   DiskTrashBatchIdsIn,
   DiskTrashBatchOut,
   DiskTrashListOut,
-  DiskUploadCompleteIn,
+  DiskUploadFinalizeIn,
   DiskUploadInitIn,
+  DiskUploadInitOut,
+  DiskUploadPolicyOut,
+  DiskUploadStatusOut,
   DiskUploadOut,
   DiskEditReadOut,
-  DiskEditSaveIn,
+  DiskEditSaveBody,
 } from '@/types/disk'
 
-export const listDir = (path = '', options?: { signal?: AbortSignal }) =>
+export const listDir = (
+  parent_id: number | null = null,
+  options?: { signal?: AbortSignal; cursor?: number; limit?: number; order?: string },
+) =>
   request<DiskListOut>(
     {
-      url: '/api/v1/user/disk/list',
+      url: '/api/v1/me/files',
       method: 'GET',
-      params: { path },
+      params: {
+        parent_id,
+        cursor: options?.cursor ?? 0,
+        limit: options?.limit ?? 200,
+        order: options?.order ?? 'name',
+      },
     },
     options,
   )
 
 export const mkdir = (payload: DiskMkdirIn) =>
   request<DiskEntry>({
-    url: '/api/v1/user/disk/mkdir',
+    url: '/api/v1/me/files/dir',
     method: 'POST',
     data: payload,
   })
@@ -41,7 +50,12 @@ export const mkdir = (payload: DiskMkdirIn) =>
 const uploadTimeout = Number(import.meta.env.VITE_UPLOAD_TIMEOUT ?? 1800000)
 
 export const uploadFiles = (
-  payload: { items: Array<{ file: File; filename?: string }>; path?: string; overwrite?: boolean },
+  payload: {
+    items: Array<{ file: File; filename?: string }>
+    parent_id?: number | null
+    name?: string | null
+    overwrite?: boolean
+  },
   options?: { onUploadProgress?: AxiosRequestConfig['onUploadProgress']; signal?: AbortSignal },
 ) => {
   const formData = new FormData()
@@ -52,11 +66,16 @@ export const uploadFiles = (
       formData.append('files', item.file)
     }
   })
-  formData.append('path', payload.path ?? '')
+  if (payload.parent_id !== undefined && payload.parent_id !== null) {
+    formData.append('parent_id', String(payload.parent_id))
+  }
+  if (payload.name) {
+    formData.append('name', payload.name)
+  }
   formData.append('overwrite', String(payload.overwrite ?? false))
   return request<DiskUploadOut>(
     {
-      url: '/api/v1/user/disk/upload',
+      url: '/api/v1/me/files/upload',
       method: 'POST',
       data: formData,
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -70,27 +89,34 @@ export const uploadFiles = (
 }
 
 export const initChunkUpload = (payload: DiskUploadInitIn, options?: { signal?: AbortSignal }) =>
-  request<{ upload_id: string }>(
+  request<DiskUploadInitOut>(
     {
-      url: '/api/v1/user/disk/upload/init',
+      url: '/api/v1/me/uploads',
       method: 'POST',
       data: payload,
     },
     options,
   )
 
+export const getUploadPolicy = (options?: { signal?: AbortSignal }) =>
+  request<DiskUploadPolicyOut>(
+    {
+      url: '/api/v1/me/uploads/policy',
+      method: 'GET',
+    },
+    options,
+  )
+
 export const uploadChunk = (
-  payload: { upload_id: string; index: number; chunk: Blob },
+  payload: { upload_id: string; part_number: number; chunk: Blob },
   options?: { signal?: AbortSignal },
 ) => {
   const formData = new FormData()
-  formData.append('upload_id', payload.upload_id)
-  formData.append('index', String(payload.index))
   formData.append('chunk', payload.chunk)
   return request<boolean>(
     {
-      url: '/api/v1/user/disk/upload/chunk',
-      method: 'POST',
+      url: `/api/v1/me/uploads/${payload.upload_id}/parts/${payload.part_number}`,
+      method: 'PUT',
       data: formData,
       headers: { 'Content-Type': 'multipart/form-data' },
     },
@@ -99,12 +125,13 @@ export const uploadChunk = (
 }
 
 export const completeChunkUpload = (
-  payload: DiskUploadCompleteIn,
+  upload_id: string,
+  payload: DiskUploadFinalizeIn,
   options?: { signal?: AbortSignal },
 ) =>
   request<DiskEntry>(
     {
-      url: '/api/v1/user/disk/upload/complete',
+      url: `/api/v1/me/uploads/${upload_id}/finalize`,
       method: 'POST',
       data: payload,
     },
@@ -112,140 +139,133 @@ export const completeChunkUpload = (
   )
 
 export const cancelChunkUpload = (
-  payload: { upload_id: string },
+  upload_id: string,
   options?: { signal?: AbortSignal },
 ) =>
   request<boolean>(
     {
-      url: '/api/v1/user/disk/upload/cancel',
-      method: 'POST',
-      data: payload,
+      url: `/api/v1/me/uploads/${upload_id}`,
+      method: 'DELETE',
     },
     options,
   )
 
-export const deletePaths = (paths: string[], recursive = false) =>
+export const getUploadStatus = (upload_id: string, options?: { signal?: AbortSignal }) =>
+  request<DiskUploadStatusOut>(
+    {
+      url: `/api/v1/me/uploads/${upload_id}`,
+      method: 'GET',
+    },
+    options,
+  )
+
+export const deleteFiles = (file_ids: number[]) =>
   request<DiskDeleteBatchOut>({
-    url: '/api/v1/user/disk',
+    url: '/api/v1/me/files',
     method: 'DELETE',
-    data: { paths, recursive },
+    data: { file_ids },
   })
 
-export const renamePaths = (items: DiskRenameItem[]) =>
-  request<DiskRenameBatchOut>({
-    url: '/api/v1/user/disk/rename',
-    method: 'POST',
-    data: { items },
+export const renameFile = (file_id: number, payload: DiskRenameBody) =>
+  request<DiskEntry>({
+    url: `/api/v1/me/files/${file_id}`,
+    method: 'PATCH',
+    data: { name: payload.new_name },
   })
 
-export const prepareDownload = (payload: DiskMkdirIn) =>
-  request<{ job_id: string }>({
-    url: '/api/v1/user/disk/download/prepare',
-    method: 'POST',
-    data: payload,
+export const moveFile = (file_id: number, payload: DiskMoveBody) =>
+  request<DiskEntry>({
+    url: `/api/v1/me/files/${file_id}`,
+    method: 'PATCH',
+    data: {
+      parentId: payload.target_parent_id,
+      name: payload.new_name ?? undefined,
+    },
   })
 
-export const downloadStatus = (jobId: string) =>
-  request<DiskJobStatus>({
-    url: '/api/v1/user/disk/download/status',
-    method: 'GET',
-    params: { job_id: jobId },
-  })
-
-export const createDownloadToken = (payload: DiskDownloadTokenIn) =>
-  request<{ token: string }>({
-    url: '/api/v1/user/disk/download/token',
-    method: 'POST',
-    data: payload,
-  })
-
-const getBaseUrl = () => import.meta.env.VITE_API_BASE_URL || window.location.origin
-
-const buildUrl = (path: string, params: Record<string, string>) => {
-  const url = new URL(path, getBaseUrl())
-  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value))
-  return url.toString()
-}
-
-export const getDownloadFileUrl = (token: string) =>
-  buildUrl('/api/v1/user/disk/download', { token })
-
-export const getDownloadJobUrl = (token: string) =>
-  buildUrl('/api/v1/user/disk/download/job', { token })
-
-export const getPreviewFileUrl = (token: string) => buildUrl('/api/v1/user/disk/preview', { token })
-
-export const previewFileByToken = (token: string) =>
+export const previewFile = (file_id: number) =>
   downloadBlob({
-    url: '/api/v1/user/disk/preview',
+    url: `/api/v1/me/files/${file_id}/content`,
     method: 'GET',
-    params: { token },
+    params: { disposition: 'inline' },
+  })
+
+export const downloadFile = (file_id: number) =>
+  downloadBlob({
+    url: `/api/v1/me/files/${file_id}/content`,
+    method: 'GET',
+    params: { disposition: 'attachment' },
+  })
+
+export const getDownloadUrl = (file_id: number) =>
+  request<{ url: string; expires_in: number }>({
+    url: `/api/v1/files/${file_id}/download-url`,
+    method: 'POST',
   })
 
 export const listTrash = () =>
   request<DiskTrashListOut>({
-    url: '/api/v1/user/disk/trash',
+    url: '/api/v1/me/trash',
     method: 'GET',
   })
 
 export const batchRestoreTrash = (payload: DiskTrashBatchIdsIn) =>
   request<DiskTrashBatchOut>({
-    url: '/api/v1/user/disk/trash/batch/restore',
+    url: '/api/v1/me/trash/batch/restore',
     method: 'POST',
     data: payload,
   })
 
 export const batchDeleteTrash = (payload: DiskTrashBatchIdsIn) =>
   request<DiskTrashBatchOut>({
-    url: '/api/v1/user/disk/trash/batch/delete',
+    url: '/api/v1/me/trash/batch/delete',
     method: 'POST',
     data: payload,
   })
 
 export const clearTrash = () =>
   request<{ cleared: number }>({
-    url: '/api/v1/user/disk/trash/clear',
+    url: '/api/v1/me/trash/clear',
     method: 'DELETE',
   })
 
 export const prepareCompress = (payload: DiskCompressIn) =>
   request<{ job_id: string }>({
-    url: '/api/v1/user/disk/compress/prepare',
+    url: '/api/v1/me/archives/compress',
     method: 'POST',
     data: payload,
   })
 
 export const compressStatus = (jobId: string) =>
   request<{ status?: string; message?: string }>({
-    url: '/api/v1/user/disk/compress/status',
+    url: '/api/v1/me/archives/compress/status',
     method: 'GET',
     params: { job_id: jobId },
   })
 
 export const prepareExtract = (payload: DiskExtractIn) =>
   request<{ job_id: string }>({
-    url: '/api/v1/user/disk/extract/prepare',
+    url: '/api/v1/me/archives/extract',
     method: 'POST',
     data: payload,
   })
 
 export const extractStatus = (jobId: string) =>
   request<{ status?: string; message?: string }>({
-    url: '/api/v1/user/disk/extract/status',
+    url: '/api/v1/me/archives/extract/status',
     method: 'GET',
     params: { job_id: jobId },
   })
 
-export const readEditFile = (path: string) =>
+export const readEditFile = (file_id: number) =>
   request<DiskEditReadOut>({
-    url: '/api/v1/user/disk/edit',
+    url: `/api/v1/me/files/${file_id}/text`,
     method: 'GET',
-    params: { path },
   })
 
-export const saveEditFile = (payload: DiskEditSaveIn) =>
+export const saveEditFile = (file_id: number, payload: DiskEditSaveBody) =>
   request<DiskEntry>({
-    url: '/api/v1/user/disk/edit',
-    method: 'POST',
+    url: `/api/v1/me/files/${file_id}/text`,
+    method: 'PUT',
     data: payload,
   })

@@ -84,7 +84,7 @@ const {
   onThumbMouseDown,
 } = useOverlayScrollbar()
 
-const isEditing = (entry: DiskEntry) => props.editingEntry?.path === entry.path
+const isEditing = (entry: DiskEntry) => props.editingEntry?.id === entry.id
 const isEditableFile = (entry: DiskEntry | null) => {
   if (!entry || entry.is_dir) {
     return false
@@ -113,7 +113,7 @@ watch(
     }
     renameValue.value = name ?? entry.name ?? ''
     void nextTick(() => {
-      const input = renameInputRefs.value.get(entry.path)
+      const input = renameInputRefs.value.get(String(entry.id))
       input?.focus()
       input?.select()
     })
@@ -164,9 +164,9 @@ const setRenameInputRef = (entry: DiskEntry): VNodeRef => {
   return (ref: Element | ComponentPublicInstance | null) => {
     const input = ref instanceof HTMLInputElement ? ref : null
     if (input) {
-      renameInputRefs.value.set(entry.path, input)
+      renameInputRefs.value.set(String(entry.id), input)
     } else {
-      renameInputRefs.value.delete(entry.path)
+      renameInputRefs.value.delete(String(entry.id))
     }
   }
 }
@@ -215,7 +215,7 @@ const openMoreMenu = (event: MouseEvent, entry: DiskEntry) => {
     ? Math.max(rect.top - height - 6, 8)
     : Math.min(rect.bottom + 6, window.innerHeight - height - 8)
   contextMenu.value = { open: true, x, y, entry, mode: 'more', width }
-  menuEntryPath.value = entry.path
+  menuEntryPath.value = String(entry.id)
 }
 
 const onMenuEnter = () => {
@@ -235,7 +235,7 @@ const onMenuLeave = () => {
 const onRowLeave = (entry: DiskEntry) => {
   if (
     contextMenu.value.open &&
-    contextMenu.value.entry?.path === entry.path &&
+    contextMenu.value.entry?.id === entry.id &&
     !menuHovering.value
   ) {
     if (closeTimer) {
@@ -437,7 +437,7 @@ onBeforeUnmount(() => {
 
         <div
           v-for="item in items"
-          :key="item.path"
+          :key="item.id"
           :class="['table__row', isEditing(item) ? 'table__row--edit' : '']"
           @click="onRowClick(item)"
           @contextmenu="openContextMenu($event, item)"
@@ -490,11 +490,11 @@ onBeforeUnmount(() => {
             {{ item.is_dir ? '-' : formatBytes(item.size) }}
           </div>
           <div class="table__cell table__cell--type">{{ formatEntryType(item) }}</div>
-          <div class="table__cell table__cell--time">{{ formatTime(item.modified_time) }}</div>
+          <div class="table__cell table__cell--time">{{ formatTime(item.updated_at) }}</div>
           <div
             v-if="!isEditing(item)"
             class="table__row-actions"
-            :class="{ 'is-hovered': menuHovering && menuEntryPath === item.path }"
+            :class="{ 'is-hovered': menuHovering && menuEntryPath === String(item.id) }"
             @click.stop
           >
             <IconButton
@@ -583,7 +583,7 @@ onBeforeUnmount(() => {
         v-if="contextMenu.entry?.is_dir"
         class="context-menu__item"
         type="button"
-        v-permission="'disk:file:list'"
+        v-permission="'disk:file:view'"
         @click="
           emit('action', { entry: contextMenu.entry, action: 'edit' });
           closeContextMenu();
@@ -618,7 +618,7 @@ onBeforeUnmount(() => {
       <button
         class="context-menu__item"
         type="button"
-        v-permission="'disk:file:rename'"
+        v-permission="'disk:file:move'"
         @click="
           emit('action', { entry: contextMenu.entry, action: 'rename' });
           closeContextMenu();
@@ -629,7 +629,7 @@ onBeforeUnmount(() => {
       <button
         class="context-menu__item"
         type="button"
-        v-permission="'disk:file:rename'"
+        v-permission="'disk:file:move'"
         @click="
           emit('action', { entry: contextMenu.entry, action: 'move' });
           closeContextMenu();

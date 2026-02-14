@@ -104,7 +104,7 @@ class CurdBase(Generic[T]):
         result = await db.exec(statement)
         return result.all()
 
-    async def update(self, db: AsyncSession, obj: SQLModel) -> T:
+    async def update(self, db: AsyncSession, obj: SQLModel, commit: bool = True) -> T:
         """
         更新指定 ID 的数据
         :param db:
@@ -114,7 +114,10 @@ class CurdBase(Generic[T]):
         obj.sqlmodel_update(obj)
         if obj.update_time:
             obj.update_time = datetime.now()
-        await db.commit()
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
         await db.refresh(obj)
         return obj
 

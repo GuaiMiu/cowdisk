@@ -1,10 +1,10 @@
 import { addUser, deleteUser, editUser, getUserList } from '@/api/modules/adminSystem'
 import type { UserAddIn, UserEditIn } from '@/types/user'
 import type { UserOut } from '@/types/auth'
-import { usePagedCrud } from './usePagedCrud'
+import { useCursorCrud } from './useCursorCrud'
 
 export const useAdminUsers = () => {
-  const crud = usePagedCrud<UserOut, UserAddIn, UserEditIn, number>({
+  const crud = useCursorCrud<UserOut, UserAddIn, UserEditIn, number>({
     list: getUserList,
     create: addUser,
     update: editUser,
@@ -26,7 +26,11 @@ export const useAdminUsers = () => {
     total: crud.total,
     page: crud.page,
     size: crud.size,
-    fetchUsers: crud.fetchPage,
+    hasNext: crud.hasNext,
+    hasPrev: crud.hasPrev,
+    fetchUsers: crud.fetchFirst,
+    fetchNext: crud.fetchNext,
+    fetchPrev: crud.fetchPrev,
     createUser: crud.createItem,
     updateUser: crud.updateItem,
     removeUser: crud.removeItem,

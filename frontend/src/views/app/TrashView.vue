@@ -89,6 +89,7 @@ const confirmDelete = async () => {
   currentEntry.value = null
 }
 
+
 const confirmClear = async () => {
   await trash.clear()
   clearConfirm.value = false
@@ -166,7 +167,7 @@ onMounted(() => {
   <section class="page">
     <div class="page__bar">
       <div class="page__actions">
-        <Button variant="secondary" v-permission="'disk:file:delete'" @click="clearConfirm = true">
+        <Button variant="secondary" v-permission="'disk:trash:clear'" @click="clearConfirm = true">
           <Trash2 :size="16" />
           {{ t('trash.clear') }}
         </Button>
@@ -228,7 +229,7 @@ onMounted(() => {
               size="sm"
               variant="ghost"
               :aria-label="t('trash.restore')"
-              v-permission="'disk:file:delete'"
+              v-permission="'disk:trash:restore'"
               @click="trash.restore(asTrash(row))"
             >
               <RotateCcw :size="16" />
@@ -238,7 +239,7 @@ onMounted(() => {
               variant="ghost"
               class="action-btn--danger"
               :aria-label="t('trash.deleteForever')"
-              v-permission="'disk:file:delete'"
+              v-permission="'disk:trash:delete'"
               @click="requestDelete(asTrash(row))"
             >
               <Trash2 :size="16" />

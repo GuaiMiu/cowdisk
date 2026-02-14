@@ -39,6 +39,10 @@ class FakeRedis:
         elif key in self.expire_times:
             self.expire_times.pop(key)
 
+    async def setex(self, key: str, time_seconds: int | float | timedelta, value: str) -> None:
+        """设置键值对并指定过期时间（兼容 setex）"""
+        await self.set(key, value, ex=time_seconds)
+
     async def delete(self, key: str):
         """删除键"""
         self.store.pop(key, None)

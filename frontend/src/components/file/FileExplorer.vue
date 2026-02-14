@@ -16,11 +16,10 @@ import ImagePreview from '@/components/common/ImagePreview.vue'
 import PdfPreview from '@/components/common/PdfPreview.vue'
 import VideoPreview from '@/components/common/VideoPreview.vue'
 import {
-  createDownloadToken,
-  getPreviewFileUrl,
-  previewFileByToken,
+  previewFile,
   readEditFile,
   saveEditFile,
+  uploadFiles,
 } from '@/api/modules/userDisk'
 import { useDiskExplorer } from '@/composables/useDiskExplorer'
 import { useSelection } from '@/composables/useSelection'
@@ -34,7 +33,7 @@ import { copyToClipboard } from '@/utils/clipboard'
 import { normalizeDiskError } from '@/utils/diskError'
 import { formatBytes, formatTime } from '@/utils/format'
 import { getFileKind } from '@/utils/fileType'
-import { joinPath, toRelativePath } from '@/utils/path'
+import { toRelativePath } from '@/utils/path'
 
 const { t, locale } = useI18n({ useScope: 'global' })
 const rootName = computed(() => t('files.rootName'))
@@ -77,9 +76,9 @@ const videoSrc = ref<string | null>(null)
 const videoName = ref<string>('')
 const videoType = ref<string | null>(null)
 const editorOpen = ref(false)
-const editorRootPath = ref('/')
+const editorRootId = ref<number | null>(null)
 const editorRootName = ref(rootName.value)
-const editorFilePath = ref<string | null>(null)
+const editorFileId = ref<number | null>(null)
 const editorFileName = ref('')
 const editorContent = ref('')
 const editorLanguage = ref('plaintext')
@@ -97,6 +96,18 @@ const renamingEntry = ref<DiskEntry | null>(null)
 const renamingName = ref('')
 const refreshTimer = ref<number | null>(null)
 const LAST_PATH_KEY = 'cowdisk:last_path'
+const LAST_STACK_KEY = 'cowdisk:last_stack'
+
+const breadcrumbItems = computed(() => {
+  const rootLabel = t('fileBreadcrumb.root')
+  return [
+    { id: null as number | null, label: rootLabel },
+    ...explorer.folderStack.value.map((item) => ({
+      id: item.id,
+      label: item.name,
+    })),
+  ]
+})
 
 const openFolderModal = () => {
   creatingFolder.value = true
@@ -146,8 +157,7 @@ const buildShareSignature = () => {
       ? Date.parse(shareForm.value.expiresAt)
       : null
   return JSON.stringify({
-    path: shareEntry.value?.path ?? '',
-    resourceType: shareEntry.value?.is_dir ? 'FOLDER' : 'FILE',
+    fileId: shareEntry.value?.id ?? null,
     expiresInDays: shareForm.value.expiresInDays ?? null,
     expiresAt,
     code:
@@ -174,8 +184,7 @@ const submitShare = async () => {
       ? Date.parse(shareForm.value.expiresAt)
       : null
   const payload = {
-    resourceType: shareEntry.value.is_dir ? 'FOLDER' : 'FILE',
-    path: shareEntry.value.path,
+    fileId: shareEntry.value.id,
     expiresInDays: shareForm.value.expiresInDays ?? null,
     expiresAt,
     code:
@@ -234,7 +243,7 @@ const openUpload = () => {
   input.onchange = () => {
     const files = input.files ? Array.from(input.files) : []
     if (files.length) {
-      uploader.enqueue(files, explorer.path.value)
+      uploader.enqueue(files, explorer.path.value, explorer.parentId.value ?? null)
       queueOpen.value = true
     }
   }
@@ -249,7 +258,7 @@ const openFolderUpload = () => {
   input.onchange = () => {
     const files = input.files ? Array.from(input.files) : []
     if (files.length) {
-      uploader.enqueue(files, explorer.path.value)
+      uploader.enqueue(files, explorer.path.value, explorer.parentId.value ?? null)
       queueOpen.value = true
     }
   }
@@ -260,7 +269,7 @@ const handleOpen = async (entry: DiskEntry) => {
   if (!entry.is_dir) {
     return
   }
-  await explorer.load(entry.path)
+  await explorer.openEntry(entry)
   selection.clear()
   creatingFolder.value = false
   renamingEntry.value = null
@@ -332,6 +341,9 @@ const clearPdfPreview = () => {
 }
 
 const clearVideoPreview = () => {
+  if (videoSrc.value && videoSrc.value.startsWith('blob:')) {
+    URL.revokeObjectURL(videoSrc.value)
+  }
   videoSrc.value = null
   videoName.value = ''
   videoType.value = null
@@ -340,9 +352,9 @@ const clearVideoPreview = () => {
 
 const clearEditor = () => {
   editorOpen.value = false
-  editorRootPath.value = '/'
+  editorRootId.value = null
   editorRootName.value = rootName.value
-  editorFilePath.value = null
+  editorFileId.value = null
   editorFileName.value = ''
   editorContent.value = ''
   editorLanguage.value = 'plaintext'
@@ -405,7 +417,7 @@ const openImagePreview = async (entry: DiskEntry) => {
     previewItems.value = images.map((item) => ({ src: '', name: item.name }))
     const currentIndex = Math.max(
       0,
-      images.findIndex((item) => item.path === entry.path),
+      images.findIndex((item) => item.id === entry.id),
     )
     previewIndex.value = currentIndex
     previewOpen.value = true
@@ -423,8 +435,7 @@ const openImagePreview = async (entry: DiskEntry) => {
 const openPdfPreview = async (entry: DiskEntry) => {
   try {
     clearPdfPreview()
-    const token = await createDownloadToken({ path: entry.path })
-    const result = await previewFileByToken(token.token)
+    const result = await previewFile(entry.id)
     const url = URL.createObjectURL(result.blob)
     pdfUrls.value = [url]
     pdfSrc.value = url
@@ -442,10 +453,11 @@ const openPdfPreview = async (entry: DiskEntry) => {
 const openVideoPreview = async (entry: DiskEntry) => {
   try {
     clearVideoPreview()
-    const token = await createDownloadToken({ path: entry.path })
-    videoSrc.value = getPreviewFileUrl(token.token)
+    const result = await previewFile(entry.id)
+    const url = URL.createObjectURL(result.blob)
+    videoSrc.value = url
     videoName.value = entry.name || t('fileExplorer.videoPreviewDefault')
-    videoType.value = getVideoMime(entry.name || '')
+    videoType.value = result.contentType || getVideoMime(entry.name || '')
     videoOpen.value = true
   } catch (error) {
     message.error(
@@ -511,38 +523,26 @@ const getTextLanguage = (name: string) => {
   return map[ext] || 'plaintext'
 }
 
-const getParentPath = (path: string) => {
-  if (!path) {
-    return '/'
-  }
-  const segments = path.split('/').filter(Boolean)
-  if (segments.length <= 1) {
-    return '/'
-  }
-  return `/${segments.slice(0, -1).join('/')}`
-}
-
 const openEditorForFolder = async (entry: DiskEntry) => {
   clearEditor()
-  editorRootPath.value = entry.path ? `/${entry.path}` : '/'
+  editorRootId.value = entry.id
   editorRootName.value = entry.name || rootName.value
+  editorFileId.value = null
   editorOpen.value = true
 }
 
 const openEditorForFile = async (entry: DiskEntry) => {
   try {
     clearEditor()
-    editorRootPath.value = getParentPath(entry.path)
-    editorRootName.value =
-      editorRootPath.value === '/'
-        ? rootName.value
-        : editorRootPath.value.split('/').pop() || rootName.value
-    editorFilePath.value = entry.path
+    editorRootId.value = entry.parent_id ?? null
+    const parentName = explorer.folderStack.value.slice(-1)[0]?.name || ''
+    editorRootName.value = parentName || rootName.value
+    editorFileId.value = entry.id
     editorFileName.value = entry.name || ''
     editorLanguage.value = getTextLanguage(entry.name || '')
     editorLoading.value = true
     editorOpen.value = true
-    const data = await readEditFile(entry.path)
+    const data = await readEditFile(entry.id)
     editorContent.value = data.content || ''
   } catch (error) {
     message.error(
@@ -555,13 +555,13 @@ const openEditorForFile = async (entry: DiskEntry) => {
   }
 }
 
-const selectEditorFile = async (payload: { path: string; name: string }) => {
+const selectEditorFile = async (payload: { fileId: number; name: string }) => {
   try {
-    editorFilePath.value = payload.path
+    editorFileId.value = payload.fileId
     editorFileName.value = payload.name
     editorLanguage.value = getTextLanguage(payload.name)
     editorLoading.value = true
-    const data = await readEditFile(payload.path)
+    const data = await readEditFile(payload.fileId)
     editorContent.value = data.content || ''
   } catch (error) {
     message.error(
@@ -574,13 +574,12 @@ const selectEditorFile = async (payload: { path: string; name: string }) => {
 }
 
 const saveEditor = async () => {
-  if (!editorFilePath.value || editorSaving.value) {
+  if (!editorFileId.value || editorSaving.value) {
     return
   }
   editorSaving.value = true
   try {
-    await saveEditFile({
-      path: editorFilePath.value,
+    await saveEditFile(editorFileId.value, {
       content: editorContent.value,
       overwrite: true,
     })
@@ -612,8 +611,7 @@ const ensurePreview = async (index: number) => {
   }
   previewLoading.value = new Set(previewLoading.value).add(index)
   try {
-    const token = await createDownloadToken({ path: entry.path })
-    const result = await previewFileByToken(token.token)
+    const result = await previewFile(entry.id)
     const url = URL.createObjectURL(result.blob)
     previewUrls.value = [...previewUrls.value, url]
     const next = [...previewItems.value]
@@ -649,9 +647,16 @@ const handleCreateTextInline = async (name: string) => {
     message.warning(t('fileExplorer.toasts.docNameRequired'))
     return
   }
-  const path = toRelativePath(joinPath(explorer.path.value, filename))
   try {
-    await saveEditFile({ path, content: '', overwrite: false })
+    const file = new File([new Blob([''], { type: 'text/plain' })], filename, {
+      type: 'text/plain',
+    })
+    await uploadFiles({
+      items: [{ file, filename }],
+      parent_id: explorer.parentId.value ?? null,
+      name: filename,
+      overwrite: false,
+    })
     message.success(t('fileExplorer.toasts.docCreated'))
     creatingText.value = false
     await explorer.refresh()
@@ -681,20 +686,37 @@ const openMoveSelected = () => {
   openMoveModal(targets)
 }
 
-const confirmMove = async (targetPath: string) => {
+const confirmMove = async (targetParentId: number | null) => {
   const targets = moveEntries.value
   if (!targets.length) {
     return
   }
-  await explorer.moveEntries(targets, targetPath)
+  await explorer.moveEntries(targets, targetParentId)
   selection.clear()
   moveModal.value = false
   moveEntries.value = []
 }
 
 onMounted(() => {
+  const savedStack = sessionStorage.getItem(LAST_STACK_KEY)
+  if (savedStack) {
+    try {
+      const parsed = JSON.parse(savedStack)
+      if (Array.isArray(parsed)) {
+        explorer.folderStack.value = parsed.filter(
+          (item) => item && typeof item.id === 'number' && typeof item.name === 'string',
+        )
+      }
+    } catch {
+      explorer.folderStack.value = []
+    }
+  }
   const savedPath = sessionStorage.getItem(LAST_PATH_KEY) || '/'
-  void explorer.load(savedPath)
+  const savedParent =
+    savedPath && savedPath !== '/' && explorer.folderStack.value.length
+      ? explorer.folderStack.value[explorer.folderStack.value.length - 1]?.id ?? null
+      : null
+  void explorer.load(savedParent)
 })
 
 watch(
@@ -703,11 +725,12 @@ watch(
     if (value) {
       sessionStorage.setItem(LAST_PATH_KEY, value)
     }
+    sessionStorage.setItem(LAST_STACK_KEY, JSON.stringify(explorer.folderStack.value))
   },
 )
 
 watch(locale, () => {
-  if (editorRootPath.value === '/') {
+  if (editorRootId.value === null) {
     editorRootName.value = rootName.value
   }
 })
@@ -762,7 +785,7 @@ watch(
       @move-selected="openMoveSelected"
     />
     <div class="explorer__bar">
-      <FileBreadcrumb :path="explorer.path.value" @navigate="explorer.load" />
+      <FileBreadcrumb :items="breadcrumbItems" @navigate="explorer.goToBreadcrumb" />
       <div class="explorer__count">
         {{ t('files.itemsCount', { count: explorer.items.value.length }) }}
       </div>
@@ -856,7 +879,7 @@ watch(
       </div>
       <div class="detail__row">
         <span class="detail__label">{{ t('fileExplorer.modals.detailUpdatedAt') }}</span>
-        <span class="detail__value">{{ formatTime(detailEntry.modified_time) }}</span>
+        <span class="detail__value">{{ formatTime(detailEntry.updated_at) }}</span>
       </div>
     </div>
     <template #footer>
@@ -868,6 +891,7 @@ watch(
     :open="moveModal"
     :entries="moveEntries"
     :current-path="explorer.path.value"
+    :current-parent-id="explorer.parentId.value"
     @close="
       () => {
         moveModal = false
@@ -917,9 +941,9 @@ watch(
 
   <FileEditorDialog
     :open="editorOpen"
-    :root-path="editorRootPath"
+    :root-id="editorRootId"
     :root-name="editorRootName"
-    :active-path="editorFilePath"
+    :active-id="editorFileId"
     :language="editorLanguage"
     :loading="editorLoading"
     :saving="editorSaving"

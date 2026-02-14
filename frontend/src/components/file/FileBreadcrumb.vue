@@ -3,19 +3,28 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getSegments, joinPath } from '@/utils/path'
 
+type BreadcrumbItem =
+  | { id: string | number | null; label: string }
+  | { label: string; path: string }
+
 const props = defineProps<{
-  path: string
+  path?: string
+  items?: Array<{ id: string | number | null; label: string }>
 }>()
 
 const emit = defineEmits<{
-  (event: 'navigate', path: string): void
+  (event: 'navigate', value: string | number | null): void
 }>()
 
 const { t } = useI18n({ useScope: 'global' })
 
-const crumbs = computed(() => {
-  const segments = getSegments(props.path)
-  const items = [{ label: t('fileBreadcrumb.root'), path: '/' }]
+const crumbs = computed<BreadcrumbItem[]>(() => {
+  if (props.items && props.items.length) {
+    return props.items.map((item) => ({ ...item }))
+  }
+  const inputPath = props.path ?? '/'
+  const segments = getSegments(inputPath)
+  const items = [{ label: t('fileBreadcrumb.root'), path: '/' as string }]
   let current = ''
   segments.forEach((segment) => {
     current = joinPath(current || '/', segment)
@@ -23,20 +32,27 @@ const crumbs = computed(() => {
   })
   return items
 })
+
+const getCrumbKey = (item: BreadcrumbItem) => {
+  if ('id' in item) {
+    return item.id ?? item.label
+  }
+  return item.path || item.label
+}
 </script>
 
 <template>
   <div class="breadcrumb">
     <button
       v-for="(item, index) in crumbs"
-      :key="item.path"
+      :key="getCrumbKey(item)"
       type="button"
       class="breadcrumb__item"
       :class="{
         'breadcrumb__item--ancestor': index < crumbs.length - 1,
         'breadcrumb__item--current': index === crumbs.length - 1,
       }"
-      @click="emit('navigate', item.path)"
+      @click="emit('navigate', 'id' in item ? item.id : item.path ?? '/')"
     >
       <span class="breadcrumb__label">{{ item.label }}</span>
       <span v-if="index < crumbs.length - 1" class="breadcrumb__sep">/</span>

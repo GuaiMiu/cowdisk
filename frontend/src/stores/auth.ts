@@ -121,7 +121,9 @@ export const useAuthStore = defineStore('auth', {
       return list.some((perm) => this.permissions.has(perm))
     },
     landingPath() {
-      const hasSystem = Array.from(this.permissions).some((perm) => perm.startsWith('system:'))
+      const hasSystem = Array.from(this.permissions).some(
+        (perm) => perm.startsWith('system:') || perm.startsWith('cfg:'),
+      )
       return hasSystem ? '/admin' : '/app'
     },
   },

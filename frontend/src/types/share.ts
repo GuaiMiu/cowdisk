@@ -1,7 +1,7 @@
 export type Share = {
   id: string
   resourceType: string
-  path: string
+  fileId: number
   token: string
   name: string
   ownerName?: string | null
@@ -14,8 +14,7 @@ export type Share = {
 }
 
 export type ShareCreateIn = {
-  resourceType: string
-  path: string
+  fileId: number
   expiresInDays?: number | null
   expiresAt?: number | null
   code?: string | null
@@ -41,7 +40,7 @@ export type ShareUnlockIn = {
 }
 
 export type ShareSaveIn = {
-  targetPath: string
+  targetParentId: number | null
 }
 
 export type SharePublicResult = {
@@ -58,11 +57,14 @@ export type SharePublicResult = {
 }
 
 export type ShareEntry = {
+  id: number
   name: string
-  path: string
+  parent_id: number | null
   is_dir: boolean
   size: number
-  modified_time?: string | null
+  mime_type?: string | null
+  updated_at?: string | null
+  path?: string
 }
 
 export type ShareListQueryOut = {

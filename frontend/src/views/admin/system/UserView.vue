@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
 import Table from '@/components/common/Table.vue'
-import Tag from '@/components/common/Tag.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Modal from '@/components/common/Modal.vue'
 import Input from '@/components/common/Input.vue'
@@ -46,8 +45,6 @@ const formOpen = ref(false)
 const deleteConfirm = ref(false)
 const currentUser = ref<UserOut | null>(null)
 const roleOptions = useRoleOptions()
-const keyword = ref('')
-const statusFilter = ref('all')
 const toggling = ref(new Set<number>())
 const currentUserId = computed(() => authStore.me?.id)
 
@@ -208,23 +205,6 @@ const confirmDelete = async () => {
   currentUser.value = null
 }
 
-const filteredUsers = computed(() => {
-  const keywordValue = keyword.value.trim().toLowerCase()
-  return userStore.items.value.filter((user) => {
-    const statusMatch =
-      statusFilter.value === 'all' || (statusFilter.value === 'true' ? !!user.status : !user.status)
-    if (!statusMatch) {
-      return false
-    }
-    if (!keywordValue) {
-      return true
-    }
-    return [user.username, user.nickname, user.mail]
-      .filter(Boolean)
-      .some((field) => String(field).toLowerCase().includes(keywordValue))
-  })
-})
-
 onMounted(() => {
   void userStore.fetchUsers()
   void roleOptions.load()
@@ -235,36 +215,19 @@ onMounted(() => {
   <section class="page">
     <PageHeader :title="t('admin.user.title')" :subtitle="t('admin.user.subtitle')">
       <template #actions>
-        <Button variant="secondary" @click="userStore.fetchUsers(userStore.page.value)">
+        <Button variant="secondary" @click="userStore.fetchUsers()">
           {{ t('admin.user.refresh') }}
         </Button>
-        <Button v-permission="'system:user:add'" @click="openCreate">{{
+        <Button v-permission="'system:user:create'" @click="openCreate">{{
           t('admin.user.add')
         }}</Button>
       </template>
     </PageHeader>
 
-    <div class="filters">
-      <Input
-        v-model="keyword"
-        :label="t('admin.user.searchLabel')"
-        :placeholder="t('admin.user.searchPlaceholder')"
-      />
-      <Select
-        v-model="statusFilter"
-        :label="t('admin.user.statusLabel')"
-        :options="[
-          { label: t('admin.user.statusOptions.all'), value: 'all' },
-          { label: t('admin.user.statusOptions.enabled'), value: 'true' },
-          { label: t('admin.user.statusOptions.disabled'), value: 'false' },
-        ]"
-      />
-    </div>
-
     <div class="table-wrap">
       <Table
         :columns="columns"
-        :rows="filteredUsers"
+        :rows="userStore.items.value"
         :min-rows="userStore.size.value"
         scrollable
         fill
@@ -284,7 +247,7 @@ onMounted(() => {
             <Button
               size="sm"
               variant="secondary"
-              v-permission="'system:user:edit'"
+              v-permission="'system:user:update'"
               @click="openEdit(row)"
             >
               {{ t('common.edit') }}
@@ -303,14 +266,18 @@ onMounted(() => {
     </div>
 
     <Pagination
+      cursor-mode
       :total="userStore.total.value"
+      :has-prev="!!userStore.hasPrev.value"
+      :has-next="!!userStore.hasNext.value"
       :page-size="userStore.size.value"
       :current-page="userStore.page.value"
-      @update:currentPage="userStore.fetchUsers"
+      @prev="userStore.fetchPrev"
+      @next="userStore.fetchNext"
       @update:pageSize="
         (size) => {
           userStore.size.value = size
-          userStore.fetchUsers(1)
+          userStore.fetchUsers()
         }
       "
     />
@@ -395,7 +362,7 @@ onMounted(() => {
   gap: var(--space-4);
   height: 100%;
   min-height: 0;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
   overflow: hidden;
 }
 
@@ -426,19 +393,5 @@ onMounted(() => {
   color: var(--color-muted);
 }
 
-.filters {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(180px, 240px);
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-
-@media (max-width: 768px) {
-  .filters {
-    grid-template-columns: 1fr;
-  }
-}
 </style>
+

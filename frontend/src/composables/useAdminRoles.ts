@@ -1,9 +1,9 @@
 import { addRole, deleteRole, editRole, getRoleList } from '@/api/modules/adminSystem'
 import type { RoleAddIn, RoleEditIn, RoleOut } from '@/types/role'
-import { usePagedCrud } from './usePagedCrud'
+import { useCursorCrud } from './useCursorCrud'
 
 export const useAdminRoles = () => {
-  const crud = usePagedCrud<RoleOut, RoleAddIn, RoleEditIn, number>({
+  const crud = useCursorCrud<RoleOut, RoleAddIn, RoleEditIn, number>({
     list: getRoleList,
     create: addRole,
     update: editRole,
@@ -25,7 +25,11 @@ export const useAdminRoles = () => {
     total: crud.total,
     page: crud.page,
     size: crud.size,
-    fetchRoles: crud.fetchPage,
+    hasNext: crud.hasNext,
+    hasPrev: crud.hasPrev,
+    fetchRoles: crud.fetchFirst,
+    fetchNext: crud.fetchNext,
+    fetchPrev: crud.fetchPrev,
     createRole: crud.createItem,
     updateRole: crud.updateItem,
     removeRole: crud.removeItem,

@@ -27,7 +27,7 @@ const { t } = useI18n({ useScope: 'global' })
         <button
           class="menu__item"
           type="button"
-          v-permission="'disk:file:rename'"
+          v-permission="'disk:file:move'"
           @click="emit('action', 'rename')"
         >
           {{ t('fileActionsMenu.rename') }}

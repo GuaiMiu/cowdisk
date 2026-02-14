@@ -24,7 +24,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY backend/pyproject.toml backend/uv.lock ./
 COPY backend/ ./
-COPY backend/.env.example /app/config/.env
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
@@ -38,6 +37,7 @@ RUN chmod +x /docker-entrypoint.sh
 ENV PATH="/app/backend/.venv/bin:$PATH"
 ENV PYTHONPATH=/app/backend
 
-RUN mkdir -p /app/logs
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1/api/v1/system/setup/status || exit 1
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

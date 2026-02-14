@@ -7,6 +7,7 @@ export type UploadItem = {
   id: string
   file: File
   path: string
+  parent_id: number | null
   status: UploadStatus
   progress: number
   speed?: number
@@ -23,12 +24,13 @@ export const useUploadsStore = defineStore('uploads', {
     queueCursor: 0,
   }),
   actions: {
-    enqueue(files: File[], path: string) {
+    enqueue(files: File[], path: string, parent_id: number | null) {
       const now = Date.now()
       const next = files.map((file, index) => ({
         id: `${now}-${index}-${file.name}`,
         file: markRaw(file),
         path,
+        parent_id,
         status: 'queued' as UploadStatus,
         progress: 0,
         speed: 0,
@@ -40,11 +42,11 @@ export const useUploadsStore = defineStore('uploads', {
       this.items.push(...next)
       return next
     },
-    async enqueueBatched(files: File[], path: string, batchSize = 200) {
+    async enqueueBatched(files: File[], path: string, parent_id: number | null, batchSize = 200) {
       const items: UploadItem[] = []
       for (let start = 0; start < files.length; start += batchSize) {
         const batch = files.slice(start, start + batchSize)
-        items.push(...this.enqueue(batch, path))
+        items.push(...this.enqueue(batch, path, parent_id))
         // 让出主线程，避免一次性入队导致 UI 假死
         await yieldToMain()
       }

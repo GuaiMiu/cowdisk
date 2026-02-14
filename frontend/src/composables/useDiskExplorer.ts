@@ -3,20 +3,15 @@ import { useI18n } from 'vue-i18n'
 import {
   listDir,
   mkdir,
-  renamePaths,
-  deletePaths,
-  createDownloadToken,
-  getDownloadFileUrl,
-  getDownloadJobUrl,
-  prepareDownload,
-  downloadStatus,
+  renameFile,
+  moveFile,
+  deleteFiles,
+  getDownloadUrl,
 } from '@/api/modules/userDisk'
 import { useMessage } from '@/stores/message'
 import type { DiskEntry } from '@/types/disk'
-import { joinPath, toRelativePath } from '@/utils/path'
 import { triggerDownload } from '@/utils/download'
 import { normalizeDiskError } from '@/utils/diskError'
-import { usePolling } from './usePolling'
 
 type SortKey = 'name' | 'size' | 'type' | 'updatedAt'
 
@@ -25,20 +20,19 @@ export const useDiskExplorer = () => {
   const message = useMessage()
   const loading = ref(false)
   const path = ref('/')
+  const parentId = ref<number | null>(null)
+  const folderStack = ref<Array<{ id: number; name: string }>>([])
   const items = ref<DiskEntry[]>([])
   const sortKey = ref<SortKey | null>(null)
   const sortOrder = ref<'asc' | 'desc'>('asc')
-  const { poll } = usePolling()
   const listController = ref<AbortController | null>(null)
 
-  const normalizeRoot = (value: string) => {
-    if (!value || value === '/') {
-      return ''
-    }
-    return toRelativePath(value)
+  const syncPathFromStack = () => {
+    const segments = folderStack.value.map((item) => item.name).filter(Boolean)
+    path.value = segments.length ? `/${segments.join('/')}` : '/'
   }
 
-  const load = async (nextPath?: string) => {
+  const load = async (nextParentId?: number | null) => {
     loading.value = true
     if (listController.value) {
       listController.value.abort()
@@ -46,10 +40,12 @@ export const useDiskExplorer = () => {
     const controller = new AbortController()
     listController.value = controller
     try {
-      const target = nextPath ?? path.value
-      const data = await listDir(normalizeRoot(target), { signal: controller.signal })
-      path.value = data.path || '/'
+      const targetParentId =
+        nextParentId !== undefined ? nextParentId : parentId.value ?? null
+      const data = await listDir(targetParentId, { signal: controller.signal })
+      parentId.value = data.parent_id ?? targetParentId ?? null
       items.value = data.items || []
+      syncPathFromStack()
     } catch (error) {
       if (controller.signal.aborted) {
         return
@@ -66,7 +62,7 @@ export const useDiskExplorer = () => {
     }
   }
 
-  const refresh = () => load(path.value)
+  const refresh = () => load(parentId.value ?? null)
 
   const getTypeKey = (entry: DiskEntry) => {
     if (entry.is_dir) {
@@ -77,10 +73,10 @@ export const useDiskExplorer = () => {
   }
 
   const getUpdatedKey = (entry: DiskEntry) => {
-    if (!entry.modified_time) {
+    if (!entry.updated_at) {
       return 0
     }
-    const time = new Date(entry.modified_time).getTime()
+    const time = new Date(entry.updated_at).getTime()
     return Number.isNaN(time) ? 0 : time
   }
 
@@ -123,7 +119,7 @@ export const useDiskExplorer = () => {
       return false
     }
     try {
-      await mkdir({ path: toRelativePath(joinPath(path.value, name.trim())) })
+      await mkdir({ parent_id: parentId.value ?? null, name: name.trim() })
       message.success(t('fileExplorer.toasts.folderCreatedTitle'), name.trim())
       await refresh()
       return true
@@ -142,11 +138,7 @@ export const useDiskExplorer = () => {
       return false
     }
     try {
-      const target = toRelativePath(joinPath(path.value, nextName.trim()))
-      const result = await renamePaths([{ src: entry.path, dst: target, overwrite: false }])
-      if (result.failed.length > 0) {
-        throw new Error(result.failed[0]?.error || '重命名失败')
-      }
+      await renameFile(entry.id, { new_name: nextName.trim() })
       message.success(
         t('fileExplorer.toasts.renameSuccessTitle'),
         `${entry.name} → ${nextName.trim()}`,
@@ -162,22 +154,14 @@ export const useDiskExplorer = () => {
     }
   }
 
-  const moveEntry = async (entry: DiskEntry, targetPath: string) => {
-    const base = targetPath ? `/${targetPath}` : '/'
-    const target = toRelativePath(joinPath(base, entry.name))
-    if (target === entry.path) {
+  const moveEntry = async (entry: DiskEntry, targetParentId: number | null) => {
+    if (targetParentId === entry.parent_id) {
       message.info(t('fileExplorer.toasts.alreadyHere'))
       return false
     }
     try {
-      const result = await renamePaths([{ src: entry.path, dst: target, overwrite: false }])
-      if (result.failed.length > 0) {
-        throw new Error(result.failed[0]?.error || '移动失败')
-      }
-      message.success(
-        t('fileExplorer.toasts.moveSuccessTitle'),
-        `${entry.name} → ${targetPath || '/'}`,
-      )
+      await moveFile(entry.id, { target_parent_id: targetParentId, new_name: entry.name })
+      message.success(t('fileExplorer.toasts.moveSuccessTitle'))
       await refresh()
       return true
     } catch (error) {
@@ -189,48 +173,44 @@ export const useDiskExplorer = () => {
     }
   }
 
-  const moveEntries = async (entries: DiskEntry[], targetPath: string) => {
+  const moveEntries = async (entries: DiskEntry[], targetParentId: number | null) => {
     if (!entries.length) {
       message.warning(t('fileExplorer.toasts.noSelection'))
       return false
     }
-    const base = targetPath ? `/${targetPath}` : '/'
-    const items = entries
-      .map((entry) => ({
-        src: entry.path,
-        dst: toRelativePath(joinPath(base, entry.name)),
-        overwrite: false,
-      }))
-      .filter((item) => item.src !== item.dst)
-    if (!items.length) {
+    const toMove = entries.filter((entry) => entry.parent_id !== targetParentId)
+    if (!toMove.length) {
       message.info(t('fileExplorer.toasts.alreadyHere'))
       return false
     }
     try {
-      const result = await renamePaths(items)
-      if (result.failed.length === 0) {
+      let success = 0
+      let failed = 0
+      for (const entry of toMove) {
+        try {
+          await moveFile(entry.id, { target_parent_id: targetParentId, new_name: entry.name })
+          success += 1
+        } catch {
+          failed += 1
+        }
+      }
+      if (failed === 0) {
         message.success(
           t('fileExplorer.toasts.moveBatchSuccessTitle'),
-          t('fileExplorer.toasts.moveBatchSuccessMessage', { count: result.success.length }),
+          t('fileExplorer.toasts.moveBatchSuccessMessage', { count: success }),
         )
-      } else if (result.success.length > 0) {
+      } else if (success > 0) {
         message.warning(
           t('fileExplorer.toasts.moveBatchPartialTitle'),
-          t('fileExplorer.toasts.moveBatchPartialMessage', {
-            success: result.success.length,
-            failed: result.failed.length,
-          }),
+          t('fileExplorer.toasts.moveBatchPartialMessage', { success, failed }),
         )
       } else {
-        message.error(
-          t('fileExplorer.toasts.moveFailedTitle'),
-          result.failed[0]?.error || t('fileExplorer.toasts.moveFailedMessage'),
-        )
+        message.error(t('fileExplorer.toasts.moveFailedTitle'), t('fileExplorer.toasts.moveFailedMessage'))
       }
-      if (result.success.length > 0) {
+      if (success > 0) {
         await refresh()
       }
-      return result.success.length > 0 && result.failed.length === 0
+      return success > 0 && failed === 0
     } catch (error) {
       message.error(
         t('fileExplorer.toasts.moveFailedTitle'),
@@ -257,9 +237,8 @@ export const useDiskExplorer = () => {
       return false
     }
     try {
-      const paths = entries.map((entry) => entry.path)
-      const recursive = entries.some((entry) => entry.is_dir)
-      const result = await deletePaths(paths, recursive)
+      const ids = entries.map((entry) => entry.id)
+      const result = await deleteFiles(ids)
       if (result.failed.length === 0) {
         message.success(
           t('fileExplorer.toasts.deleteSuccessTitle'),
@@ -294,32 +273,11 @@ export const useDiskExplorer = () => {
 
   const downloadEntry = async (entry: DiskEntry) => {
     try {
-      if (entry.is_dir) {
-        const loadingId = message.loading(
-          t('fileExplorer.toasts.packagingTitle'),
-          t('fileExplorer.toasts.packagingMessage'),
-        )
-        const job = await prepareDownload({ path: entry.path })
-        const status = await poll(() => downloadStatus(job.job_id), {
-          stopCondition: (data) => data.status === 'ready' || data.status === 'error',
-          interval: 1500,
-        })
-        if (status.status !== 'ready') {
-          message.remove(loadingId)
-          throw new Error(status.message || '打包失败')
-        }
-        const token = await createDownloadToken({ job_id: job.job_id })
-        triggerDownload(getDownloadJobUrl(token.token))
-        message.remove(loadingId)
-        message.success(
-          t('fileExplorer.toasts.packageDoneTitle'),
-          t('fileExplorer.toasts.downloadStarted'),
-        )
-      } else {
-        const token = await createDownloadToken({ path: entry.path })
-        triggerDownload(getDownloadFileUrl(token.token))
-        message.success(t('fileExplorer.toasts.downloadStarted'))
-      }
+      const data = await getDownloadUrl(entry.id)
+      const base = import.meta.env.VITE_API_BASE_URL || ''
+      const href = base ? new URL(data.url, base).toString() : data.url
+      triggerDownload(href)
+      message.success(t('fileExplorer.toasts.downloadStarted'))
       return true
     } catch (error) {
       message.error(
@@ -332,9 +290,37 @@ export const useDiskExplorer = () => {
 
   const canGoUp = computed(() => path.value && path.value !== '/')
 
+  const openEntry = async (entry: DiskEntry) => {
+    if (!entry.is_dir) {
+      return
+    }
+    folderStack.value = [...folderStack.value, { id: entry.id, name: entry.name }]
+    await load(entry.id)
+  }
+
+  const goToBreadcrumb = async (targetId: number | string | null) => {
+    if (targetId === null) {
+      folderStack.value = []
+      await load(null)
+      return
+    }
+    if (typeof targetId === 'string') {
+      return
+    }
+    const index = folderStack.value.findIndex((item) => item.id === targetId)
+    if (index >= 0) {
+      folderStack.value = folderStack.value.slice(0, index + 1)
+    } else {
+      folderStack.value = []
+    }
+    await load(targetId)
+  }
+
   return {
     loading,
     path,
+    parentId,
+    folderStack,
     items,
     sortedItems,
     sortKey,
@@ -350,5 +336,7 @@ export const useDiskExplorer = () => {
     removeEntries,
     downloadEntry,
     canGoUp,
+    openEntry,
+    goToBreadcrumb,
   }
 }

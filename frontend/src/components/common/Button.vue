@@ -48,6 +48,8 @@ const classes = computed(() => [
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-4);
   font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
   transition:
     transform var(--transition-fast),
     box-shadow var(--transition-base),
@@ -81,15 +83,18 @@ const classes = computed(() => [
 .btn--sm {
   padding: var(--space-1) var(--space-3);
   font-size: 13px;
+  min-height: 32px;
 }
 
 .btn--md {
   font-size: 14px;
+  min-height: 40px;
 }
 
 .btn--lg {
   padding: var(--space-3) var(--space-5);
   font-size: 15px;
+  min-height: 48px;
 }
 
 .btn--block {

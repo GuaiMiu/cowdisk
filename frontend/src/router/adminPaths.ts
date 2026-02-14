@@ -1,0 +1,16 @@
+export const ADMIN_BASE = '/admin'
+
+export const ADMIN_ACCESS_BASE = 'access'
+export const ADMIN_ACCESS_USER = `${ADMIN_ACCESS_BASE}/user`
+export const ADMIN_ACCESS_ROLE = `${ADMIN_ACCESS_BASE}/role`
+export const ADMIN_ACCESS_MENU = `${ADMIN_ACCESS_BASE}/menu`
+
+export const ADMIN_CONFIG_BASE = 'config'
+export const ADMIN_CONFIG_SYSTEM = `${ADMIN_CONFIG_BASE}/system`
+export const ADMIN_CONFIG_AUDIT = `${ADMIN_CONFIG_BASE}/audit`
+
+export const ADMIN_FULL_ACCESS_USER = `${ADMIN_BASE}/${ADMIN_ACCESS_USER}`
+export const ADMIN_FULL_ACCESS_ROLE = `${ADMIN_BASE}/${ADMIN_ACCESS_ROLE}`
+export const ADMIN_FULL_ACCESS_MENU = `${ADMIN_BASE}/${ADMIN_ACCESS_MENU}`
+export const ADMIN_FULL_CONFIG_SYSTEM = `${ADMIN_BASE}/${ADMIN_CONFIG_SYSTEM}`
+export const ADMIN_FULL_CONFIG_AUDIT = `${ADMIN_BASE}/${ADMIN_CONFIG_AUDIT}`

@@ -23,7 +23,7 @@ export const usePublicShare = (token: string) => {
   const errorMessage = ref('')
   const fileMeta = ref<SharePublicResult['fileMeta'] | null>(null)
   const items = ref<ShareEntry[]>([])
-  const currentPath = ref<string | undefined>(undefined)
+  const currentParentId = ref<number | null>(null)
 
   const isFile = computed(() => {
     const resourceType = (share.value as { resourceType?: string } | null)?.resourceType
@@ -39,7 +39,7 @@ export const usePublicShare = (token: string) => {
       fileMeta.value = data.fileMeta ?? null
       errorMessage.value = ''
       if (!data.locked && !isFile.value) {
-        currentPath.value = '/'
+        currentParentId.value = null
       }
     } catch (error) {
       const detail =
@@ -77,12 +77,15 @@ export const usePublicShare = (token: string) => {
     }
   }
 
-  const loadEntries = async (path?: string) => {
+  const loadEntries = async (parent_id?: number | null) => {
     try {
-      const normalizedPath = path && path !== '/' ? path : undefined
-      const data = await listShareEntries(token, { path: normalizedPath }, accessToken.value ?? undefined)
+      const data = await listShareEntries(
+        token,
+        { parent_id: parent_id ?? null },
+        accessToken.value ?? undefined,
+      )
       items.value = data.items || []
-      currentPath.value = normalizedPath ?? '/'
+      currentParentId.value = parent_id ?? null
     } catch (error) {
       message.error(
         t('sharePublic.toasts.listFailTitle'),
@@ -91,9 +94,9 @@ export const usePublicShare = (token: string) => {
     }
   }
 
-  const download = async (path?: string) => {
+  const download = async (file_id?: number | null) => {
     try {
-      const url = getShareDownloadUrl(token, { path }, accessToken.value ?? undefined)
+      const url = getShareDownloadUrl(token, { file_id }, accessToken.value ?? undefined)
       const link = document.createElement('a')
       link.href = url
       link.rel = 'noopener'
@@ -107,9 +110,9 @@ export const usePublicShare = (token: string) => {
     }
   }
 
-  const preview = async (path?: string) => {
+  const preview = async (file_id?: number | null) => {
     try {
-      const result = await previewShare(token, { path }, accessToken.value ?? undefined)
+      const result = await previewShare(token, { file_id }, accessToken.value ?? undefined)
       openBlob(result.blob)
     } catch (error) {
       message.error(
@@ -119,10 +122,10 @@ export const usePublicShare = (token: string) => {
     }
   }
 
-  const saveToDrive = async (targetPath: string) => {
+  const saveToDrive = async (targetParentId: number | null) => {
     try {
-      await saveShare(token, { targetPath })
-      message.success(t('sharePublic.toasts.saveSuccessTitle'), targetPath)
+      await saveShare(token, { targetParentId })
+      message.success(t('sharePublic.toasts.saveSuccessTitle'))
     } catch (error) {
       message.error(
         t('sharePublic.toasts.saveFailTitle'),
@@ -137,7 +140,7 @@ export const usePublicShare = (token: string) => {
     share,
     fileMeta,
     items,
-    currentPath,
+    currentParentId,
     isFile,
     accessToken,
     unlockError,

@@ -54,7 +54,9 @@ const classes = computed(() => [
         {{ option.label }}
       </option>
     </select>
-    <span v-if="error" class="field__error">{{ error }}</span>
+    <span class="field__error" :class="{ 'field__error--hidden': !error }">
+      {{ error || ' ' }}
+    </span>
   </label>
 </template>
 
@@ -62,6 +64,8 @@ const classes = computed(() => [
 .field {
   display: grid;
   gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
 }
 
 .field__label {
@@ -70,6 +74,9 @@ const classes = computed(() => [
 }
 
 .select {
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
@@ -78,7 +85,8 @@ const classes = computed(() => [
     border var(--transition-fast),
     box-shadow var(--transition-fast);
   appearance: none;
-  font-size: 14px;
+  font-size: inherit;
+  line-height: 1.2;
 }
 
 .select:focus {
@@ -97,12 +105,19 @@ const classes = computed(() => [
 }
 
 .select--sm {
-  padding: var(--space-1) var(--space-3);
+  min-height: 32px;
+  padding: var(--space-2) var(--space-3);
   font-size: 13px;
 }
 
 .field__error {
   font-size: 12px;
   color: var(--color-danger);
+  min-height: 16px;
+  line-height: 1.2;
+}
+
+.field__error--hidden {
+  opacity: 0;
 }
 </style>

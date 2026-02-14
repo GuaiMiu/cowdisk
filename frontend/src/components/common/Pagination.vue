@@ -8,6 +8,9 @@ const props = withDefaults(
     total: number
     pageSize: number
     currentPage: number
+    cursorMode?: boolean
+    hasNext?: boolean
+    hasPrev?: boolean
     pageSizeOptions?: number[]
     showPageSize?: boolean
   }>(),
@@ -15,6 +18,9 @@ const props = withDefaults(
     total: 0,
     pageSize: 20,
     currentPage: 1,
+    cursorMode: false,
+    hasNext: false,
+    hasPrev: false,
     pageSizeOptions: () => [10, 20, 50, 100],
     showPageSize: true,
   },
@@ -23,6 +29,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   (event: 'update:currentPage', value: number): void
   (event: 'update:pageSize', value: number): void
+  (event: 'next'): void
+  (event: 'prev'): void
 }>()
 
 const { t } = useI18n({ useScope: 'global' })
@@ -44,9 +52,12 @@ const sizeOptions = () =>
 <template>
   <div class="pagination">
     <div class="pagination__left">
-      <span class="pagination__info">{{
+      <span v-if="!cursorMode" class="pagination__info">{{
         t('pagination.info', { total, pages: totalPages() })
       }}</span>
+      <span v-else class="pagination__info">
+        {{ t('pagination.page', { page: currentPage }) }}
+      </span>
       <div v-if="showPageSize" class="pagination__size">
         <span class="pagination__size-label">{{ t('pagination.perPage') }}</span>
         <Select
@@ -58,34 +69,45 @@ const sizeOptions = () =>
       </div>
     </div>
     <div class="pagination__actions">
-      <Button variant="secondary" size="sm" :disabled="currentPage <= 1" @click="go(1)">
-        {{ t('pagination.first') }}
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        :disabled="currentPage <= 1"
-        @click="go(currentPage - 1)"
-      >
-        {{ t('pagination.prev') }}
-      </Button>
-      <span class="pagination__page">{{ currentPage }}</span>
-      <Button
-        variant="secondary"
-        size="sm"
-        :disabled="currentPage >= totalPages()"
-        @click="go(currentPage + 1)"
-      >
-        {{ t('pagination.next') }}
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        :disabled="currentPage >= totalPages()"
-        @click="go(totalPages())"
-      >
-        {{ t('pagination.last') }}
-      </Button>
+      <template v-if="cursorMode">
+        <Button variant="secondary" size="sm" :disabled="!hasPrev" @click="emit('prev')">
+          {{ t('pagination.prev') }}
+        </Button>
+        <span class="pagination__page">{{ currentPage }}</span>
+        <Button variant="secondary" size="sm" :disabled="!hasNext" @click="emit('next')">
+          {{ t('pagination.next') }}
+        </Button>
+      </template>
+      <template v-else>
+        <Button variant="secondary" size="sm" :disabled="currentPage <= 1" @click="go(1)">
+          {{ t('pagination.first') }}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          :disabled="currentPage <= 1"
+          @click="go(currentPage - 1)"
+        >
+          {{ t('pagination.prev') }}
+        </Button>
+        <span class="pagination__page">{{ currentPage }}</span>
+        <Button
+          variant="secondary"
+          size="sm"
+          :disabled="currentPage >= totalPages()"
+          @click="go(currentPage + 1)"
+        >
+          {{ t('pagination.next') }}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          :disabled="currentPage >= totalPages()"
+          @click="go(totalPages())"
+        >
+          {{ t('pagination.last') }}
+        </Button>
+      </template>
     </div>
   </div>
 </template>
@@ -117,11 +139,22 @@ const sizeOptions = () =>
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  white-space: nowrap;
 }
 
 .pagination__size-label {
   font-size: 13px;
   color: var(--color-muted);
+}
+
+.pagination__size :deep(.field) {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.pagination__size :deep(.field__error) {
+  display: none;
 }
 
 .pagination__actions {

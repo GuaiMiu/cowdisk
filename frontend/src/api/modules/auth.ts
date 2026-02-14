@@ -37,7 +37,7 @@ export const getRouters = () =>
 export const logout = () =>
   request<boolean>({
     url: '/api/v1/auth/logout',
-    method: 'GET',
+    method: 'POST',
   })
 
 export const getAvatar = () =>
