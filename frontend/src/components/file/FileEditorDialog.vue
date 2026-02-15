@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import TextEditor from '@/components/common/TextEditor.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -77,6 +77,7 @@ const unsavedConfirmOpen = ref(false)
 const pendingClose = ref(false)
 const pendingSelect = ref<{ fileId: number; name: string } | null>(null)
 const isFullscreen = ref(false)
+const mobileMediaQuery = typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)') : null
 
 const rootNode = ref<TreeNode>({
   id: null,
@@ -261,10 +262,25 @@ const toggleFullscreen = async () => {
   isFullscreen.value = !isFullscreen.value
 }
 
+const syncSidebarByViewport = () => {
+  if (!mobileMediaQuery) {
+    return
+  }
+  sidebarOpen.value = !mobileMediaQuery.matches
+}
+
+const onViewportChange = () => {
+  if (!props.open) {
+    return
+  }
+  syncSidebarByViewport()
+}
+
 watch(
   () => props.open,
   (open) => {
     if (open) {
+      syncSidebarByViewport()
       window.addEventListener('keydown', onKeyDown)
       document.body.style.overflow = 'hidden'
     } else {
@@ -312,7 +328,25 @@ watch(
   },
 )
 
+onMounted(() => {
+  if (!mobileMediaQuery) {
+    return
+  }
+  if (typeof mobileMediaQuery.addEventListener === 'function') {
+    mobileMediaQuery.addEventListener('change', onViewportChange)
+    return
+  }
+  mobileMediaQuery.addListener(onViewportChange)
+})
+
 onBeforeUnmount(() => {
+  if (mobileMediaQuery) {
+    if (typeof mobileMediaQuery.removeEventListener === 'function') {
+      mobileMediaQuery.removeEventListener('change', onViewportChange)
+    } else {
+      mobileMediaQuery.removeListener(onViewportChange)
+    }
+  }
   window.removeEventListener('keydown', onKeyDown)
   document.body.style.overflow = ''
 })
@@ -956,15 +990,6 @@ onBeforeUnmount(() => {
   border-radius: 0;
 }
 
-@media (max-width: 1024px) {
-  .workbench {
-    grid-template-columns: 220px 1fr;
-  }
-
-  .sidebar-divider-btn {
-    left: 220px;
-  }
-}
 
 @media (max-width: 768px) {
   .vscode-overlay {
