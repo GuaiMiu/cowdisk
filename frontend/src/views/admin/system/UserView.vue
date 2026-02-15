@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
 import Table from '@/components/common/Table.vue'
@@ -17,10 +18,12 @@ import { useRoleOptions } from '@/composables/useRoleOptions'
 import type { UserOut } from '@/types/auth'
 import { useAuthStore } from '@/stores/auth'
 import { useMessage } from '@/stores/message'
+import { getRouteSearchKeyword } from '@/composables/useHeaderSearch'
 
 const userStore = useAdminUsers()
 const authStore = useAuthStore()
 const message = useMessage()
+const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 const columns = computed(() => [
   { key: 'username', label: t('admin.user.columns.username') },
@@ -47,6 +50,19 @@ const currentUser = ref<UserOut | null>(null)
 const roleOptions = useRoleOptions()
 const toggling = ref(new Set<number>())
 const currentUserId = computed(() => authStore.me?.id)
+const searchKeyword = computed(() => getRouteSearchKeyword(route).toLowerCase())
+const filteredUsers = computed(() => {
+  const keyword = searchKeyword.value
+  if (!keyword) {
+    return userStore.items.value
+  }
+  return userStore.items.value.filter((user) => {
+    const username = (user.username || '').toLowerCase()
+    const nickname = (user.nickname || '').toLowerCase()
+    const mail = (user.mail || '').toLowerCase()
+    return username.includes(keyword) || nickname.includes(keyword) || mail.includes(keyword)
+  })
+})
 
 const form = reactive({
   id: 0,
@@ -227,7 +243,7 @@ onMounted(() => {
     <div class="table-wrap">
       <Table
         :columns="columns"
-        :rows="userStore.items.value"
+        :rows="filteredUsers"
         :min-rows="userStore.size.value"
         scrollable
         fill

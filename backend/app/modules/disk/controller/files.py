@@ -79,6 +79,51 @@ async def list_files(
 
 
 @files_router.get(
+    "/search",
+    summary="按文件名搜索",
+    response_model=ResponseModel[dict],
+    dependencies=[require_permissions(["disk:file:list"])],
+)
+async def search_files(
+    keyword: str,
+    cursor: int = 0,
+    limit: int = 200,
+    order: str = "name",
+    current_user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """
+    按文件名在当前用户可见范围内搜索（仅查 DB 索引）。
+    """
+    term = (keyword or "").strip()
+    if not term:
+        return ResponseModel.success(
+            data={
+                "keyword": "",
+                "items": [],
+                "total": 0,
+                "nextCursor": None,
+            }
+        )
+    items, total, next_cursor = await FileService.search_by_name_cursor(
+        db=db,
+        user_id=current_user.id,
+        keyword=term,
+        cursor=cursor,
+        limit=limit,
+        order=order,
+    )
+    return ResponseModel.success(
+        data={
+            "keyword": term,
+            "items": [_to_file_entry(item) for item in items],
+            "total": total,
+            "nextCursor": next_cursor,
+        }
+    )
+
+
+@files_router.get(
     "/{file_id}",
     summary="获取文件或目录详情",
     response_model=ResponseModel[FileEntryOut],

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { CheckCircle2, Pencil, Power, Trash2, RotateCcw } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import IconButton from '@/components/common/IconButton.vue'
@@ -18,11 +19,25 @@ import { formatTime } from '@/utils/format'
 import type { Share } from '@/types/share'
 import { copyToClipboard } from '@/utils/clipboard'
 import { useMessage } from '@/stores/message'
+import { getRouteSearchKeyword } from '@/composables/useHeaderSearch'
 
 const shareActions = useShareActions()
 const message = useMessage()
+const route = useRoute()
+const searchKeyword = computed(() => getRouteSearchKeyword(route).toLowerCase())
+const filteredItems = computed(() => {
+  const keyword = searchKeyword.value
+  if (!keyword) {
+    return shareActions.items.value
+  }
+  return shareActions.items.value.filter((item) => {
+    const name = (item.name || '').toLowerCase()
+    const type = (item.resourceType || '').toLowerCase()
+    return name.includes(keyword) || type.includes(keyword)
+  })
+})
 const selection = useSelection(
-  () => shareActions.items.value,
+  () => filteredItems.value,
   (item) => String(item.id),
 )
 
@@ -84,7 +99,7 @@ watch(
 )
 
 watch(
-  () => shareActions.items.value,
+  () => filteredItems.value,
   (items) => {
     const valid = new Set(items.map((item) => item.id))
     const next = new Set<string>()
@@ -301,14 +316,14 @@ onMounted(() => {
         </div>
       </div>
       <div class="page__info">
-        {{ t('shares.itemsCount', { count: shareActions.total.value }) }}
+        {{ t('shares.itemsCount', { count: filteredItems.length }) }}
       </div>
     </div>
 
     <div class="table-wrap shares-table">
       <Table
         :columns="columns"
-        :rows="shareActions.items.value"
+        :rows="filteredItems"
         :min-rows="shareActions.limit.value"
         scrollable
         fill

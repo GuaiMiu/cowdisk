@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import FileToolbar from './FileToolbar.vue'
 import FileBreadcrumb from './FileBreadcrumb.vue'
 import FileTable from './FileTable.vue'
@@ -23,6 +24,7 @@ import { useShareDialog } from '@/components/file/composables/useShareDialog'
 import { useMessage } from '@/stores/message'
 import { useUploadsStore } from '@/stores/uploads'
 import { formatBytes, formatTime } from '@/utils/format'
+import { getRouteSearchKeyword } from '@/composables/useHeaderSearch'
 import { toRelativePath } from '@/utils/path'
 
 const FileEditorDialog = defineAsyncComponent(() => import('@/components/file/FileEditorDialog.vue'))
@@ -31,10 +33,10 @@ const PdfPreview = defineAsyncComponent(() => import('@/components/common/PdfPre
 const VideoPreview = defineAsyncComponent(() => import('@/components/common/VideoPreview.vue'))
 
 const { t } = useI18n({ useScope: 'global' })
+const route = useRoute()
 const rootName = computed(() => t('files.rootName'))
 
 const explorer = useDiskExplorer()
-const selection = useSelection(() => explorer.items.value)
 const uploader = useUploader()
 const shareActions = useShareActions()
 const message = useMessage()
@@ -87,6 +89,10 @@ const breadcrumbItems = computed(() => {
   ]
 })
 
+const searchKeyword = computed(() => getRouteSearchKeyword(route))
+const displayItems = computed(() => explorer.sortedItems.value)
+const selection = useSelection(() => displayItems.value)
+
 const {
   editorOpen,
   editorRootId,
@@ -96,6 +102,7 @@ const {
   editorLanguage,
   editorLoading,
   editorSaving,
+  editorDirty,
   openEditorForFolder,
   openEditorForFile,
   selectEditorFile,
@@ -199,6 +206,14 @@ onMounted(() => {
 })
 
 watch(
+  () => searchKeyword.value,
+  (value) => {
+    void explorer.setSearchKeyword(value)
+  },
+  { immediate: true },
+)
+
+watch(
   () => explorer.path.value,
   (value) => {
     if (value) {
@@ -270,12 +285,12 @@ onBeforeUnmount(() => {
     <div class="explorer__bar">
       <FileBreadcrumb :items="breadcrumbItems" @navigate="explorer.goToBreadcrumb" />
       <div class="explorer__count">
-        {{ t('files.itemsCount', { count: explorer.items.value.length }) }}
+        {{ t('files.itemsCount', { count: explorer.total.value }) }}
       </div>
     </div>
     <div class="explorer__table">
       <FileTable
-        :items="explorer.sortedItems.value"
+        :items="displayItems"
         :selected="selection.selected.value"
         :all-selected="selection.allSelected.value"
         :indeterminate="selection.indeterminate.value"
@@ -425,6 +440,7 @@ onBeforeUnmount(() => {
     :language="editorLanguage"
     :loading="editorLoading"
     :saving="editorSaving"
+    :dirty="editorDirty"
     v-model="editorContent"
     @select="selectEditorFile"
     @save="saveEditor"

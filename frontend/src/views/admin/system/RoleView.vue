@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
 import Table from '@/components/common/Table.vue'
@@ -16,8 +17,10 @@ import { useMenuOptions } from '@/composables/useMenuOptions'
 import { formatTime } from '@/utils/format'
 import type { RoleOut } from '@/types/role'
 import { getRoleDetail } from '@/api/modules/adminSystem'
+import { getRouteSearchKeyword } from '@/composables/useHeaderSearch'
 
 const roleStore = useAdminRoles()
+const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 const columns = computed(() => [
   { key: 'name', label: t('admin.role.columns.name') },
@@ -37,6 +40,19 @@ const deleteConfirm = ref(false)
 const currentRole = ref<RoleOut | null>(null)
 const menuOptions = useMenuOptions()
 const toggling = ref(new Set<number>())
+const searchKeyword = computed(() => getRouteSearchKeyword(route).toLowerCase())
+const filteredRoles = computed(() => {
+  const keyword = searchKeyword.value
+  if (!keyword) {
+    return roleStore.items.value
+  }
+  return roleStore.items.value.filter((role) => {
+    const name = (role.name || '').toLowerCase()
+    const permission = (role.permission_char || '').toLowerCase()
+    const description = (role.description || '').toLowerCase()
+    return name.includes(keyword) || permission.includes(keyword) || description.includes(keyword)
+  })
+})
 
 const form = reactive({
   id: 0,
@@ -160,7 +176,7 @@ onMounted(() => {
     <div class="table-wrap">
       <Table
         :columns="columns"
-        :rows="roleStore.items.value"
+        :rows="filteredRoles"
         :min-rows="roleStore.size.value"
         scrollable
         fill

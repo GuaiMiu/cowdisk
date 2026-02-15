@@ -555,6 +555,41 @@ class FileService:
         return items, total, next_cursor
 
     @classmethod
+    async def search_by_name_cursor(
+        cls,
+        db: AsyncSession,
+        user_id: int,
+        keyword: str,
+        cursor: int = 0,
+        limit: int = 200,
+        order: str = "name",
+    ) -> tuple[list[File], int, int | None]:
+        if limit <= 0 or limit > 500:
+            raise ServiceException(msg="分页大小不合法")
+        term = (keyword or "").strip()
+        if not term:
+            return [], 0, None
+        stmt = select(File).where(
+            File.user_id == user_id,
+            File.is_deleted == False,
+            File.name.contains(term),
+        )
+        count_stmt = select(func.count()).where(
+            File.user_id == user_id,
+            File.is_deleted == False,
+            File.name.contains(term),
+        )
+        if order == "updated_at":
+            stmt = stmt.order_by(File.is_dir.desc(), File.updated_at.desc(), File.id.desc())
+        else:
+            stmt = stmt.order_by(File.is_dir.desc(), File.name.asc(), File.id.asc())
+        stmt = stmt.offset(max(cursor, 0)).limit(limit)
+        items = (await db.exec(stmt)).all()
+        total = int((await db.exec(count_stmt)).one() or 0)
+        next_cursor = cursor + limit if cursor + limit < total else None
+        return items, total, next_cursor
+
+    @classmethod
     async def soft_delete(
         cls,
         db: AsyncSession,

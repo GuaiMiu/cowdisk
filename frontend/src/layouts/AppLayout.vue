@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { Cloud, Folder, PanelLeftClose, PanelLeftOpen, Share2, Trash2 } from 'lucide-vue-next'
 import IconButton from '@/components/common/IconButton.vue'
 import Dropdown from '@/components/common/Dropdown.vue'
+import HeaderSearch from '@/components/common/HeaderSearch.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { getAvatar } from '@/api/modules/auth'
 import { getLocale, setLocale } from '@/i18n'
 import { useResponsiveSidebar } from '@/composables/useResponsiveSidebar'
+import { useHeaderSearchQuery } from '@/composables/useHeaderSearch'
 import { useUserAvatar } from '@/composables/useUserAvatar'
 
 const authStore = useAuthStore()
@@ -20,6 +22,7 @@ const siteName = computed(() => appStore.siteName || 'CowDisk')
 const siteLogoUrl = computed(() => appStore.siteLogoUrl || '')
 const { t } = useI18n({ useScope: 'global' })
 const router = useRouter()
+const route = useRoute()
 const currentLocale = computed(() => getLocale())
 const canAdmin = computed(() => {
   if (authStore.me?.is_superuser) {
@@ -49,6 +52,26 @@ const { avatarFailed, avatarSrc, initials, onAvatarError } = useUserAvatar({
   avatarPath: computed(() => authStore.me?.avatar_path),
   token: computed(() => authStore.token),
   loadAvatar: getAvatar,
+})
+
+const searchPlaceholder = computed(() => {
+  if (route.name === 'app-files') {
+    return t('fileToolbar.searchPlaceholder')
+  }
+  if (route.name === 'app-shares') {
+    return t('shares.searchPlaceholder')
+  }
+  if (route.name === 'app-trash') {
+    return t('trash.searchPlaceholder')
+  }
+  return ''
+})
+
+const searchEnabled = computed(() => !!searchPlaceholder.value)
+const { modelValue: searchValue, submit: submitSearch } = useHeaderSearchQuery({
+  route,
+  router,
+  enabled: searchEnabled,
 })
 </script>
 
@@ -91,6 +114,14 @@ const { avatarFailed, avatarSrc, initials, onAvatarError } = useUserAvatar({
           <PanelLeftClose v-if="sidebarOpen" :size="16" />
           <PanelLeftOpen v-else :size="16" />
         </IconButton>
+      </div>
+      <div class="toolbar__center">
+        <HeaderSearch
+          v-if="searchEnabled"
+          v-model="searchValue"
+          :placeholder="searchPlaceholder"
+          @submit="submitSearch"
+        />
       </div>
       <div class="toolbar__actions">
         <Dropdown v-if="userLabel" align="right" :width="220">

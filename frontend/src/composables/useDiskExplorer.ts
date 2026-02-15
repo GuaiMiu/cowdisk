@@ -7,6 +7,7 @@ import {
   moveFile,
   deleteFiles,
   getDownloadUrl,
+  searchFiles,
 } from '@/api/modules/userDisk'
 import { useMessage } from '@/stores/message'
 import type { DiskEntry } from '@/types/disk'
@@ -23,6 +24,8 @@ export const useDiskExplorer = () => {
   const parentId = ref<number | null>(null)
   const folderStack = ref<Array<{ id: number; name: string }>>([])
   const items = ref<DiskEntry[]>([])
+  const total = ref(0)
+  const searchKeyword = ref('')
   const sortKey = ref<SortKey | null>(null)
   const sortOrder = ref<'asc' | 'desc'>('asc')
   const listController = ref<AbortController | null>(null)
@@ -33,7 +36,7 @@ export const useDiskExplorer = () => {
     path.value = segments.length ? `/${segments.join('/')}` : '/'
   }
 
-  const load = async (nextParentId?: number | null) => {
+  const load = async (nextParentId?: number | null, nextKeyword?: string) => {
     pendingLoadCount.value += 1
     loading.value = true
     if (listController.value) {
@@ -42,11 +45,20 @@ export const useDiskExplorer = () => {
     const controller = new AbortController()
     listController.value = controller
     try {
+      const keyword = (nextKeyword ?? searchKeyword.value).trim()
+      searchKeyword.value = keyword
       const targetParentId =
         nextParentId !== undefined ? nextParentId : parentId.value ?? null
-      const data = await listDir(targetParentId, { signal: controller.signal })
-      parentId.value = data.parent_id ?? targetParentId ?? null
-      items.value = data.items || []
+      if (keyword) {
+        const data = await searchFiles(keyword, { signal: controller.signal })
+        items.value = data.items || []
+        total.value = data.total || 0
+      } else {
+        const data = await listDir(targetParentId, { signal: controller.signal })
+        parentId.value = data.parent_id ?? targetParentId ?? null
+        items.value = data.items || []
+        total.value = data.total || 0
+      }
       syncPathFromStack()
     } catch (error) {
       if (controller.signal.aborted) {
@@ -66,6 +78,9 @@ export const useDiskExplorer = () => {
   }
 
   const refresh = () => load(parentId.value ?? null)
+  const setSearchKeyword = async (keyword: string) => {
+    await load(parentId.value ?? null, keyword)
+  }
 
   const getTypeKey = (entry: DiskEntry) => {
     if (entry.is_dir) {
@@ -297,6 +312,12 @@ export const useDiskExplorer = () => {
     if (!entry.is_dir) {
       return
     }
+    if (searchKeyword.value) {
+      searchKeyword.value = ''
+      folderStack.value = [{ id: entry.id, name: entry.name }]
+      await load(entry.id, '')
+      return
+    }
     folderStack.value = [...folderStack.value, { id: entry.id, name: entry.name }]
     await load(entry.id)
   }
@@ -325,12 +346,15 @@ export const useDiskExplorer = () => {
     parentId,
     folderStack,
     items,
+    total,
+    searchKeyword,
     sortedItems,
     sortKey,
     sortOrder,
     setSort,
     load,
     refresh,
+    setSearchKeyword,
     createFolder,
     renameEntry,
     moveEntry,

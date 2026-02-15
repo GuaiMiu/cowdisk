@@ -19,6 +19,13 @@ export type DiskListOut = {
   nextCursor?: number | null
 }
 
+export type DiskSearchOut = {
+  keyword: string
+  items: DiskEntry[]
+  total: number
+  nextCursor?: number | null
+}
+
 export type DiskUploadOut = {
   items: DiskEntry[]
 }

@@ -61,9 +61,10 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-5);
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 520px) auto;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-3);
   box-shadow: var(--shadow-xs);
 }
 
@@ -123,11 +124,17 @@
 
 .toolbar__actions {
   display: flex;
+  justify-self: end;
   gap: var(--space-2);
 }
 
 .toolbar__toggle {
   margin-right: var(--space-3);
+}
+
+.toolbar__center {
+  width: 100%;
+  min-width: 0;
 }
 
 .user-menu__trigger {
@@ -281,5 +288,10 @@
 
   .layout--mobile-open .brand__close {
     display: inline-flex;
+  }
+
+  .layout__toolbar {
+    grid-template-columns: auto 1fr auto;
+    padding: var(--space-3) var(--space-4);
   }
 }

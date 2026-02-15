@@ -1,4 +1,4 @@
-import { ref, watch, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import type { DiskEntry } from '@/types/disk'
 import { getTextLanguage } from '@/utils/fileMeta'
 
@@ -29,7 +29,11 @@ export const useFileEditor = (options: UseFileEditorOptions) => {
   const editorLanguage = ref('plaintext')
   const editorLoading = ref(false)
   const editorSaving = ref(false)
+  const editorSavedContent = ref('')
   const requestId = ref(0)
+  const editorDirty = computed(
+    () => !!editorFileId.value && editorContent.value !== editorSavedContent.value,
+  )
 
   const clearEditor = () => {
     requestId.value += 1
@@ -39,6 +43,7 @@ export const useFileEditor = (options: UseFileEditorOptions) => {
     editorFileId.value = null
     editorFileName.value = ''
     editorContent.value = ''
+    editorSavedContent.value = ''
     editorLanguage.value = 'plaintext'
     editorLoading.value = false
     editorSaving.value = false
@@ -70,6 +75,7 @@ export const useFileEditor = (options: UseFileEditorOptions) => {
         return
       }
       editorContent.value = data.content || ''
+      editorSavedContent.value = editorContent.value
     } catch (error) {
       options.message.error(
         options.t('fileExplorer.toasts.readFailedTitle'),
@@ -77,7 +83,9 @@ export const useFileEditor = (options: UseFileEditorOptions) => {
       )
       clearEditor()
     } finally {
-      editorLoading.value = false
+      if (currentRequestId === requestId.value) {
+        editorLoading.value = false
+      }
     }
   }
 
@@ -93,13 +101,16 @@ export const useFileEditor = (options: UseFileEditorOptions) => {
         return
       }
       editorContent.value = data.content || ''
+      editorSavedContent.value = editorContent.value
     } catch (error) {
       options.message.error(
         options.t('fileExplorer.toasts.readFailedTitle'),
         error instanceof Error ? error.message : options.t('fileExplorer.toasts.readFailedMessage'),
       )
     } finally {
-      editorLoading.value = false
+      if (currentRequestId === requestId.value) {
+        editorLoading.value = false
+      }
     }
   }
 
@@ -113,6 +124,7 @@ export const useFileEditor = (options: UseFileEditorOptions) => {
         content: editorContent.value,
         overwrite: true,
       })
+      editorSavedContent.value = editorContent.value
       options.message.success(options.t('fileExplorer.toasts.saveSuccess'))
       await options.refresh()
     } catch (error) {
@@ -140,6 +152,7 @@ export const useFileEditor = (options: UseFileEditorOptions) => {
     editorLanguage,
     editorLoading,
     editorSaving,
+    editorDirty,
     openEditorForFolder,
     openEditorForFile,
     selectEditorFile,
@@ -147,4 +160,3 @@ export const useFileEditor = (options: UseFileEditorOptions) => {
     clearEditor,
   }
 }
-

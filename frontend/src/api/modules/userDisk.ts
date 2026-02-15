@@ -9,6 +9,7 @@ import type {
   DiskMkdirIn,
   DiskMoveBody,
   DiskRenameBody,
+  DiskSearchOut,
   DiskTrashBatchIdsIn,
   DiskTrashBatchOut,
   DiskTrashListOut,
@@ -32,6 +33,24 @@ export const listDir = (
       method: 'GET',
       params: {
         parent_id,
+        cursor: options?.cursor ?? 0,
+        limit: options?.limit ?? 200,
+        order: options?.order ?? 'name',
+      },
+    },
+    options,
+  )
+
+export const searchFiles = (
+  keyword: string,
+  options?: { signal?: AbortSignal; cursor?: number; limit?: number; order?: string },
+) =>
+  request<DiskSearchOut>(
+    {
+      url: '/api/v1/me/files/search',
+      method: 'GET',
+      params: {
+        keyword,
         cursor: options?.cursor ?? 0,
         limit: options?.limit ?? 200,
         order: options?.order ?? 'name',

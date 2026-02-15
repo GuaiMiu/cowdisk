@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
 import Table from '@/components/common/Table.vue'
@@ -12,8 +13,10 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Switch from '@/components/common/Switch.vue'
 import { useAdminMenus } from '@/composables/useAdminMenus'
 import type { MenuOut } from '@/types/menu'
+import { getRouteSearchKeyword } from '@/composables/useHeaderSearch'
 
 const menuStore = useAdminMenus()
+const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 const columns = computed(() => [
   { key: 'name', label: t('admin.menu.columns.name') },
@@ -44,6 +47,7 @@ const formOpen = ref(false)
 const deleteConfirm = ref(false)
 const currentMenu = ref<MenuOut | null>(null)
 const toggling = ref(new Set<number>())
+const searchKeyword = computed(() => getRouteSearchKeyword(route).toLowerCase())
 
 const form = reactive({
   id: 0,
@@ -121,6 +125,7 @@ const treeRows = computed(() => {
   if (!source.length) {
     return [] as Array<MenuOut & { _level: number }>
   }
+  const keyword = searchKeyword.value
   const map = new Map<number, MenuOut>()
   source.forEach((item) => {
     if (item.id) {
@@ -128,7 +133,22 @@ const treeRows = computed(() => {
     }
   })
   const included = new Set<number>()
-  const matches = new Set(source.map((item) => item.id).filter((id): id is number => !!id))
+  const matches = new Set<number>()
+  source.forEach((item) => {
+    if (!item.id) {
+      return
+    }
+    if (!keyword) {
+      matches.add(item.id)
+      return
+    }
+    const name = (item.name || '').toLowerCase()
+    const permission = (item.permission_char || '').toLowerCase()
+    const path = (item.router_path || '').toLowerCase()
+    if (name.includes(keyword) || permission.includes(keyword) || path.includes(keyword)) {
+      matches.add(item.id)
+    }
+  })
   matches.forEach((id) => {
     let current = map.get(id)
     while (current?.id) {

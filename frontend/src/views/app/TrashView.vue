@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { RotateCcw, Trash2 } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import IconButton from '@/components/common/IconButton.vue'
@@ -12,11 +13,21 @@ import { useTrash } from '@/composables/useTrash'
 import { useSelection } from '@/composables/useSelection'
 import { useMessage } from '@/stores/message'
 import { formatBytes, formatTime } from '@/utils/format'
+import { getRouteSearchKeyword } from '@/composables/useHeaderSearch'
 import type { DiskTrashEntry } from '@/types/disk'
 
 const trash = useTrash()
+const route = useRoute()
+const searchKeyword = computed(() => getRouteSearchKeyword(route).toLowerCase())
+const filteredItems = computed(() => {
+  const keyword = searchKeyword.value
+  if (!keyword) {
+    return trash.items.value
+  }
+  return trash.items.value.filter((item) => (item.name || '').toLowerCase().includes(keyword))
+})
 const selection = useSelection(
-  () => trash.items.value,
+  () => filteredItems.value,
   (item) => String(item.id),
 )
 const message = useMessage()
@@ -52,7 +63,7 @@ watch(
 )
 
 watch(
-  () => trash.items.value,
+  () => filteredItems.value,
   (items) => {
     const valid = new Set(items.map((item) => item.id))
     const next = new Set<string>()
@@ -67,6 +78,10 @@ watch(
   },
   { deep: true },
 )
+
+watch(searchKeyword, () => {
+  page.value = 1
+})
 
 const requestDelete = (entry: DiskTrashEntry) => {
   currentEntry.value = entry
@@ -145,7 +160,7 @@ const confirmBatch = async () => {
 const pagedItems = computed(() => {
   const start = (page.value - 1) * pageSize.value
   const end = start + pageSize.value
-  return trash.items.value.slice(start, end)
+  return filteredItems.value.slice(start, end)
 })
 
 const updatePage = (next: number) => {
@@ -185,7 +200,7 @@ onMounted(() => {
         </div>
       </div>
       <div class="page__info">
-        {{ t('trash.itemsCount', { count: trash.items.value.length }) }}
+        {{ t('trash.itemsCount', { count: filteredItems.length }) }}
       </div>
     </div>
 
@@ -250,7 +265,7 @@ onMounted(() => {
     </div>
 
     <Pagination
-      :total="trash.items.value.length"
+      :total="filteredItems.length"
       :page-size="pageSize"
       :current-page="page"
       @update:currentPage="updatePage"
