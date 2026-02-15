@@ -218,28 +218,41 @@ onMounted(() => {
 
   <Modal
     :open="formOpen"
+    :width="760"
     :title="form.id ? t('admin.role.modal.editTitle') : t('admin.role.modal.createTitle')"
     @close="formOpen = false"
   >
     <div class="form">
       <Input
+        class="form__field"
         v-model="form.name"
+        size="sm"
         :label="t('admin.role.form.name')"
         :placeholder="t('admin.role.placeholders.name')"
         :error="errors.name"
       />
       <Input
+        class="form__field"
         v-model="form.permission_char"
+        size="sm"
         :label="t('admin.role.form.permission')"
         :placeholder="t('admin.role.placeholders.permission')"
       />
       <Input
+        class="form__field form__field--full"
         v-model="form.description"
+        size="sm"
         :label="t('admin.role.form.description')"
         :placeholder="t('admin.common.optional')"
       />
-      <Select v-model="form.status" :label="t('admin.role.form.status')" :options="statusOptions" />
-      <div class="form__menus">
+      <Select
+        class="form__field"
+        v-model="form.status"
+        size="sm"
+        :label="t('admin.role.form.status')"
+        :options="statusOptions"
+      />
+      <div class="form__menus form__field--full">
         <div class="form__label">{{ t('admin.role.form.menus') }}</div>
         <TreeCheckList
           v-model="form.menus"
@@ -287,16 +300,25 @@ onMounted(() => {
 
 .form {
   display: grid;
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.form__field {
+  min-width: 0;
+}
+
+.form__field--full {
+  grid-column: 1 / -1;
 }
 
 .form__menus {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .form__label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--color-muted);
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import FileToolbar from './FileToolbar.vue'
 import FileBreadcrumb from './FileBreadcrumb.vue'
@@ -7,35 +7,30 @@ import FileTable from './FileTable.vue'
 import FileMoveDialog from './FileMoveDialog.vue'
 import UploadQueueDrawer from './UploadQueueDrawer.vue'
 import Modal from '@/components/common/Modal.vue'
-import FileEditorDialog from '@/components/file/FileEditorDialog.vue'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import ShareForm, { type ShareFormValue } from '@/components/share/ShareForm.vue'
-import ImagePreview from '@/components/common/ImagePreview.vue'
-import PdfPreview from '@/components/common/PdfPreview.vue'
-import VideoPreview from '@/components/common/VideoPreview.vue'
-import {
-  previewFile,
-  readEditFile,
-  saveEditFile,
-  uploadFiles,
-} from '@/api/modules/userDisk'
+import ShareForm from '@/components/share/ShareForm.vue'
+import { previewFile, readEditFile, saveEditFile } from '@/api/modules/userDisk'
+import { useFileEditor } from '@/components/file/composables/useFileEditor'
+import { useFileActions } from '@/components/file/composables/useFileActions'
 import { useDiskExplorer } from '@/composables/useDiskExplorer'
 import { useSelection } from '@/composables/useSelection'
 import { useUploader } from '@/composables/useUploader'
 import { useShareActions } from '@/composables/useShareActions'
+import { useFilePreview } from '@/components/file/composables/useFilePreview'
+import { useShareDialog } from '@/components/file/composables/useShareDialog'
 import { useMessage } from '@/stores/message'
 import { useUploadsStore } from '@/stores/uploads'
-import type { DiskEntry } from '@/types/disk'
-import type { Share } from '@/types/share'
-import { copyToClipboard } from '@/utils/clipboard'
-import { normalizeDiskError } from '@/utils/diskError'
 import { formatBytes, formatTime } from '@/utils/format'
-import { getFileKind } from '@/utils/fileType'
 import { toRelativePath } from '@/utils/path'
 
-const { t, locale } = useI18n({ useScope: 'global' })
+const FileEditorDialog = defineAsyncComponent(() => import('@/components/file/FileEditorDialog.vue'))
+const ImagePreview = defineAsyncComponent(() => import('@/components/common/ImagePreview.vue'))
+const PdfPreview = defineAsyncComponent(() => import('@/components/common/PdfPreview.vue'))
+const VideoPreview = defineAsyncComponent(() => import('@/components/common/VideoPreview.vue'))
+
+const { t } = useI18n({ useScope: 'global' })
 const rootName = computed(() => t('files.rootName'))
 
 const explorer = useDiskExplorer()
@@ -55,57 +50,31 @@ const queueErrorCount = computed(
 )
 
 const queueOpen = ref(false)
-const shareModal = ref(false)
-const deleteConfirm = ref(false)
-const shareEntry = ref<DiskEntry | null>(null)
-const shareLink = ref('')
-const shareLinkWithCode = ref('')
-const shareCode = ref('')
-const shareIncludeCode = ref(true)
-const shareResult = ref<Share | null>(null)
-const shareSubmitting = ref(false)
-const lastShareSignature = ref<string | null>(null)
-const detailModal = ref(false)
-const detailEntry = ref<DiskEntry | null>(null)
-const moveModal = ref(false)
-const moveEntries = ref<DiskEntry[]>([])
-const creatingText = ref(false)
-const previewOpen = ref(false)
-const previewItems = ref<Array<{ src: string; name?: string }>>([])
-const previewIndex = ref(0)
-const previewUrls = ref<string[]>([])
-const previewEntries = ref<DiskEntry[]>([])
-const previewLoading = ref(new Set<number>())
-const pdfOpen = ref(false)
-const pdfSrc = ref<string | null>(null)
-const pdfName = ref<string>('')
-const pdfUrls = ref<string[]>([])
-const videoOpen = ref(false)
-const videoSrc = ref<string | null>(null)
-const videoName = ref<string>('')
-const videoType = ref<string | null>(null)
-const editorOpen = ref(false)
-const editorRootId = ref<number | null>(null)
-const editorRootName = ref(rootName.value)
-const editorFileId = ref<number | null>(null)
-const editorFileName = ref('')
-const editorContent = ref('')
-const editorLanguage = ref('plaintext')
-const editorLoading = ref(false)
-const editorSaving = ref(false)
-const shareForm = ref<ShareFormValue>({
-  expiresInDays: 7,
-  expiresAt: null,
-  requiresCode: true,
-  code: '',
-})
-const deleteBatch = ref<DiskEntry[]>([])
-const creatingFolder = ref(false)
-const renamingEntry = ref<DiskEntry | null>(null)
-const renamingName = ref('')
 const refreshTimer = ref<number | null>(null)
+const successInViewIds = ref(new Set<string>())
+const observedUploadsPath = ref<string>('')
 const LAST_PATH_KEY = 'cowdisk:last_path'
 const LAST_STACK_KEY = 'cowdisk:last_stack'
+
+const {
+  shareModal,
+  shareForm,
+  shareResult,
+  shareSubmitting,
+  shareIncludeCode,
+  shareCode,
+  shareLink,
+  shareLinkWithCode,
+  canRegenerateShare,
+  openShareModal,
+  closeShareModal,
+  submitShare,
+  handleCopyLink,
+} = useShareDialog({
+  t,
+  createShare: shareActions.create,
+  message,
+})
 
 const breadcrumbItems = computed(() => {
   const rootLabel = t('fileBreadcrumb.root')
@@ -118,593 +87,94 @@ const breadcrumbItems = computed(() => {
   ]
 })
 
-const openFolderModal = () => {
-  creatingFolder.value = true
-  creatingText.value = false
-  renamingEntry.value = null
-  renamingName.value = ''
-}
-
-const openNewTextInline = () => {
-  creatingFolder.value = false
-  renamingEntry.value = null
-  creatingText.value = true
-}
-
-const openRenameModal = (entry: DiskEntry) => {
-  renamingEntry.value = entry
-  renamingName.value = entry.name
-  creatingFolder.value = false
-  creatingText.value = false
-}
-
-const openMoveModal = (entries: DiskEntry[]) => {
-  moveEntries.value = entries
-  moveModal.value = true
-}
-
-const openShareModal = (entry: DiskEntry) => {
-  shareEntry.value = entry
-  shareForm.value = {
-    expiresInDays: 7,
-    expiresAt: null,
-    requiresCode: true,
-    code: '',
-  }
-  shareLink.value = ''
-  shareLinkWithCode.value = ''
-  shareCode.value = ''
-  shareIncludeCode.value = true
-  shareResult.value = null
-  lastShareSignature.value = null
-  shareModal.value = true
-}
-
-const buildShareSignature = () => {
-  const expiresAt =
-    shareForm.value.expiresAt && Number.isFinite(Date.parse(shareForm.value.expiresAt))
-      ? Date.parse(shareForm.value.expiresAt)
-      : null
-  return JSON.stringify({
-    fileId: shareEntry.value?.id ?? null,
-    expiresInDays: shareForm.value.expiresInDays ?? null,
-    expiresAt,
-    code:
-      shareForm.value.requiresCode && shareForm.value.code.trim()
-        ? shareForm.value.code.trim()
-        : null,
-  })
-}
-
-const canRegenerateShare = computed(() => {
-  if (!shareResult.value) {
-    return true
-  }
-  return buildShareSignature() !== lastShareSignature.value
+const {
+  editorOpen,
+  editorRootId,
+  editorRootName,
+  editorFileId,
+  editorContent,
+  editorLanguage,
+  editorLoading,
+  editorSaving,
+  openEditorForFolder,
+  openEditorForFile,
+  selectEditorFile,
+  saveEditor,
+  clearEditor,
+} = useFileEditor({
+  t,
+  message,
+  rootLabel: rootName,
+  folderStack: explorer.folderStack,
+  readFile: readEditFile,
+  saveFile: saveEditFile,
+  refresh: explorer.refresh,
 })
 
-const submitShare = async () => {
-  if (!shareEntry.value || shareSubmitting.value || !canRegenerateShare.value) {
-    return
-  }
-  shareSubmitting.value = true
-  const expiresAt =
-    shareForm.value.expiresAt && Number.isFinite(Date.parse(shareForm.value.expiresAt))
-      ? Date.parse(shareForm.value.expiresAt)
-      : null
-  const payload = {
-    fileId: shareEntry.value.id,
-    expiresInDays: shareForm.value.expiresInDays ?? null,
-    expiresAt,
-    code:
-      shareForm.value.requiresCode && shareForm.value.code.trim()
-        ? shareForm.value.code.trim()
-        : null,
-  }
-  const share = await shareActions.create(payload)
-  shareSubmitting.value = false
-  if (share) {
-    shareResult.value = share
-    shareCode.value = share.code ?? ''
-    shareLink.value = buildShareUrl(share.token)
-    shareLinkWithCode.value = buildShareUrl(share.token, share.code)
-    lastShareSignature.value = buildShareSignature()
-  }
-}
+const {
+  previewOpen,
+  previewItems,
+  previewIndex,
+  pdfOpen,
+  pdfSrc,
+  pdfName,
+  videoOpen,
+  videoSrc,
+  videoName,
+  videoType,
+  openPreview,
+  handlePreviewChange,
+  clearPreview,
+  clearPdfPreview,
+  clearVideoPreview,
+  clearAllPreviews,
+} = useFilePreview({
+  items: explorer.items,
+  t,
+  message,
+  previewFile,
+  openTextPreview: openEditorForFile,
+})
 
-const handleCopyLink = async () => {
-  const link = shareIncludeCode.value && shareCode.value ? shareLinkWithCode.value : shareLink.value
-  const text = shareCode.value
-    ? `${t('fileExplorer.modals.copyLinkPrefix')}: ${link} ${t('fileExplorer.modals.copyCodePrefix')}: ${shareCode.value}`
-    : link
-  const ok = await copyToClipboard(text)
-  if (ok) {
-    message.success(t('fileExplorer.toasts.linkCopied'))
-  } else {
-    message.error(t('fileExplorer.toasts.copyFailTitle'), t('fileExplorer.toasts.copyFailMessage'))
-  }
-}
-
-const handleDelete = (entries: DiskEntry[]) => {
-  deleteBatch.value = entries
-  deleteConfirm.value = true
-}
-
-const confirmDelete = async () => {
-  const targets = deleteBatch.value
-  deleteConfirm.value = false
-  if (targets.length === 1) {
-    const [first] = targets
-    if (first) {
-      await explorer.removeEntry(first)
-    }
-  } else {
-    await explorer.removeEntries(targets)
-  }
-  selection.clear()
-  deleteBatch.value = []
-}
-
-const openUpload = () => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.multiple = true
-  input.onchange = () => {
-    const files = input.files ? Array.from(input.files) : []
-    if (files.length) {
-      uploader.enqueue(files, explorer.path.value, explorer.parentId.value ?? null)
-      uploader.notifyQueue()
-    }
-  }
-  input.click()
-}
-
-const openFolderUpload = () => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.multiple = true
-  ;(input as HTMLInputElement & { webkitdirectory?: boolean }).webkitdirectory = true
-  input.onchange = () => {
-    const files = input.files ? Array.from(input.files) : []
-    if (files.length) {
-      uploader.enqueue(files, explorer.path.value, explorer.parentId.value ?? null)
-      uploader.notifyQueue()
-    }
-  }
-  input.click()
-}
-
-const handleOpen = async (entry: DiskEntry) => {
-  if (!entry.is_dir) {
-    return
-  }
-  await explorer.openEntry(entry)
-  selection.clear()
-  creatingFolder.value = false
-  renamingEntry.value = null
-}
-
-const handleAction = async (payload: {
-  entry: DiskEntry
-  action: 'download' | 'rename' | 'delete' | 'share' | 'detail' | 'preview' | 'move' | 'edit'
-}) => {
-  if (payload.action === 'download') {
-    await explorer.downloadEntry(payload.entry)
-  }
-  if (payload.action === 'rename') {
-    openRenameModal(payload.entry)
-  }
-  if (payload.action === 'move') {
-    openMoveModal([payload.entry])
-  }
-  if (payload.action === 'delete') {
-    handleDelete([payload.entry])
-  }
-  if (payload.action === 'share') {
-    openShareModal(payload.entry)
-  }
-  if (payload.action === 'detail') {
-    detailEntry.value = payload.entry
-    detailModal.value = true
-  }
-  if (payload.action === 'preview') {
-    await openPreview(payload.entry)
-  }
-  if (payload.action === 'edit') {
-    if (payload.entry.is_dir) {
-      await openEditorForFolder(payload.entry)
-      return
-    }
-    if (isTextEntry(payload.entry)) {
-      await openEditorForFile(payload.entry)
-      return
-    }
-    message.warning(t('fileExplorer.toasts.notEditable'))
-  }
-}
-
-const isImageEntry = (entry: DiskEntry) => getFileKind(entry.name, entry.is_dir) === 'image'
-const isPdfEntry = (entry: DiskEntry) => getFileKind(entry.name, entry.is_dir) === 'pdf'
-const isVideoEntry = (entry: DiskEntry) => getFileKind(entry.name, entry.is_dir) === 'video'
-const isTextEntry = (entry: DiskEntry) => {
-  const kind = getFileKind(entry.name, entry.is_dir)
-  return kind === 'text' || kind === 'code'
-}
-
-const clearPreview = () => {
-  previewUrls.value.forEach((url) => URL.revokeObjectURL(url))
-  previewUrls.value = []
-  previewItems.value = []
-  previewOpen.value = false
-  previewIndex.value = 0
-  previewEntries.value = []
-  previewLoading.value = new Set()
-}
-
-const clearPdfPreview = () => {
-  pdfUrls.value.forEach((url) => URL.revokeObjectURL(url))
-  pdfUrls.value = []
-  pdfSrc.value = null
-  pdfName.value = ''
-  pdfOpen.value = false
-}
-
-const clearVideoPreview = () => {
-  if (videoSrc.value && videoSrc.value.startsWith('blob:')) {
-    URL.revokeObjectURL(videoSrc.value)
-  }
-  videoSrc.value = null
-  videoName.value = ''
-  videoType.value = null
-  videoOpen.value = false
-}
-
-const clearEditor = () => {
-  editorOpen.value = false
-  editorRootId.value = null
-  editorRootName.value = rootName.value
-  editorFileId.value = null
-  editorFileName.value = ''
-  editorContent.value = ''
-  editorLanguage.value = 'plaintext'
-  editorLoading.value = false
-  editorSaving.value = false
-}
-
-const getVideoMime = (name: string) => {
-  const ext = name.split('.').pop()?.toLowerCase() || ''
-  const map: Record<string, string> = {
-    mp4: 'video/mp4',
-    webm: 'video/webm',
-    mov: 'video/quicktime',
-    mkv: 'video/x-matroska',
-    avi: 'video/x-msvideo',
-    flv: 'video/x-flv',
-    wmv: 'video/x-ms-wmv',
-    m4v: 'video/x-m4v',
-  }
-  return map[ext] || 'video/mp4'
-}
-
-const buildShareUrl = (token: string, code?: string | null) => {
-  const url = new URL(`/s/${token}`, window.location.origin)
-  if (code) {
-    url.searchParams.set('code', code)
-  }
-  return url.toString()
-}
-
-const openPreview = async (entry: DiskEntry) => {
-  if (entry.is_dir) {
-    message.warning(t('fileExplorer.toasts.folderNoPreview'))
-    return
-  }
-  if (isImageEntry(entry)) {
-    await openImagePreview(entry)
-    return
-  }
-  if (isPdfEntry(entry)) {
-    await openPdfPreview(entry)
-    return
-  }
-  if (isVideoEntry(entry)) {
-    await openVideoPreview(entry)
-    return
-  }
-  if (isTextEntry(entry)) {
-    await openEditorForFile(entry)
-    return
-  }
-  message.warning(t('fileExplorer.toasts.fileNoPreview'))
-}
-
-const openImagePreview = async (entry: DiskEntry) => {
-  try {
-    clearPreview()
-    const images = explorer.items.value.filter((item) => !item.is_dir && isImageEntry(item))
-    previewEntries.value = images
-    previewItems.value = images.map((item) => ({ src: '', name: item.name }))
-    const currentIndex = Math.max(
-      0,
-      images.findIndex((item) => item.id === entry.id),
-    )
-    previewIndex.value = currentIndex
-    previewOpen.value = true
-    await ensurePreview(currentIndex)
-    await Promise.all([ensurePreview(currentIndex - 1), ensurePreview(currentIndex + 1)])
-  } catch (error) {
-    message.error(
-      t('fileExplorer.toasts.previewFailedTitle'),
-      error instanceof Error ? error.message : t('fileExplorer.toasts.previewFailedMessage'),
-    )
-    clearPreview()
-  }
-}
-
-const openPdfPreview = async (entry: DiskEntry) => {
-  try {
-    clearPdfPreview()
-    const result = await previewFile(entry.id)
-    const url = URL.createObjectURL(result.blob)
-    pdfUrls.value = [url]
-    pdfSrc.value = url
-    pdfName.value = entry.name || t('fileExplorer.pdfPreviewDefault')
-    pdfOpen.value = true
-  } catch (error) {
-    message.error(
-      t('fileExplorer.toasts.previewFailedTitle'),
-      error instanceof Error ? error.message : t('fileExplorer.toasts.previewFailedMessage'),
-    )
-    clearPdfPreview()
-  }
-}
-
-const openVideoPreview = async (entry: DiskEntry) => {
-  try {
-    clearVideoPreview()
-    const result = await previewFile(entry.id)
-    const url = URL.createObjectURL(result.blob)
-    videoSrc.value = url
-    videoName.value = entry.name || t('fileExplorer.videoPreviewDefault')
-    videoType.value = result.contentType || getVideoMime(entry.name || '')
-    videoOpen.value = true
-  } catch (error) {
-    message.error(
-      t('fileExplorer.toasts.previewFailedTitle'),
-      error instanceof Error ? error.message : t('fileExplorer.toasts.previewFailedMessage'),
-    )
-    clearVideoPreview()
-  }
-}
-
-const getTextLanguage = (name: string) => {
-  const ext = name.split('.').pop()?.toLowerCase() || ''
-  const map: Record<string, string> = {
-    txt: 'plaintext',
-    log: 'plaintext',
-    md: 'markdown',
-    markdown: 'markdown',
-    json: 'json',
-    yaml: 'yaml',
-    yml: 'yaml',
-    xml: 'xml',
-    html: 'html',
-    htm: 'html',
-    css: 'css',
-    scss: 'scss',
-    less: 'less',
-    js: 'javascript',
-    ts: 'typescript',
-    jsx: 'javascript',
-    tsx: 'typescript',
-    vue: 'html',
-    py: 'python',
-    rb: 'ruby',
-    go: 'go',
-    java: 'java',
-    kt: 'kotlin',
-    swift: 'swift',
-    cs: 'csharp',
-    dart: 'dart',
-    rs: 'rust',
-    c: 'c',
-    h: 'c',
-    cpp: 'cpp',
-    hpp: 'cpp',
-    cc: 'cpp',
-    cxx: 'cpp',
-    m: 'objective-c',
-    mm: 'objective-cpp',
-    php: 'php',
-    sh: 'shell',
-    bash: 'shell',
-    zsh: 'shell',
-    sql: 'sql',
-    ini: 'ini',
-    conf: 'ini',
-    cfg: 'ini',
-    toml: 'toml',
-    gradle: 'groovy',
-    properties: 'properties',
-    make: 'makefile',
-    mk: 'makefile',
-  }
-  return map[ext] || 'plaintext'
-}
-
-const openEditorForFolder = async (entry: DiskEntry) => {
-  clearEditor()
-  editorRootId.value = entry.id
-  editorRootName.value = entry.name || rootName.value
-  editorFileId.value = null
-  editorOpen.value = true
-}
-
-const openEditorForFile = async (entry: DiskEntry) => {
-  try {
-    clearEditor()
-    editorRootId.value = entry.parent_id ?? null
-    const parentName = explorer.folderStack.value.slice(-1)[0]?.name || ''
-    editorRootName.value = parentName || rootName.value
-    editorFileId.value = entry.id
-    editorFileName.value = entry.name || ''
-    editorLanguage.value = getTextLanguage(entry.name || '')
-    editorLoading.value = true
-    editorOpen.value = true
-    const data = await readEditFile(entry.id)
-    editorContent.value = data.content || ''
-  } catch (error) {
-    message.error(
-      t('fileExplorer.toasts.readFailedTitle'),
-      error instanceof Error ? error.message : t('fileExplorer.toasts.readFailedMessage'),
-    )
-    clearEditor()
-  } finally {
-    editorLoading.value = false
-  }
-}
-
-const selectEditorFile = async (payload: { fileId: number; name: string }) => {
-  try {
-    editorFileId.value = payload.fileId
-    editorFileName.value = payload.name
-    editorLanguage.value = getTextLanguage(payload.name)
-    editorLoading.value = true
-    const data = await readEditFile(payload.fileId)
-    editorContent.value = data.content || ''
-  } catch (error) {
-    message.error(
-      t('fileExplorer.toasts.readFailedTitle'),
-      error instanceof Error ? error.message : t('fileExplorer.toasts.readFailedMessage'),
-    )
-  } finally {
-    editorLoading.value = false
-  }
-}
-
-const saveEditor = async () => {
-  if (!editorFileId.value || editorSaving.value) {
-    return
-  }
-  editorSaving.value = true
-  try {
-    await saveEditFile(editorFileId.value, {
-      content: editorContent.value,
-      overwrite: true,
-    })
-    message.success(t('fileExplorer.toasts.saveSuccess'))
-    await explorer.refresh()
-  } catch (error) {
-    message.error(
-      t('fileExplorer.toasts.saveFailedTitle'),
-      error instanceof Error ? error.message : t('fileExplorer.toasts.saveFailedMessage'),
-    )
-  } finally {
-    editorSaving.value = false
-  }
-}
-
-const ensurePreview = async (index: number) => {
-  if (index < 0 || index >= previewEntries.value.length) {
-    return
-  }
-  if (previewItems.value[index]?.src) {
-    return
-  }
-  if (previewLoading.value.has(index)) {
-    return
-  }
-  const entry = previewEntries.value[index]
-  if (!entry) {
-    return
-  }
-  previewLoading.value = new Set(previewLoading.value).add(index)
-  try {
-    const result = await previewFile(entry.id)
-    const url = URL.createObjectURL(result.blob)
-    previewUrls.value = [...previewUrls.value, url]
-    const next = [...previewItems.value]
-    next[index] = { src: url, name: entry.name }
-    previewItems.value = next
-  } finally {
-    const next = new Set(previewLoading.value)
-    next.delete(index)
-    previewLoading.value = next
-  }
-}
-
-const handlePreviewChange = async (index: number) => {
-  await ensurePreview(index)
-  await Promise.all([ensurePreview(index - 1), ensurePreview(index + 1)])
-}
-
-const handleCreateInline = async (name: string) => {
-  const ok = await explorer.createFolder(name)
-  if (ok) {
-    creatingFolder.value = false
-  }
-}
-
-const cancelCreateInline = () => {
-  creatingFolder.value = false
-  creatingText.value = false
-}
-
-const handleCreateTextInline = async (name: string) => {
-  const filename = name.trim()
-  if (!filename) {
-    message.warning(t('fileExplorer.toasts.docNameRequired'))
-    return
-  }
-  try {
-    const file = new File([new Blob([''], { type: 'text/plain' })], filename, {
-      type: 'text/plain',
-    })
-    await uploadFiles({
-      items: [{ file, filename }],
-      parent_id: explorer.parentId.value ?? null,
-      name: filename,
-      overwrite: false,
-    })
-    message.success(t('fileExplorer.toasts.docCreated'))
-    creatingText.value = false
-    await explorer.refresh()
-  } catch (error) {
-    message.error(
-      t('fileExplorer.toasts.createFailedTitle'),
-      normalizeDiskError(error, t('fileExplorer.toasts.createFailedMessage')),
-    )
-  }
-}
-const handleRenameInline = async (payload: { entry: DiskEntry; name: string }) => {
-  const ok = await explorer.renameEntry(payload.entry, payload.name)
-  if (ok) {
-    renamingEntry.value = null
-  }
-}
-
-const cancelRenameInline = () => {
-  renamingEntry.value = null
-}
-
-const openMoveSelected = () => {
-  const targets = selection.selectedItems.value
-  if (targets.length === 0) {
-    return
-  }
-  openMoveModal(targets)
-}
-
-const confirmMove = async (targetParentId: number | null) => {
-  const targets = moveEntries.value
-  if (!targets.length) {
-    return
-  }
-  await explorer.moveEntries(targets, targetParentId)
-  selection.clear()
-  moveModal.value = false
-  moveEntries.value = []
-}
+const {
+  deleteConfirm,
+  detailModal,
+  detailEntry,
+  moveModal,
+  moveEntries,
+  creatingFolder,
+  creatingText,
+  renamingEntry,
+  renamingName,
+  openFolderModal,
+  openNewTextInline,
+  closeMoveModal,
+  closeDetailModal,
+  handleDelete,
+  closeDeleteConfirm,
+  confirmDelete,
+  openUpload,
+  openFolderUpload,
+  handleOpen,
+  handleAction,
+  handleCreateInline,
+  cancelCreateInline,
+  handleCreateTextInline,
+  handleRenameInline,
+  cancelRenameInline,
+  openMoveSelected,
+  confirmMove,
+} = useFileActions({
+  t,
+  message,
+  explorer,
+  selection,
+  uploader,
+  openShareModal,
+  openPreview,
+  openEditorForFolder,
+  openEditorForFile,
+})
 
 onMounted(() => {
   const savedStack = sessionStorage.getItem(LAST_STACK_KEY)
@@ -738,38 +208,30 @@ watch(
   },
 )
 
-watch(locale, () => {
-  if (editorRootId.value === null) {
-    editorRootName.value = rootName.value
-  }
-})
-
 watch(
-  () =>
-    uploadsStore.items.map((item) => ({
-      id: item.id,
-      status: item.status,
-      path: item.path,
-    })),
-  (next, prev) => {
-    if (!prev) {
-      return
-    }
-    const prevMap = new Map(prev.map((item) => [item.id, item]))
-    const currentPath = toRelativePath(explorer.path.value)
+  () => [uploadsStore.items, explorer.path.value] as const,
+  ([items, explorerPath]) => {
+    const currentPath = toRelativePath(explorerPath)
+    const nextSuccessIds = new Set<string>()
     let needsRefresh = false
-    for (const item of next) {
-      const before = prevMap.get(item.id)
-      if (!before) {
+    for (const item of items) {
+      if (item.status !== 'success') {
         continue
       }
-      if (before.status !== 'success' && item.status === 'success') {
-        if (toRelativePath(item.path) === currentPath) {
-          needsRefresh = true
-          break
-        }
+      if (toRelativePath(item.path) !== currentPath) {
+        continue
+      }
+      nextSuccessIds.add(item.id)
+      if (!successInViewIds.value.has(item.id)) {
+        needsRefresh = true
       }
     }
+    if (observedUploadsPath.value !== currentPath) {
+      observedUploadsPath.value = currentPath
+      successInViewIds.value = nextSuccessIds
+      return
+    }
+    successInViewIds.value = nextSuccessIds
     if (needsRefresh && refreshTimer.value === null) {
       refreshTimer.value = window.setTimeout(() => {
         refreshTimer.value = null
@@ -777,7 +239,17 @@ watch(
       }, 300)
     }
   },
+  { deep: true },
 )
+
+onBeforeUnmount(() => {
+  if (refreshTimer.value !== null) {
+    window.clearTimeout(refreshTimer.value)
+    refreshTimer.value = null
+  }
+  clearAllPreviews()
+  clearEditor()
+})
 </script>
 
 <template>
@@ -833,7 +305,7 @@ watch(
   <Modal
     :open="shareModal"
     :title="t('fileExplorer.modals.shareTitle')"
-    @close="shareModal = false"
+    @close="closeShareModal"
   >
     <ShareForm v-model="shareForm" />
     <div v-if="shareResult" class="share__result">
@@ -855,7 +327,7 @@ watch(
       </Button>
     </div>
     <template #footer>
-      <Button variant="ghost" @click="shareModal = false">{{ t('common.cancel') }}</Button>
+      <Button variant="ghost" @click="closeShareModal">{{ t('common.cancel') }}</Button>
       <Button :loading="shareSubmitting" :disabled="!canRegenerateShare" @click="submitShare">
         {{ t('fileExplorer.modals.shareGenerate') }}
       </Button>
@@ -865,7 +337,7 @@ watch(
   <Modal
     :open="detailModal"
     :title="t('fileExplorer.modals.detailTitle')"
-    @close="detailModal = false"
+    @close="closeDetailModal"
   >
     <div v-if="detailEntry" class="detail">
       <div class="detail__row">
@@ -894,7 +366,7 @@ watch(
       </div>
     </div>
     <template #footer>
-      <Button variant="ghost" @click="detailModal = false">{{ t('common.close') }}</Button>
+      <Button variant="ghost" @click="closeDetailModal">{{ t('common.close') }}</Button>
     </template>
   </Modal>
 
@@ -903,12 +375,7 @@ watch(
     :entries="moveEntries"
     :current-path="explorer.path.value"
     :current-parent-id="explorer.parentId.value"
-    @close="
-      () => {
-        moveModal = false
-        moveEntries = []
-      }
-    "
+    @close="closeMoveModal"
     @confirm="confirmMove"
   />
 
@@ -968,7 +435,7 @@ watch(
     :open="deleteConfirm"
     :title="t('fileExplorer.modals.confirmDeleteTitle')"
     :message="t('fileExplorer.modals.confirmDeleteMessage')"
-    @close="deleteConfirm = false"
+    @close="closeDeleteConfirm"
     @confirm="confirmDelete"
   />
 </template>

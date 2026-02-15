@@ -26,5 +26,27 @@ const { t } = useI18n({ useScope: 'global' })
   border-radius: var(--radius-md);
   color: var(--color-muted);
   font-size: 13px;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-base),
+    transform var(--transition-fast);
+  animation: settingsFadeIn var(--duration-slow) var(--ease-standard);
+}
+
+.settings__placeholder:hover {
+  border-color: var(--color-primary-soft-strong);
+  background: var(--color-surface-2);
+  transform: var(--interaction-hover-lift);
+}
+
+@keyframes settingsFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

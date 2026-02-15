@@ -285,54 +285,75 @@ onMounted(() => {
 
   <Modal
     :open="formOpen"
+    :width="800"
     :title="form.id ? t('admin.user.modal.editTitle') : t('admin.user.modal.createTitle')"
     @close="formOpen = false"
   >
     <div class="form">
       <Input
+        class="form__field"
         v-model="form.username"
+        size="sm"
         :label="t('admin.user.form.username')"
         :placeholder="t('admin.user.placeholders.username')"
         :error="errors.username"
       />
       <Input
+        class="form__field"
         v-model="form.nickname"
+        size="sm"
         :label="t('admin.user.form.nickname')"
         :placeholder="t('admin.common.optional')"
       />
       <Input
+        class="form__field"
         v-model="form.mail"
+        size="sm"
         :label="t('admin.user.form.mail')"
         :placeholder="t('admin.common.optional')"
       />
       <Input
+        class="form__field"
         v-model="form.total_space"
+        size="sm"
         :label="t('admin.user.form.totalSpace')"
         type="number"
         :placeholder="t('admin.common.optional')"
         :error="errors.total_space"
       />
       <Input
+        class="form__field"
         v-model="form.used_space"
+        size="sm"
         :label="t('admin.user.form.usedSpace')"
         type="number"
         :placeholder="t('admin.common.optional')"
         :error="errors.used_space"
       />
       <Input
+        class="form__field"
         v-model="form.password"
+        size="sm"
         :label="t('admin.user.form.password')"
         type="password"
         :placeholder="t('admin.user.placeholders.password')"
         :error="errors.password"
       />
-      <Select v-model="form.status" :label="t('admin.user.form.status')" :options="statusOptions" />
       <Select
+        class="form__field"
+        v-model="form.status"
+        size="sm"
+        :label="t('admin.user.form.status')"
+        :options="statusOptions"
+      />
+      <Select
+        class="form__field"
         v-model="form.is_superuser"
+        size="sm"
         :label="t('admin.user.form.superuser')"
         :options="superOptions"
       />
-      <div class="form__roles">
+      <div class="form__roles form__field--full">
         <div class="form__label">{{ t('admin.user.form.roles') }}</div>
         <CheckList
           v-model="form.roles"
@@ -380,16 +401,25 @@ onMounted(() => {
 
 .form {
   display: grid;
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.form__field {
+  min-width: 0;
+}
+
+.form__field--full {
+  grid-column: 1 / -1;
 }
 
 .form__roles {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .form__label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--color-muted);
 }
 

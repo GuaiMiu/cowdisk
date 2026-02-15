@@ -179,6 +179,7 @@ const contextMenu = ref({
   mode: 'full' as 'full' | 'more',
   width: 180,
 })
+const contextMenuRef = ref<HTMLElement | null>(null)
 const menuHovering = ref(false)
 const menuEntryPath = ref<string | null>(null)
 let closeTimer: number | null = null
@@ -193,6 +194,13 @@ const closeContextMenu = () => {
   }
 }
 
+const focusFirstMenuItem = () => {
+  void nextTick(() => {
+    const first = contextMenuRef.value?.querySelector<HTMLElement>('.context-menu__item')
+    first?.focus()
+  })
+}
+
 const openContextMenu = (event: MouseEvent, entry: DiskEntry) => {
   event.preventDefault()
   const width = 180
@@ -200,6 +208,18 @@ const openContextMenu = (event: MouseEvent, entry: DiskEntry) => {
   const x = Math.min(event.clientX, window.innerWidth - width - 8)
   const y = Math.min(event.clientY, window.innerHeight - height - 8)
   contextMenu.value = { open: true, x, y, entry, mode: 'full', width }
+  focusFirstMenuItem()
+}
+
+const openContextMenuAtElement = (element: HTMLElement, entry: DiskEntry, mode: 'full' | 'more') => {
+  const width = mode === 'more' ? 140 : 180
+  const height = mode === 'more' ? 180 : 210
+  const rect = element.getBoundingClientRect()
+  const x = Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8)
+  const y = Math.min(rect.bottom + 6, window.innerHeight - height - 8)
+  contextMenu.value = { open: true, x, y, entry, mode, width }
+  menuEntryPath.value = String(entry.id)
+  focusFirstMenuItem()
 }
 
 const openMoreMenu = (event: MouseEvent, entry: DiskEntry) => {
@@ -216,6 +236,7 @@ const openMoreMenu = (event: MouseEvent, entry: DiskEntry) => {
     : Math.min(rect.bottom + 6, window.innerHeight - height - 8)
   contextMenu.value = { open: true, x, y, entry, mode: 'more', width }
   menuEntryPath.value = String(entry.id)
+  focusFirstMenuItem()
 }
 
 const onMenuEnter = () => {
@@ -278,6 +299,76 @@ const onNameClick = (entry: DiskEntry) => {
 
 const onRowClick = (entry: DiskEntry) => {
   props.toggle(entry)
+}
+
+const onRowKeyDown = (event: KeyboardEvent, entry: DiskEntry) => {
+  const current = event.target as HTMLElement | null
+  if (!current) {
+    return
+  }
+  if (
+    current.closest('button') ||
+    current.closest('input') ||
+    current.closest('textarea') ||
+    current.closest('select')
+  ) {
+    return
+  }
+  if (event.key === ' ') {
+    event.preventDefault()
+    props.toggle(entry)
+    return
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    onNameClick(entry)
+    return
+  }
+  if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
+    event.preventDefault()
+    openContextMenuAtElement(event.currentTarget as HTMLElement, entry, 'full')
+  }
+}
+
+const onContextMenuKeyDown = (event: KeyboardEvent) => {
+  if (!contextMenu.value.open) {
+    return
+  }
+  const items = Array.from(
+    contextMenuRef.value?.querySelectorAll<HTMLElement>('.context-menu__item') ?? [],
+  )
+  if (!items.length) {
+    return
+  }
+  const active = document.activeElement as HTMLElement | null
+  const currentIndex = items.findIndex((item) => item === active)
+  const safeIndex = currentIndex < 0 ? 0 : currentIndex
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    const next = (safeIndex + 1) % items.length
+    items[next]?.focus()
+    return
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    const next = (safeIndex - 1 + items.length) % items.length
+    items[next]?.focus()
+    return
+  }
+  if (event.key === 'Home') {
+    event.preventDefault()
+    items[0]?.focus()
+    return
+  }
+  if (event.key === 'End') {
+    event.preventDefault()
+    items[items.length - 1]?.focus()
+    return
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeContextMenu()
+  }
 }
 
 const onWindowKey = (event: KeyboardEvent) => {
@@ -439,7 +530,9 @@ onBeforeUnmount(() => {
           v-for="item in items"
           :key="item.id"
           :class="['table__row', isEditing(item) ? 'table__row--edit' : '']"
+          :tabindex="isEditing(item) ? -1 : 0"
           @click="onRowClick(item)"
+          @keydown="onRowKeyDown($event, item)"
           @contextmenu="openContextMenu($event, item)"
           @mouseleave="onRowLeave(item)"
         >
@@ -548,12 +641,14 @@ onBeforeUnmount(() => {
 
     <div
       v-if="contextMenu.open && contextMenu.entry"
+      ref="contextMenuRef"
       class="context-menu"
       :style="{
         left: `${contextMenu.x}px`,
         top: `${contextMenu.y}px`,
         width: `${contextMenu.width}px`,
       }"
+      @keydown="onContextMenuKeyDown"
       @mouseenter="onMenuEnter"
       @mouseleave="onMenuLeave"
       @click.stop
@@ -690,9 +785,16 @@ onBeforeUnmount(() => {
 .table__row {
   height: 48px;
   position: relative;
+  transition: background var(--transition-fast);
 }
 
 .table__row:hover {
+  background: var(--color-surface-2);
+}
+
+.table__row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
   background: var(--color-surface-2);
 }
 
@@ -810,6 +912,7 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+  transition: color var(--transition-fast);
 }
 
 .name:hover .name__text {
@@ -825,6 +928,16 @@ onBeforeUnmount(() => {
   background: var(--color-surface);
   font-size: 14px;
   line-height: 1.2;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-base);
+}
+
+.name__input:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--interaction-focus-ring);
 }
 
 .name__actions {
@@ -849,13 +962,15 @@ onBeforeUnmount(() => {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(0.96);
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--transition-base);
+  transition:
+    opacity var(--transition-base),
+    transform var(--transition-base);
 }
 
 .table__row-actions .icon-btn {
@@ -866,6 +981,7 @@ onBeforeUnmount(() => {
 .table__row--edit .table__row-actions,
 .table__row-actions.is-hovered {
   opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
   pointer-events: auto;
 }
 
@@ -891,9 +1007,18 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-size: 13px;
   color: var(--color-text);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .context-menu__item:hover {
+  background: var(--color-surface-2);
+}
+
+.context-menu__item:focus-visible {
+  outline: none;
+  border-color: var(--color-primary-soft-strong);
   background: var(--color-surface-2);
 }
 

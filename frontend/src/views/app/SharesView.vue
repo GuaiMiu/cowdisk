@@ -554,6 +554,7 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--transition-fast);
 }
 
 .name--link {
@@ -562,6 +563,10 @@ onMounted(() => {
 
 .name--link:hover .name__text {
   color: var(--color-primary);
+}
+
+.name--link:active {
+  transform: var(--interaction-press-scale);
 }
 
 .select-cell {
@@ -625,7 +630,9 @@ onMounted(() => {
   border-radius: 999px;
   background: var(--color-border);
   position: relative;
-  transition: background var(--transition-base);
+  transition:
+    background var(--transition-base),
+    box-shadow var(--transition-fast);
 }
 
 .status-switch__track::after {
@@ -647,6 +654,12 @@ onMounted(() => {
 
 .status-switch input:checked + .status-switch__track::after {
   transform: translateX(16px);
+}
+
+.status-switch input:focus-visible + .status-switch__track {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  box-shadow: var(--interaction-focus-ring);
 }
 
 .status-switch.is-disabled {

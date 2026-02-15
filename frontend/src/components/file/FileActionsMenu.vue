@@ -60,10 +60,18 @@ const { t } = useI18n({ useScope: 'global' })
   cursor: pointer;
   font-size: 13px;
   color: var(--color-text);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .menu__item:hover {
   background: var(--color-surface-2);
+}
+
+.menu__item:active {
+  transform: var(--interaction-press-scale);
 }
 
 .menu__item--danger {

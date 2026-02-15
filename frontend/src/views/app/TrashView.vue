@@ -406,6 +406,15 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--transition-fast);
+}
+
+.trash-table :deep(.table__row) {
+  transition: background var(--transition-fast);
+}
+
+.trash-table :deep(.table__row:hover) .name__text {
+  color: var(--color-primary);
 }
 
 @media (max-width: 768px) {

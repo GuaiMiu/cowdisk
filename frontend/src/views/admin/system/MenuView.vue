@@ -329,7 +329,7 @@ onMounted(() => {
               {{ collapsed.has(Number(row.id ?? 0)) ? '▸' : '▾' }}
             </button>
             <span v-else class="tree-toggle tree-toggle--placeholder"></span>
-            <span class="tree-label" :class="`tree-label--type-${row.type ?? 2}`">{{ row.name }}</span>
+            <span class="tree-label">{{ row.name }}</span>
           </span>
         </template>
         <template #cell-type="{ row }">
@@ -377,71 +377,108 @@ onMounted(() => {
 
   <Modal
     :open="formOpen"
+    :width="860"
     :title="form.id ? t('admin.menu.modal.editTitle') : t('admin.menu.modal.createTitle')"
     @close="formOpen = false"
   >
     <div class="form">
       <Input
+        class="form__field"
         v-model="form.name"
+        size="sm"
         :label="t('admin.menu.form.name')"
         :placeholder="t('admin.menu.placeholders.name')"
         :error="errors.name"
       />
       <Select
+        class="form__field"
         v-model="form.type"
+        size="sm"
         :label="t('admin.menu.form.type')"
         :options="typeOptions"
         :error="errors.type"
       />
-      <Select v-model="form.pid" :label="t('admin.menu.form.parent')" :options="parentOptions" />
+      <Select
+        class="form__field"
+        v-model="form.pid"
+        size="sm"
+        :label="t('admin.menu.form.parent')"
+        :options="parentOptions"
+      />
       <Input
+        class="form__field"
         v-model="form.route_name"
+        size="sm"
         :label="t('admin.menu.form.routeName')"
         :placeholder="t('admin.common.optional')"
       />
       <Input
+        class="form__field"
         v-model="form.router_path"
+        size="sm"
         :label="t('admin.menu.form.routerPath')"
         :placeholder="t('admin.menu.placeholders.routerPath')"
       />
       <Input
+        class="form__field"
         v-model="form.permission_char"
+        size="sm"
         :label="t('admin.menu.form.permission')"
         :placeholder="t('admin.menu.placeholders.permission')"
       />
       <Input
+        class="form__field"
         v-model="form.sort"
+        size="sm"
         :label="t('admin.menu.form.sort')"
         :placeholder="t('admin.menu.placeholders.sort')"
       />
-      <Select v-model="form.status" :label="t('admin.menu.form.status')" :options="statusOptions" />
       <Select
+        class="form__field"
+        v-model="form.status"
+        size="sm"
+        :label="t('admin.menu.form.status')"
+        :options="statusOptions"
+      />
+      <Select
+        class="form__field"
         v-model="form.keep_alive"
+        size="sm"
         :label="t('admin.menu.form.keepAlive')"
         :options="boolOptions"
       />
       <Select
+        class="form__field"
         v-model="form.is_frame"
+        size="sm"
         :label="t('admin.menu.form.isFrame')"
         :options="boolOptions"
       />
       <Input
+        class="form__field"
         v-model="form.redirect"
+        size="sm"
         :label="t('admin.menu.form.redirect')"
         :placeholder="t('admin.common.optional')"
       />
       <Input
+        class="form__field"
         v-model="form.component_path"
+        size="sm"
         :label="t('admin.menu.form.componentPath')"
         :placeholder="t('admin.common.optional')"
       />
       <Input
+        class="form__field"
         v-model="form.icon"
+        size="sm"
         :label="t('admin.menu.form.icon')"
         :placeholder="t('admin.common.optional')"
       />
       <Input
+        class="form__field form__field--full"
         v-model="form.description"
+        size="sm"
         :label="t('admin.menu.form.description')"
         :placeholder="t('admin.common.optional')"
       />
@@ -480,12 +517,23 @@ onMounted(() => {
 .actions {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: var(--space-2);
+  height: 100%;
 }
 
 .form {
   display: grid;
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.form__field {
+  min-width: 0;
+}
+
+.form__field--full {
+  grid-column: 1 / -1;
 }
 
 .tree-name {
@@ -511,19 +559,7 @@ onMounted(() => {
 
 .tree-label {
   font-weight: 600;
-}
-
-.tree-label--type-1 {
-  font-weight: 700;
-}
-
-.tree-label--type-2 {
-  font-weight: 600;
-}
-
-.tree-label--type-3 {
-  font-weight: 500;
-  color: var(--color-muted);
+  color: var(--color-text);
 }
 
 .tree-toggle--placeholder {

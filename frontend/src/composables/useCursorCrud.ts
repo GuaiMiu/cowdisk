@@ -36,6 +36,8 @@ export const useCursorCrud = <
   const currentCursor = ref<string | null>(null)
   const nextCursor = ref<string | null>(null)
   const prevCursor = ref<string | null>(null)
+  const pendingCount = ref(0)
+  let fetchRequestId = 0
 
   const applyPage = (data: CursorPageResult<TItem>, direction: 'reset' | 'next' | 'prev') => {
     items.value = data.items || []
@@ -57,17 +59,28 @@ export const useCursorCrud = <
   }
 
   const fetchPage = async (cursor: string | null = null, direction: 'reset' | 'next' | 'prev' = 'reset') => {
+    const requestId = ++fetchRequestId
+    pendingCount.value += 1
     loading.value = true
     try {
       const data = await config.list({ cursor, size: size.value })
+      if (requestId !== fetchRequestId) {
+        return
+      }
       applyPage(data, direction)
     } catch (error) {
+      if (requestId !== fetchRequestId) {
+        return
+      }
       message.error(
         config.messages.listFail,
         error instanceof Error ? error.message : t('common.retryLater'),
       )
     } finally {
-      loading.value = false
+      pendingCount.value = Math.max(0, pendingCount.value - 1)
+      if (requestId === fetchRequestId) {
+        loading.value = pendingCount.value > 0
+      }
     }
   }
 

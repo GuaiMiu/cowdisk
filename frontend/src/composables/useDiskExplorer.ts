@@ -26,6 +26,7 @@ export const useDiskExplorer = () => {
   const sortKey = ref<SortKey | null>(null)
   const sortOrder = ref<'asc' | 'desc'>('asc')
   const listController = ref<AbortController | null>(null)
+  const pendingLoadCount = ref(0)
 
   const syncPathFromStack = () => {
     const segments = folderStack.value.map((item) => item.name).filter(Boolean)
@@ -33,6 +34,7 @@ export const useDiskExplorer = () => {
   }
 
   const load = async (nextParentId?: number | null) => {
+    pendingLoadCount.value += 1
     loading.value = true
     if (listController.value) {
       listController.value.abort()
@@ -58,7 +60,8 @@ export const useDiskExplorer = () => {
       if (listController.value === controller) {
         listController.value = null
       }
-      loading.value = false
+      pendingLoadCount.value = Math.max(0, pendingLoadCount.value - 1)
+      loading.value = pendingLoadCount.value > 0
     }
   }
 

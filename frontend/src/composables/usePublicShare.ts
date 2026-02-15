@@ -24,6 +24,20 @@ export const usePublicShare = (token: string) => {
   const fileMeta = ref<SharePublicResult['fileMeta'] | null>(null)
   const items = ref<ShareEntry[]>([])
   const currentParentId = ref<number | null>(null)
+  const pendingCount = ref(0)
+  let shareRequestId = 0
+  let entryRequestId = 0
+
+  const withLoading = async <T>(task: () => Promise<T>) => {
+    pendingCount.value += 1
+    loading.value = true
+    try {
+      return await task()
+    } finally {
+      pendingCount.value = Math.max(0, pendingCount.value - 1)
+      loading.value = pendingCount.value > 0
+    }
+  }
 
   const isFile = computed(() => {
     const resourceType = (share.value as { resourceType?: string } | null)?.resourceType
@@ -31,9 +45,12 @@ export const usePublicShare = (token: string) => {
   })
 
   const loadShare = async () => {
-    loading.value = true
-    try {
+    const requestId = ++shareRequestId
+    return withLoading(async () => {
       const data = await getPublicShare(token, accessToken.value ?? undefined)
+      if (requestId !== shareRequestId) {
+        return
+      }
       locked.value = data.locked
       share.value = data.share
       fileMeta.value = data.fileMeta ?? null
@@ -41,19 +58,19 @@ export const usePublicShare = (token: string) => {
       if (!data.locked && !isFile.value) {
         currentParentId.value = null
       }
-    } catch (error) {
+    }).catch((error) => {
+      if (requestId !== shareRequestId) {
+        return
+      }
       const detail =
         error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage')
       errorMessage.value = detail
       message.error(t('sharePublic.toasts.loadFailTitle'), detail)
-    } finally {
-      loading.value = false
-    }
+    })
   }
 
   const unlock = async (code: string) => {
-    loading.value = true
-    try {
+    return withLoading(async () => {
       const data = await unlockShare(token, { code })
       if (!data.accessToken && !data.ok) {
         const detail = t('sharePublic.toasts.unlockWrongCode')
@@ -66,24 +83,26 @@ export const usePublicShare = (token: string) => {
       unlockError.value = ''
       message.success(t('sharePublic.toasts.unlockSuccessTitle'))
       return true
-    } catch (error) {
+    }).catch((error) => {
       const detail =
         error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage')
       unlockError.value = detail
       message.error(t('sharePublic.toasts.unlockFailTitle'), detail)
       return false
-    } finally {
-      loading.value = false
-    }
+    })
   }
 
   const loadEntries = async (parent_id?: number | null) => {
+    const requestId = ++entryRequestId
     try {
       const data = await listShareEntries(
         token,
         { parent_id: parent_id ?? null },
         accessToken.value ?? undefined,
       )
+      if (requestId !== entryRequestId) {
+        return
+      }
       items.value = data.items || []
       currentParentId.value = parent_id ?? null
     } catch (error) {

@@ -129,6 +129,18 @@ const getStatusLabel = (status: string) => statusLabelMap[status] || status
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   min-width: 0;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-base),
+    transform var(--transition-fast),
+    background var(--transition-base);
+}
+
+.queue__item:hover {
+  border-color: var(--color-primary-soft-strong);
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-xs);
+  transform: var(--interaction-hover-lift);
 }
 
 .queue__meta {
@@ -146,6 +158,11 @@ const getStatusLabel = (status: string) => statusLabelMap[status] || status
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  transition: color var(--transition-fast);
+}
+
+.queue__item:hover .queue__name {
+  color: var(--color-primary);
 }
 
 .queue__status {
@@ -178,6 +195,7 @@ const getStatusLabel = (status: string) => statusLabelMap[status] || status
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  animation: queueErrorFadeIn var(--duration-base) var(--ease-standard);
 }
 
 .queue__buttons {
@@ -190,5 +208,16 @@ const getStatusLabel = (status: string) => statusLabelMap[status] || status
   padding: var(--space-6);
   text-align: center;
   color: var(--color-muted);
+}
+
+@keyframes queueErrorFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

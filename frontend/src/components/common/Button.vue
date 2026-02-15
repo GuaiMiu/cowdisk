@@ -33,7 +33,7 @@ const classes = computed(() => [
 </script>
 
 <template>
-  <button :type="type" :class="classes" :disabled="disabled || loading">
+  <button :type="type" :class="classes" :disabled="disabled || loading" :aria-busy="loading">
     <span v-if="loading" class="btn__spinner" aria-hidden="true"></span>
     <span class="btn__content"><slot /></span>
   </button>
@@ -54,7 +54,9 @@ const classes = computed(() => [
     transform var(--transition-fast),
     box-shadow var(--transition-base),
     background var(--transition-base),
-    color var(--transition-base);
+    color var(--transition-base),
+    border-color var(--transition-base),
+    opacity var(--transition-fast);
   cursor: pointer;
   border: 1px solid transparent;
   background: var(--color-primary);
@@ -108,8 +110,17 @@ const classes = computed(() => [
 }
 
 .btn:not(:disabled):hover {
-  transform: translateY(-1px);
+  transform: var(--interaction-hover-lift);
   box-shadow: var(--shadow-sm);
+}
+
+.btn:not(:disabled):active {
+  transform: var(--interaction-press-scale);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .btn__spinner {

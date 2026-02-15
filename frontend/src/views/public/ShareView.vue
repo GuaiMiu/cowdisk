@@ -31,9 +31,17 @@ const redirectCount = ref(5)
 let redirectTimer: number | null = null
 const asEntry = (row: unknown) => row as ShareEntry
 const { t } = useI18n({ useScope: 'global' })
-const rootDirName = computed(
-  () => (share.share.value as { name?: string } | null)?.name || t('sharePublic.list.title'),
-)
+const shareMeta = computed(() => {
+  const current = share.share.value
+  const rawFileId = (current as { fileId?: unknown } | null)?.fileId
+  return {
+    name: current?.name || '',
+    ownerName: current?.ownerName || '-',
+    expiresAt: current?.expiresAt ?? null,
+    fileId: typeof rawFileId === 'number' ? rawFileId : 0,
+  }
+})
+const rootDirName = computed(() => shareMeta.value.name || t('sharePublic.list.title'))
 const enteredRoot = ref(false)
 const previewOpen = ref(false)
 const previewItems = ref<Array<{ src: string; name?: string }>>([])
@@ -64,7 +72,7 @@ const columns = computed(() => [
   { key: 'type', label: t('sharePublic.columns.type'), width: '90px' },
 ])
 
-const rootFolderId = computed(() => (share.share.value as { fileId?: number } | null)?.fileId ?? null)
+const rootFolderId = computed(() => (shareMeta.value.fileId > 0 ? shareMeta.value.fileId : null))
 const breadcrumbItems = computed(() => {
   if (share.locked.value || share.isFile.value || share.errorMessage.value) {
     return []
@@ -359,7 +367,7 @@ onBeforeUnmount(() => {
 const showRootCard = () => {
   enteredRoot.value = false
   shareStack.value = []
-  const rootId = (share.share.value as { fileId?: number } | null)?.fileId ?? 0
+  const rootId = shareMeta.value.fileId
   share.items.value = [
     {
       id: rootId,
@@ -442,13 +450,13 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
         <div class="unlock__meta">
           <span
             >{{ t('sharePublic.labels.owner') }}：{{
-              (share.share.value as any)?.ownerName || '-'
+              shareMeta.ownerName
             }}</span
           >
           <span>
             {{ t('sharePublic.labels.expires') }}：{{
-              (share.share.value as any)?.expiresAt
-                ? formatTime((share.share.value as any)?.expiresAt)
+              shareMeta.expiresAt
+                ? formatTime(shareMeta.expiresAt)
                 : t('sharePublic.permanent')
             }}
           </span>
@@ -474,16 +482,16 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
       <div class="file-card__header">
         <FileTypeIcon
           class="file-card__icon"
-          :name="(share.share.value as any)?.name || ''"
+          :name="shareMeta.name"
           :is-dir="false"
           :size="28"
         />
         <div class="file-card__header-info">
-          <div class="file-card__title" :title="(share.share.value as any)?.name || ''">
-            <span class="file-card__name">{{ (share.share.value as any)?.name }}</span>
+          <div class="file-card__title" :title="shareMeta.name">
+            <span class="file-card__name">{{ shareMeta.name }}</span>
           </div>
           <div class="file-card__subtitle">
-            {{ t('sharePublic.labels.owner') }}：{{ (share.share.value as any)?.ownerName || '-' }}
+            {{ t('sharePublic.labels.owner') }}：{{ shareMeta.ownerName }}
           </div>
         </div>
       </div>
@@ -497,15 +505,15 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
         <div class="file-card__meta-item">
           <span class="file-card__meta-label">{{ t('sharePublic.labels.type') }}</span>
           <span class="file-card__meta-value">
-            {{ getTypeLabel((share.share.value as any)?.name || '', false) }}
+            {{ getTypeLabel(shareMeta.name, false) }}
           </span>
         </div>
         <div class="file-card__meta-item">
           <span class="file-card__meta-label">{{ t('sharePublic.labels.expires') }}</span>
           <span class="file-card__meta-value">
             {{
-              (share.share.value as any)?.expiresAt
-                ? formatTime((share.share.value as any)?.expiresAt)
+              shareMeta.expiresAt
+                ? formatTime(shareMeta.expiresAt)
                 : t('sharePublic.permanent')
             }}
           </span>
@@ -515,8 +523,8 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
         <Button
           variant="secondary"
           @click="openPreviewForFile({
-            id: (share.share.value as any)?.fileId || 0,
-            name: (share.share.value as any)?.name || 'file',
+            id: shareMeta.fileId,
+            name: shareMeta.name || 'file',
             parent_id: null,
             is_dir: false,
             size: 0,
@@ -524,7 +532,7 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
         >{{
           t('sharePublic.actions.preview')
         }}</Button>
-        <Button @click="share.download((share.share.value as any)?.fileId)">
+        <Button @click="share.download(shareMeta.fileId)">
           {{ t('sharePublic.actions.download') }}
         </Button>
       </div>
@@ -536,24 +544,24 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
           <div class="share__header">
             <FileTypeIcon
               class="share__header-icon"
-              :name="(share.share.value as any)?.name || ''"
+              :name="shareMeta.name"
               :is-dir="!share.isFile.value"
               :size="48"
             />
             <div class="share__header-info">
               <div class="share__title">
-                {{ (share.share.value as any)?.name || t('sharePublic.list.title') }}
+                {{ shareMeta.name || t('sharePublic.list.title') }}
               </div>
               <div class="share__meta">
                 <span
                   >{{ t('sharePublic.labels.owner') }}：{{
-                    (share.share.value as any)?.ownerName || '-'
+                    shareMeta.ownerName
                   }}</span
                 >
                 <span>
                   {{ t('sharePublic.labels.expires') }}：{{
-                    (share.share.value as any)?.expiresAt
-                      ? formatTime((share.share.value as any)?.expiresAt)
+                    shareMeta.expiresAt
+                      ? formatTime(shareMeta.expiresAt)
                       : t('sharePublic.permanent')
                   }}
                 </span>
@@ -720,6 +728,7 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
   display: grid;
   gap: var(--space-4);
   box-shadow: var(--shadow-sm);
+  animation: cardLiftIn var(--duration-slow) var(--ease-standard);
 }
 
 .notice {
@@ -737,6 +746,7 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
   gap: var(--space-4);
   box-shadow: var(--shadow-sm);
   text-align: center;
+  animation: cardLiftIn var(--duration-slow) var(--ease-standard);
 }
 
 .notice__title {
@@ -795,6 +805,7 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   width: min(600px, 100%);
+  animation: cardLiftIn var(--duration-slow) var(--ease-standard);
 }
 
 .share__body {
@@ -825,6 +836,15 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-base),
+    background var(--transition-base);
+}
+
+.share__bar:hover {
+  border-color: var(--color-primary-soft-strong);
+  box-shadow: var(--shadow-xs);
 }
 
 .share__header {
@@ -885,6 +905,11 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
   color: inherit;
   font: inherit;
   cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.share__table :deep(.table__sort:hover) {
+  color: var(--color-primary);
 }
 
 .share__table :deep(.table__sort-indicator) {
@@ -978,6 +1003,7 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--transition-fast);
 }
 
 .name--clickable {
@@ -989,6 +1015,10 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
 
 .name--clickable:hover .name__text {
   color: var(--color-primary);
+}
+
+.name--clickable:active {
+  transform: var(--interaction-press-scale);
 }
 
 .file-card__header {
@@ -1060,6 +1090,17 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
   display: flex;
   gap: var(--space-2);
   justify-content: space-between;
+}
+
+@keyframes cardLiftIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @media (max-width: 768px) {
