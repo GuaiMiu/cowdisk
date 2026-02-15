@@ -7,6 +7,7 @@ import type {
   DiskExtractIn,
   DiskListOut,
   DiskMkdirIn,
+  DiskOfficeOpenOut,
   DiskMoveBody,
   DiskRenameBody,
   DiskSearchOut,
@@ -225,6 +226,13 @@ export const getDownloadUrl = (file_id: number) =>
   request<{ url: string; expires_in: number }>({
     url: `/api/v1/files/${file_id}/download-url`,
     method: 'POST',
+  })
+
+export const getOfficeOpenUrl = (file_id: number, lang?: string, mode: 'view' | 'edit' = 'view') =>
+  request<DiskOfficeOpenOut>({
+    url: `/api/v1/files/${file_id}/office-url`,
+    method: 'POST',
+    params: { ...(lang ? { lang } : {}), mode },
   })
 
 export const listTrash = () =>

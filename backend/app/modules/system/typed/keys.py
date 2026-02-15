@@ -15,6 +15,18 @@ class ConfigKey:
     AUTH_ALLOW_REGISTER = "auth.allow_register"
     AUTH_DEFAULT_USER_QUOTA_GB = "auth.default_user_quota_gb"
 
+    OFFICE_PROVIDER = "office.provider"
+    OFFICE_ENABLED = "office.enabled"
+    OFFICE_COLLABORA_URL = "office.collabora_url"
+    OFFICE_COLLABORA_PUBLIC_URL = "office.collabora_public_url"
+    OFFICE_BACKEND_PUBLIC_URL = "office.backend_public_url"
+    OFFICE_OPEN_URL_TEMPLATE = "office.open_url_template"
+    OFFICE_ACCESS_TOKEN_TTL_SECONDS = "office.access_token_ttl_seconds"
+    OFFICE_JWT_ENABLED = "office.jwt_enabled"
+    OFFICE_JWT_SECRET = "office.jwt_secret"
+    OFFICE_VERIFY_TLS = "office.verify_tls"
+    OFFICE_REQUEST_TIMEOUT_SECONDS = "office.request_timeout_seconds"
+
     STORAGE_PATH = "storage.path"
 
     UPLOAD_MAX_SINGLE_FILE_MB = "upload.max_single_file_mb"

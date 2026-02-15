@@ -11,6 +11,7 @@ from starlette.responses import HTMLResponse
 
 from app.modules.admin.controller.auth import auth_router
 from app.modules.admin.controller.menu import menu_router
+from app.modules.admin.controller.profile import profile_router
 from app.modules.admin.controller.role import role_router
 from app.modules.admin.controller.user import user_router
 from app.modules.admin.controller.uploads import admin_upload_router
@@ -22,6 +23,7 @@ from app.modules.disk.controller.public_shares import public_shares_router
 from app.modules.disk.controller.shares import shares_router
 from app.modules.disk.controller.trash import trash_router
 from app.modules.disk.controller.uploads import uploads_router
+from app.modules.disk.controller.wopi import wopi_router
 from app.modules.system.router.config import system_config_router
 from app.audit.router import audit_router
 from app.modules.system.controller.setup import setup_router
@@ -29,6 +31,7 @@ from app.modules.system.controller.setup import setup_router
 api_router = APIRouter(prefix=settings.APP_API_PREFIX)
 
 api_router.include_router(auth_router)
+api_router.include_router(profile_router)
 api_router.include_router(system_config_router)
 
 admin_router = APIRouter(prefix="/admin")
@@ -56,4 +59,5 @@ api_router.include_router(system_router)
 api_router.include_router(me_router)
 api_router.include_router(public_router)
 api_router.include_router(access_router)
+api_router.include_router(wopi_router)
 

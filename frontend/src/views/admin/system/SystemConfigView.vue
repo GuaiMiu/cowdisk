@@ -14,6 +14,7 @@ import type { ConfigGroupKey, ConfigSpec } from '@/types/config-center'
 
 const systemCfg = useConfigGroupForm('system')
 const authCfg = useConfigGroupForm('auth')
+const officeCfg = useConfigGroupForm('office')
 const storageCfg = useConfigGroupForm('storage')
 const uploadCfg = useConfigGroupForm('upload')
 const previewCfg = useConfigGroupForm('preview')
@@ -36,7 +37,7 @@ const {
   onThumbMouseDown,
 } = useOverlayScrollbar()
 
-type TabKey = 'system' | 'auth_access' | 'infra' | 'storage_upload' | 'advanced'
+type TabKey = 'system' | 'auth_access' | 'office' | 'infra' | 'storage_upload' | 'advanced'
 const activeTab = ref<TabKey>('system')
 const assetInputRefs = {
   logo: ref<HTMLInputElement | null>(null),
@@ -53,6 +54,7 @@ const assetUploading = ref<Record<SiteAssetType, boolean>>({
 const loaded = {
   system: false,
   auth: false,
+  office: false,
   infra: false,
   storage: false,
   upload: false,
@@ -78,6 +80,13 @@ const loadByTab = async (tab: TabKey) => {
     if (!loaded.infra) {
       await infraCfg.load()
       loaded.infra = true
+    }
+    return
+  }
+  if (tab === 'office') {
+    if (!loaded.office) {
+      await officeCfg.load()
+      loaded.office = true
     }
     return
   }
@@ -405,6 +414,7 @@ watch(
     () => systemCfg.state.items.length,
     () => authCfg.state.items.length,
     () => infraCfg.state.items.length,
+    () => officeCfg.state.items.length,
     () => storageCfg.state.items.length,
     () => uploadCfg.state.items.length,
     () => previewCfg.state.items.length,
@@ -439,6 +449,14 @@ watch(
           @click="activeTab = 'auth_access'"
         >
           {{ t('admin.systemConfig.tabs.authAccess') }}
+        </button>
+        <button
+          type="button"
+          class="tab"
+          :class="{ 'tab--active': activeTab === 'office' }"
+          @click="activeTab = 'office'"
+        >
+          {{ t('admin.systemConfig.tabs.office') }}
         </button>
         <button
           type="button"
@@ -621,6 +639,27 @@ watch(
               @save="infraCfg.save"
               @edit-secret="infraCfg.enableSecretEdit"
               @update="infraCfg.updateValue"
+            />
+          </div>
+          </template>
+
+          <template v-else-if="activeTab === 'office'">
+          <div class="single-panel-wrap">
+            <ConfigGroupForm
+              :panel-title="t('admin.systemConfig.panels.office.title')"
+              :panel-subtitle="t('admin.systemConfig.panels.office.subtitle')"
+              :items="officeCfg.state.items"
+              :form="officeCfg.state.form"
+              :errors="officeCfg.state.errors"
+              :editing-secrets="officeCfg.state.editingSecrets"
+              :loading="officeCfg.state.loading"
+              :saving="officeCfg.state.saving"
+              :dirty-count="officeCfg.dirtyCount()"
+              :build-rules-hint="officeCfg.buildRulesHint"
+              :save-label="t('admin.systemConfig.panels.office.save')"
+              @save="officeCfg.save"
+              @edit-secret="officeCfg.enableSecretEdit"
+              @update="officeCfg.updateValue"
             />
           </div>
           </template>

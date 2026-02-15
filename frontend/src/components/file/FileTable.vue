@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Check, Download, MoreHorizontal, Share2, Trash2, X } from 'lucide-vue-next'
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ComponentPublicInstance, VNodeRef } from 'vue'
 import type { DiskEntry } from '@/types/disk'
@@ -9,6 +9,7 @@ import IconButton from '@/components/common/IconButton.vue'
 import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import { getFileKind } from '@/utils/fileType'
+import { useAuthStore } from '@/stores/auth'
 
 type SortKey = 'name' | 'size' | 'type' | 'updatedAt'
 
@@ -46,6 +47,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n({ useScope: 'global' })
+const authStore = useAuthStore()
 const sortableKeys: SortKey[] = ['name', 'size', 'type', 'updatedAt']
 
 const isSortable = (key: SortKey) => sortableKeys.includes(key)
@@ -90,7 +92,13 @@ const isEditableFile = (entry: DiskEntry | null) => {
     return false
   }
   const kind = getFileKind(entry.name, entry.is_dir)
-  return kind === 'text' || kind === 'code'
+  return (
+    kind === 'text' ||
+    kind === 'code' ||
+    kind === 'doc' ||
+    kind === 'sheet' ||
+    kind === 'slide'
+  )
 }
 
 watch([() => props.creatingFolder, () => props.creatingText], ([creatingFolder, creatingText]) => {
@@ -177,12 +185,120 @@ const contextMenu = ref({
   y: 0,
   entry: null as DiskEntry | null,
   mode: 'full' as 'full' | 'more',
-  width: 180,
+  width: 228,
 })
 const contextMenuRef = ref<HTMLElement | null>(null)
 const menuHovering = ref(false)
 const menuEntryPath = ref<string | null>(null)
 let closeTimer: number | null = null
+const MENU_VIEWPORT_PADDING = 8
+
+type MenuAction = 'download' | 'rename' | 'delete' | 'share' | 'detail' | 'preview' | 'move' | 'edit'
+type ContextMenuItem = {
+  key: string
+  label: string
+  action: MenuAction
+  permission?: string
+  danger?: boolean
+  disabled?: boolean
+  dividerBefore?: boolean
+}
+
+const canEditEntry = (entry: DiskEntry | null) => {
+  if (!entry) {
+    return false
+  }
+  if (entry.is_dir) {
+    return true
+  }
+  return isEditableFile(entry)
+}
+
+const hasPermission = (permission?: string) => {
+  if (!permission) {
+    return true
+  }
+  return authStore.hasPerm(permission)
+}
+
+const contextMenuItems = computed<ContextMenuItem[]>(() => {
+  const entry = contextMenu.value.entry
+  if (!entry) {
+    return []
+  }
+  const editLabel = entry.is_dir ? t('fileTable.actions.openEditor') : t('fileTable.actions.edit')
+  const items: ContextMenuItem[] = [
+    {
+      key: 'preview',
+      label: t('fileTable.actions.preview'),
+      action: 'preview',
+      permission: 'disk:file:download',
+      disabled: entry.is_dir,
+    },
+    {
+      key: 'edit',
+      label: editLabel,
+      action: 'edit',
+      permission: entry.is_dir ? 'disk:file:view' : 'disk:file:download',
+      disabled: !canEditEntry(entry),
+    },
+  ]
+
+  if (contextMenu.value.mode === 'full') {
+    items.push({
+      key: 'download',
+      label: t('fileTable.actions.download'),
+      action: 'download',
+      permission: 'disk:file:download',
+    })
+    items.push({
+      key: 'detail',
+      label: t('fileTable.actions.details'),
+      action: 'detail',
+    })
+  } else {
+    items.push({
+      key: 'detail',
+      label: t('fileTable.actions.details'),
+      action: 'detail',
+    })
+  }
+
+  items.push(
+    {
+      key: 'rename',
+      label: t('fileTable.actions.rename'),
+      action: 'rename',
+      permission: 'disk:file:move',
+      dividerBefore: true,
+    },
+    {
+      key: 'move',
+      label: t('fileTable.actions.move'),
+      action: 'move',
+      permission: 'disk:file:move',
+    },
+    {
+      key: 'share',
+      label: t('fileTable.actions.share'),
+      action: 'share',
+      permission: 'disk:file:download',
+    },
+  )
+
+  if (contextMenu.value.mode === 'full') {
+    items.push({
+      key: 'delete',
+      label: t('fileTable.actions.delete'),
+      action: 'delete',
+      permission: 'disk:file:delete',
+      danger: true,
+      dividerBefore: true,
+    })
+  }
+
+  return items.filter((item) => hasPermission(item.permission))
+})
 
 const closeContextMenu = () => {
   contextMenu.value.open = false
@@ -196,47 +312,74 @@ const closeContextMenu = () => {
 
 const focusFirstMenuItem = () => {
   void nextTick(() => {
-    const first = contextMenuRef.value?.querySelector<HTMLElement>('.context-menu__item')
+    const first = contextMenuRef.value?.querySelector<HTMLElement>(
+      '.context-menu__item[data-menu-item]:not(:disabled):not([hidden])',
+    )
     first?.focus()
+  })
+}
+
+const clampMenuPosition = (x: number, y: number, width: number, height: number) => {
+  return {
+    x: Math.max(MENU_VIEWPORT_PADDING, Math.min(x, window.innerWidth - width - MENU_VIEWPORT_PADDING)),
+    y: Math.max(MENU_VIEWPORT_PADDING, Math.min(y, window.innerHeight - height - MENU_VIEWPORT_PADDING)),
+  }
+}
+
+const realignContextMenu = () => {
+  void nextTick(() => {
+    if (!contextMenu.value.open || !contextMenuRef.value) {
+      return
+    }
+    const menuWidth = contextMenuRef.value.offsetWidth || contextMenu.value.width
+    const menuHeight = contextMenuRef.value.offsetHeight || 260
+    const next = clampMenuPosition(contextMenu.value.x, contextMenu.value.y, menuWidth, menuHeight)
+    contextMenu.value = { ...contextMenu.value, ...next, width: menuWidth }
   })
 }
 
 const openContextMenu = (event: MouseEvent, entry: DiskEntry) => {
   event.preventDefault()
-  const width = 180
-  const height = 210
-  const x = Math.min(event.clientX, window.innerWidth - width - 8)
-  const y = Math.min(event.clientY, window.innerHeight - height - 8)
+  const width = 228
+  const roughHeight = 320
+  const { x, y } = clampMenuPosition(event.clientX, event.clientY, width, roughHeight)
   contextMenu.value = { open: true, x, y, entry, mode: 'full', width }
   focusFirstMenuItem()
+  realignContextMenu()
 }
 
 const openContextMenuAtElement = (element: HTMLElement, entry: DiskEntry, mode: 'full' | 'more') => {
-  const width = mode === 'more' ? 140 : 180
-  const height = mode === 'more' ? 180 : 210
+  const width = mode === 'more' ? 212 : 228
+  const roughHeight = mode === 'more' ? 260 : 320
   const rect = element.getBoundingClientRect()
-  const x = Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8)
-  const y = Math.min(rect.bottom + 6, window.innerHeight - height - 8)
+  const anchorX = rect.left + rect.width / 2 - width / 2
+  const anchorY = rect.bottom + 6
+  const { x, y } = clampMenuPosition(anchorX, anchorY, width, roughHeight)
   contextMenu.value = { open: true, x, y, entry, mode, width }
   menuEntryPath.value = String(entry.id)
   focusFirstMenuItem()
+  realignContextMenu()
 }
 
 const openMoreMenu = (event: MouseEvent, entry: DiskEntry) => {
   event.stopPropagation()
-  const width = 140
-  const height = 180
+  const width = 212
+  const roughHeight = 260
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  const x = Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8)
+  const x = Math.max(
+    MENU_VIEWPORT_PADDING,
+    Math.min(rect.right - width, window.innerWidth - width - MENU_VIEWPORT_PADDING),
+  )
   const spaceBelow = window.innerHeight - rect.bottom
   const spaceAbove = rect.top
-  const preferTop = spaceBelow < height + 12 && spaceAbove > spaceBelow
+  const preferTop = spaceBelow < roughHeight + 12 && spaceAbove > spaceBelow
   const y = preferTop
-    ? Math.max(rect.top - height - 6, 8)
-    : Math.min(rect.bottom + 6, window.innerHeight - height - 8)
+    ? Math.max(rect.top - roughHeight - 6, MENU_VIEWPORT_PADDING)
+    : Math.min(rect.bottom + 6, window.innerHeight - roughHeight - MENU_VIEWPORT_PADDING)
   contextMenu.value = { open: true, x, y, entry, mode: 'more', width }
   menuEntryPath.value = String(entry.id)
   focusFirstMenuItem()
+  realignContextMenu()
 }
 
 const onMenuEnter = () => {
@@ -335,7 +478,9 @@ const onContextMenuKeyDown = (event: KeyboardEvent) => {
     return
   }
   const items = Array.from(
-    contextMenuRef.value?.querySelectorAll<HTMLElement>('.context-menu__item') ?? [],
+    contextMenuRef.value?.querySelectorAll<HTMLElement>(
+      '.context-menu__item[data-menu-item]:not(:disabled):not([hidden])',
+    ) ?? [],
   )
   if (!items.length) {
     return
@@ -375,6 +520,14 @@ const onWindowKey = (event: KeyboardEvent) => {
   if (event.key === 'Escape') {
     closeContextMenu()
   }
+}
+
+const triggerContextMenuAction = (action: MenuAction) => {
+  if (!contextMenu.value.entry) {
+    return
+  }
+  emit('action', { entry: contextMenu.value.entry, action })
+  closeContextMenu()
 }
 
 onMounted(() => {
@@ -643,6 +796,8 @@ onBeforeUnmount(() => {
       v-if="contextMenu.open && contextMenu.entry"
       ref="contextMenuRef"
       class="context-menu"
+      role="menu"
+      :aria-label="t('common.actions')"
       :style="{
         left: `${contextMenu.x}px`,
         top: `${contextMenu.y}px`,
@@ -653,108 +808,20 @@ onBeforeUnmount(() => {
       @mouseleave="onMenuLeave"
       @click.stop
     >
-      <button
-        class="context-menu__item"
-        type="button"
-        @click="
-          emit('action', { entry: contextMenu.entry, action: 'detail' });
-          closeContextMenu();
-        "
-      >
-        {{ t('fileTable.actions.details') }}
-      </button>
-      <button
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:download'"
-        @click="
-          emit('action', { entry: contextMenu.entry, action: 'preview' });
-          closeContextMenu();
-        "
-      >
-        {{ t('fileTable.actions.preview') }}
-      </button>
-      <button
-        v-if="contextMenu.entry?.is_dir"
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:view'"
-        @click="
-          emit('action', { entry: contextMenu.entry, action: 'edit' });
-          closeContextMenu();
-        "
-      >
-        {{ t('fileTable.actions.openEditor') }}
-      </button>
-      <button
-        v-else-if="isEditableFile(contextMenu.entry)"
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:download'"
-        @click="
-          emit('action', { entry: contextMenu.entry, action: 'edit' });
-          closeContextMenu();
-        "
-      >
-        {{ t('fileTable.actions.edit') }}
-      </button>
-      <button
-        v-if="contextMenu.mode === 'full'"
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:download'"
-        @click="
-          emit('action', { entry: contextMenu.entry, action: 'download' });
-          closeContextMenu();
-        "
-      >
-        {{ t('fileTable.actions.download') }}
-      </button>
-      <button
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:move'"
-        @click="
-          emit('action', { entry: contextMenu.entry, action: 'rename' });
-          closeContextMenu();
-        "
-      >
-        {{ t('fileTable.actions.rename') }}
-      </button>
-      <button
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:move'"
-        @click="
-          emit('action', { entry: contextMenu.entry, action: 'move' });
-          closeContextMenu();
-        "
-      >
-        {{ t('fileTable.actions.move') }}
-      </button>
-      <button
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:download'"
-        @click="
-          emit('action', { entry: contextMenu.entry, action: 'share' });
-          closeContextMenu();
-        "
-      >
-        {{ t('fileTable.actions.share') }}
-      </button>
-      <button
-        v-if="contextMenu.mode === 'full'"
-        class="context-menu__item context-menu__item--danger"
-        type="button"
-        v-permission="'disk:file:delete'"
-        @click="
-          emit('action', { entry: contextMenu.entry, action: 'delete' });
-          closeContextMenu();
-        "
-      >
-        {{ t('fileTable.actions.delete') }}
-      </button>
+      <template v-for="item in contextMenuItems" :key="item.key">
+        <div v-if="item.dividerBefore" class="context-menu__separator"></div>
+        <button
+          class="context-menu__item"
+          :class="{ 'context-menu__item--danger': item.danger }"
+          type="button"
+          role="menuitem"
+          data-menu-item
+          :disabled="item.disabled"
+          @click="triggerContextMenuAction(item.action)"
+        >
+          <span class="context-menu__label">{{ item.label }}</span>
+        </button>
+      </template>
     </div>
   </div>
 </template>
@@ -999,6 +1066,11 @@ onBeforeUnmount(() => {
 }
 
 .context-menu__item {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   background: transparent;
@@ -1016,10 +1088,33 @@ onBeforeUnmount(() => {
   background: var(--color-surface-2);
 }
 
+.context-menu__item:disabled {
+  cursor: not-allowed;
+  color: var(--color-muted);
+  opacity: 0.72;
+}
+
+.context-menu__item:disabled:hover {
+  background: transparent;
+}
+
 .context-menu__item:focus-visible {
   outline: none;
   border-color: var(--color-primary-soft-strong);
   background: var(--color-surface-2);
+}
+
+.context-menu__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-menu__separator {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--color-border);
 }
 
 .context-menu__item--danger {
@@ -1061,6 +1156,12 @@ onBeforeUnmount(() => {
     transform: translateY(-50%);
     opacity: 1;
     pointer-events: auto;
+  }
+
+  .table__row:hover .table__row-actions,
+  .table__row--edit .table__row-actions,
+  .table__row-actions.is-hovered {
+    transform: translateY(-50%);
   }
 }
 </style>

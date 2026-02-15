@@ -47,6 +47,41 @@ class AuthTypedConfig(_GroupBase):
         return await self._cfg.get_int(ConfigKey.AUTH_DEFAULT_USER_QUOTA_GB)
 
 
+class OfficeTypedConfig(_GroupBase):
+    async def provider(self) -> str:
+        return await self._cfg.get_str(ConfigKey.OFFICE_PROVIDER)
+
+    async def enabled(self) -> bool:
+        return await self._cfg.get_bool(ConfigKey.OFFICE_ENABLED)
+
+    async def collabora_url(self) -> str:
+        return await self._cfg.get_str(ConfigKey.OFFICE_COLLABORA_URL)
+
+    async def collabora_public_url(self) -> str:
+        return await self._cfg.get_str(ConfigKey.OFFICE_COLLABORA_PUBLIC_URL)
+
+    async def backend_public_url(self) -> str:
+        return await self._cfg.get_str(ConfigKey.OFFICE_BACKEND_PUBLIC_URL)
+
+    async def open_url_template(self) -> str:
+        return await self._cfg.get_str(ConfigKey.OFFICE_OPEN_URL_TEMPLATE)
+
+    async def access_token_ttl_seconds(self) -> int:
+        return await self._cfg.get_int(ConfigKey.OFFICE_ACCESS_TOKEN_TTL_SECONDS)
+
+    async def jwt_enabled(self) -> bool:
+        return await self._cfg.get_bool(ConfigKey.OFFICE_JWT_ENABLED)
+
+    async def jwt_secret(self) -> str:
+        return await self._cfg.get_str(ConfigKey.OFFICE_JWT_SECRET)
+
+    async def verify_tls(self) -> bool:
+        return await self._cfg.get_bool(ConfigKey.OFFICE_VERIFY_TLS)
+
+    async def request_timeout_seconds(self) -> int:
+        return await self._cfg.get_int(ConfigKey.OFFICE_REQUEST_TIMEOUT_SECONDS)
+
+
 class StorageTypedConfig(_GroupBase):
     async def path(self) -> str:
         return await self._cfg.get_str(ConfigKey.STORAGE_PATH)
@@ -133,6 +168,7 @@ class Config:
         self._provider = provider
         self.system = SystemTypedConfig(self)
         self.auth = AuthTypedConfig(self)
+        self.office = OfficeTypedConfig(self)
         self.storage = StorageTypedConfig(self)
         self.upload = UploadTypedConfig(self)
         self.preview = PreviewTypedConfig(self)

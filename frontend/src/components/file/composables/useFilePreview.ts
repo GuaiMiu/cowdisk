@@ -20,6 +20,7 @@ type UseFilePreviewOptions = {
   t: Translate
   message: MessageApi
   previewFile: (fileId: number) => Promise<PreviewFileResult>
+  issueOfficeUrl: (fileId: number, mode: 'view' | 'edit') => Promise<{ url: string }>
   openTextPreview: (entry: DiskEntry) => Promise<void>
 }
 
@@ -43,6 +44,9 @@ export const useFilePreview = (options: UseFilePreviewOptions) => {
   const videoName = ref('')
   const videoType = ref<string | null>(null)
   const videoRequestId = ref(0)
+  const officeOpen = ref(false)
+  const officeSrc = ref<string | null>(null)
+  const officeName = ref('')
 
   const isImageEntry = (entry: DiskEntry) => getFileKind(entry.name, entry.is_dir) === 'image'
   const isPdfEntry = (entry: DiskEntry) => getFileKind(entry.name, entry.is_dir) === 'pdf'
@@ -50,6 +54,10 @@ export const useFilePreview = (options: UseFilePreviewOptions) => {
   const isTextEntry = (entry: DiskEntry) => {
     const kind = getFileKind(entry.name, entry.is_dir)
     return kind === 'text' || kind === 'code'
+  }
+  const isOfficeEntry = (entry: DiskEntry) => {
+    const kind = getFileKind(entry.name, entry.is_dir)
+    return kind === 'doc' || kind === 'sheet' || kind === 'slide'
   }
 
   const clearPreview = () => {
@@ -81,6 +89,12 @@ export const useFilePreview = (options: UseFilePreviewOptions) => {
     videoName.value = ''
     videoType.value = null
     videoOpen.value = false
+  }
+
+  const clearOfficePreview = () => {
+    officeSrc.value = null
+    officeName.value = ''
+    officeOpen.value = false
   }
 
   const ensurePreview = async (index: number, sessionId: number) => {
@@ -196,6 +210,23 @@ export const useFilePreview = (options: UseFilePreviewOptions) => {
     }
   }
 
+  const openOfficePreview = async (entry: DiskEntry, mode: 'view' | 'edit' = 'view') => {
+    try {
+      clearOfficePreview()
+      const result = await options.issueOfficeUrl(entry.id, mode)
+      officeSrc.value = result.url
+      officeName.value = entry.name || options.t('preview.officeTitle')
+      officeOpen.value = true
+    } catch (error) {
+      options.message.error(
+        options.t('fileExplorer.toasts.previewFailedTitle'),
+        error instanceof Error
+          ? error.message
+          : options.t('fileExplorer.toasts.previewFailedMessage'),
+      )
+    }
+  }
+
   const openPreview = async (entry: DiskEntry) => {
     if (entry.is_dir) {
       options.message.warning(options.t('fileExplorer.toasts.folderNoPreview'))
@@ -217,7 +248,15 @@ export const useFilePreview = (options: UseFilePreviewOptions) => {
       await options.openTextPreview(entry)
       return
     }
+    if (isOfficeEntry(entry)) {
+      await openOfficePreview(entry, 'view')
+      return
+    }
     options.message.warning(options.t('fileExplorer.toasts.fileNoPreview'))
+  }
+
+  const openOfficeEdit = async (entry: DiskEntry) => {
+    await openOfficePreview(entry, 'edit')
   }
 
   const handlePreviewChange = async (index: number) => {
@@ -230,6 +269,7 @@ export const useFilePreview = (options: UseFilePreviewOptions) => {
     clearPreview()
     clearPdfPreview()
     clearVideoPreview()
+    clearOfficePreview()
   }
 
   return {
@@ -243,11 +283,16 @@ export const useFilePreview = (options: UseFilePreviewOptions) => {
     videoSrc,
     videoName,
     videoType,
+    officeOpen,
+    officeSrc,
+    officeName,
     openPreview,
+    openOfficeEdit,
     handlePreviewChange,
     clearPreview,
     clearPdfPreview,
     clearVideoPreview,
+    clearOfficePreview,
     clearAllPreviews,
   }
 }

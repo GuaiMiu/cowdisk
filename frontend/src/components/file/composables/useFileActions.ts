@@ -42,6 +42,7 @@ type UseFileActionsOptions = {
   uploader: UploaderApi
   openShareModal: (entry: DiskEntry) => void
   openPreview: (entry: DiskEntry) => Promise<void>
+  openOfficeEdit: (entry: DiskEntry) => Promise<void>
   openEditorForFolder: (entry: DiskEntry) => Promise<void>
   openEditorForFile: (entry: DiskEntry) => Promise<void>
 }

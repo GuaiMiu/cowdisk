@@ -26,6 +26,12 @@ export type DiskSearchOut = {
   nextCursor?: number | null
 }
 
+export type DiskOfficeOpenOut = {
+  provider: 'collabora' | string
+  url: string
+  expires_in: number
+}
+
 export type DiskUploadOut = {
   items: DiskEntry[]
 }

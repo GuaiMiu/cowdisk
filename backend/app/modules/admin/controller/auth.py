@@ -22,13 +22,17 @@ from app.modules.admin.schemas.menu import MenuRoutersOut
 from app.modules.admin.schemas.user import UserOut
 from app.core.config import settings
 from app.core.database import get_async_redis, get_async_session
-from app.core.exception import AuthException, LoginException
+from app.core.exception import AuthException, LoginException, ServiceException
 from app.modules.admin.dao.user import user_crud
 from app.enum.redis import RedisInitKeyEnum
 from app.modules.admin.models.response import ResponseModel
 from app.modules.admin.models.user import User
 from app.modules.admin.schemas.auth import TokenOut, TokenPayload
-from app.modules.admin.schemas.auth import UserRegisterIn, UserLoginIn
+from app.modules.admin.schemas.auth import (
+    UserRegisterIn,
+    UserLoginIn,
+    UserProfileUpdateIn,
+)
 from app.modules.admin.services.auth import AuthService, get_user_permissions, oauth2_scheme
 from app.modules.system.deps import get_config
 from app.modules.system.typed.config import Config
@@ -261,6 +265,40 @@ async def get_me(
     """
     data = UserOut.model_validate(current_user).model_dump(exclude={"roles"})
     return Res.success(data=data)
+
+
+@auth_router.patch(
+    "/me",
+    response_model=ResponseModel[UserOut],
+    summary="更新当前用户信息",
+)
+async def update_me(
+    payload: UserProfileUpdateIn,
+    db: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(require_user),
+):
+    db_user = await user_crud.get_by_id(db, current_user.id)
+    if not db_user:
+        raise ServiceException(msg="用户不存在")
+
+    if payload.mail is not None and payload.mail != db_user.mail:
+        exists = await user_crud.get_by_field(db, "mail", payload.mail)
+        if exists and exists.id != db_user.id:
+            raise ServiceException(msg=f"邮箱 {payload.mail} 已被使用")
+        db_user.mail = payload.mail
+
+    if payload.nickname is not None:
+        db_user.nickname = payload.nickname
+
+    if payload.new_password is not None:
+        if not db_user.verify_password(payload.current_password or ""):
+            raise ServiceException(msg="当前密码不正确")
+        db_user.password = User.create_password(payload.new_password)
+
+    db_user.update_by = db_user.username
+    db_user = await user_crud.update(db, db_user)
+    data = UserOut.model_validate(db_user).model_dump(exclude={"roles"})
+    return Res.success(data=data, msg="更新成功")
 
 
 @auth_router.post(

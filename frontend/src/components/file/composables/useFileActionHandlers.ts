@@ -46,6 +46,7 @@ type UseFileActionHandlersOptions = {
   uploader: UploaderApi
   openShareModal: (entry: DiskEntry) => void
   openPreview: (entry: DiskEntry) => Promise<void>
+  openOfficeEdit: (entry: DiskEntry) => Promise<void>
   openEditorForFolder: (entry: DiskEntry) => Promise<void>
   openEditorForFile: (entry: DiskEntry) => Promise<void>
   state: FileActionState
@@ -54,6 +55,11 @@ type UseFileActionHandlersOptions = {
 const isTextEntry = (entry: DiskEntry) => {
   const kind = getFileKind(entry.name, entry.is_dir)
   return kind === 'text' || kind === 'code'
+}
+
+const isOfficeEntry = (entry: DiskEntry) => {
+  const kind = getFileKind(entry.name, entry.is_dir)
+  return kind === 'doc' || kind === 'sheet' || kind === 'slide'
 }
 
 export const useFileActionHandlers = (options: UseFileActionHandlersOptions) => {
@@ -179,6 +185,10 @@ export const useFileActionHandlers = (options: UseFileActionHandlersOptions) => 
         }
         if (isTextEntry(payload.entry)) {
           await options.openEditorForFile(payload.entry)
+          return
+        }
+        if (isOfficeEntry(payload.entry)) {
+          await options.openOfficeEdit(payload.entry)
           return
         }
         options.message.warning(options.t('fileExplorer.toasts.notEditable'))

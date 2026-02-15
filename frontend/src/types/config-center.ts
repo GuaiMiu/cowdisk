@@ -1,6 +1,7 @@
 export type ConfigGroupKey =
   | 'system'
   | 'auth'
+  | 'office'
   | 'storage'
   | 'upload'
   | 'preview'

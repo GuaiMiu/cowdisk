@@ -6,6 +6,7 @@ from app.modules.system.typed.specs import REGISTRY
 GROUP_PERMISSION_DOMAIN: dict[str, str] = {
     "system": "core",
     "auth": "core",
+    "office": "core",
     "storage": "core",
     "upload": "core",
     "preview": "core",

@@ -14,6 +14,7 @@ from app.core.database import get_async_redis, get_async_session
 from app.modules.admin.models.response import ResponseModel
 from app.modules.admin.models.user import User
 from app.modules.disk.services.file import FileService
+from app.modules.disk.services.office import OfficeService
 from app.shared.deps import require_permissions, require_user
 
 access_router = APIRouter(prefix="/files", tags=["Disk - Access"])
@@ -61,6 +62,33 @@ async def issue_preview_url(
         file_id=file_id,
         user_id=current_user.id,
         redis=redis,
+    )
+    return ResponseModel.success(data=data)
+
+
+@access_router.post(
+    "/{file_id}/office-url",
+    summary="签发 Office 打开 URL",
+    response_model=ResponseModel[dict],
+    dependencies=[require_permissions(["disk:file:download"])],
+)
+async def issue_office_url(
+    request: Request,
+    file_id: int,
+    lang: str | None = None,
+    mode: str | None = None,
+    current_user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_async_session),
+    redis: aioredis.Redis = Depends(get_async_redis),
+):
+    data = await OfficeService.issue_office_url(
+        request=request,
+        db=db,
+        file_id=file_id,
+        user_id=current_user.id,
+        redis=redis,
+        lang=lang,
+        mode=mode,
     )
     return ResponseModel.success(data=data)
 

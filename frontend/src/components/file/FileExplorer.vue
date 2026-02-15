@@ -12,7 +12,7 @@ import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import ShareForm from '@/components/share/ShareForm.vue'
-import { previewFile, readEditFile, saveEditFile } from '@/api/modules/userDisk'
+import { getOfficeOpenUrl, previewFile, readEditFile, saveEditFile } from '@/api/modules/userDisk'
 import { useFileEditor } from '@/components/file/composables/useFileEditor'
 import { useFileActions } from '@/components/file/composables/useFileActions'
 import { useDiskExplorer } from '@/composables/useDiskExplorer'
@@ -31,8 +31,9 @@ const FileEditorDialog = defineAsyncComponent(() => import('@/components/file/Fi
 const ImagePreview = defineAsyncComponent(() => import('@/components/common/ImagePreview.vue'))
 const PdfPreview = defineAsyncComponent(() => import('@/components/common/PdfPreview.vue'))
 const VideoPreview = defineAsyncComponent(() => import('@/components/common/VideoPreview.vue'))
+const OfficePreview = defineAsyncComponent(() => import('@/components/common/OfficePreview.vue'))
 
-const { t } = useI18n({ useScope: 'global' })
+const { t, locale } = useI18n({ useScope: 'global' })
 const route = useRoute()
 const rootName = computed(() => t('files.rootName'))
 
@@ -129,17 +130,23 @@ const {
   videoSrc,
   videoName,
   videoType,
+  officeOpen,
+  officeSrc,
+  officeName,
   openPreview,
+  openOfficeEdit,
   handlePreviewChange,
   clearPreview,
   clearPdfPreview,
   clearVideoPreview,
+  clearOfficePreview,
   clearAllPreviews,
 } = useFilePreview({
   items: explorer.items,
   t,
   message,
   previewFile,
+  issueOfficeUrl: (fileId, mode) => getOfficeOpenUrl(fileId, locale.value, mode),
   openTextPreview: openEditorForFile,
 })
 
@@ -179,6 +186,7 @@ const {
   uploader,
   openShareModal,
   openPreview,
+  openOfficeEdit,
   openEditorForFolder,
   openEditorForFile,
 })
@@ -430,6 +438,18 @@ onBeforeUnmount(() => {
       }
     "
     @close="clearVideoPreview"
+  />
+
+  <OfficePreview
+    :open="officeOpen"
+    :src="officeSrc"
+    :name="officeName"
+    @update:open="
+      (value) => {
+        if (!value) clearOfficePreview()
+      }
+    "
+    @close="clearOfficePreview"
   />
 
   <FileEditorDialog
