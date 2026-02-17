@@ -397,6 +397,15 @@ class DiskCompressIn(BaseModel):
     name: str | None = None
 
 
+class DiskCompressBatchIn(BaseModel):
+    """
+    批量压缩输入模型
+    """
+
+    file_ids: list[int]
+    name: str | None = None
+
+
 class DiskExtractIn(BaseModel):
     """
     解压输入模型

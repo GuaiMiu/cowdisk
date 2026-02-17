@@ -12,7 +12,13 @@ import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import ShareForm from '@/components/share/ShareForm.vue'
-import { getOfficeOpenUrl, previewFile, readEditFile, saveEditFile } from '@/api/modules/userDisk'
+import {
+  getOfficeOpenUrl,
+  getPreviewUrl,
+  previewFile,
+  readEditFile,
+  saveEditFile,
+} from '@/api/modules/userDisk'
 import { useFileEditor } from '@/components/file/composables/useFileEditor'
 import { useFileActions } from '@/components/file/composables/useFileActions'
 import { useDiskExplorer } from '@/composables/useDiskExplorer'
@@ -56,8 +62,36 @@ const queueOpen = ref(false)
 const refreshTimer = ref<number | null>(null)
 const successInViewIds = ref(new Set<string>())
 const observedUploadsPath = ref<string>('')
+const archiveNameModalOpen = ref(false)
+const archiveNameInput = ref('')
+const archiveNameResolver = ref<((value: string | null) => void) | null>(null)
 const LAST_PATH_KEY = 'cowdisk:last_path'
 const LAST_STACK_KEY = 'cowdisk:last_stack'
+
+const requestArchiveName = (suggested: string) =>
+  new Promise<string | null>((resolve) => {
+    if (archiveNameResolver.value) {
+      archiveNameResolver.value(null)
+    }
+    archiveNameResolver.value = resolve
+    archiveNameInput.value = suggested
+    archiveNameModalOpen.value = true
+  })
+
+const closeArchiveNameModal = (value: string | null) => {
+  archiveNameModalOpen.value = false
+  const resolve = archiveNameResolver.value
+  archiveNameResolver.value = null
+  resolve?.(value)
+}
+
+const cancelArchiveNameRequest = () => {
+  closeArchiveNameModal(null)
+}
+
+const confirmArchiveNameRequest = () => {
+  closeArchiveNameModal(archiveNameInput.value)
+}
 
 const {
   shareModal,
@@ -146,6 +180,7 @@ const {
   t,
   message,
   previewFile,
+  issuePreviewUrl: getPreviewUrl,
   issueOfficeUrl: (fileId, mode) => getOfficeOpenUrl(fileId, locale.value, mode),
   openTextPreview: openEditorForFile,
 })
@@ -179,12 +214,15 @@ const {
   cancelRenameInline,
   openMoveSelected,
   confirmMove,
+  handleCompressSelected,
+  handleExtractSelected,
 } = useFileActions({
   t,
   message,
   explorer,
   selection,
   uploader,
+  requestArchiveName,
   openShareModal,
   openPreview,
   openOfficeEdit,
@@ -273,6 +311,10 @@ onBeforeUnmount(() => {
   }
   clearAllPreviews()
   clearEditor()
+  if (archiveNameResolver.value) {
+    archiveNameResolver.value(null)
+    archiveNameResolver.value = null
+  }
 })
 </script>
 
@@ -290,6 +332,8 @@ onBeforeUnmount(() => {
       @toggle-queue="queueOpen = !queueOpen"
       @delete-selected="handleDelete(selection.selectedItems.value)"
       @move-selected="openMoveSelected"
+      @compress-selected="handleCompressSelected"
+      @extract-selected="handleExtractSelected"
     />
     <div class="explorer__bar">
       <FileBreadcrumb :items="breadcrumbItems" @navigate="explorer.goToBreadcrumb" />
@@ -325,6 +369,18 @@ onBeforeUnmount(() => {
   </section>
 
   <UploadQueueDrawer :open="queueOpen" @close="queueOpen = false" />
+
+  <Modal
+    :open="archiveNameModalOpen"
+    :title="t('fileExplorer.toasts.compressNamePrompt')"
+    @close="cancelArchiveNameRequest"
+  >
+    <Input v-model="archiveNameInput" :label="t('fileExplorer.toasts.compressNamePrompt')" />
+    <template #footer>
+      <Button variant="ghost" @click="cancelArchiveNameRequest">{{ t('common.cancel') }}</Button>
+      <Button @click="confirmArchiveNameRequest">{{ t('common.confirm') }}</Button>
+    </template>
+  </Modal>
 
   <Modal
     :open="shareModal"

@@ -20,6 +20,7 @@ type UseFilePreviewOptions = {
   t: Translate
   message: MessageApi
   previewFile: (fileId: number) => Promise<PreviewFileResult>
+  issuePreviewUrl: (fileId: number) => Promise<{ url: string }>
   issueOfficeUrl: (fileId: number, mode: 'view' | 'edit') => Promise<{ url: string }>
   openTextPreview: (entry: DiskEntry) => Promise<void>
 }
@@ -190,14 +191,15 @@ export const useFilePreview = (options: UseFilePreviewOptions) => {
     try {
       clearVideoPreview()
       videoRequestId.value = requestId
-      const result = await options.previewFile(entry.id)
+      const result = await options.issuePreviewUrl(entry.id)
       if (requestId !== videoRequestId.value) {
         return
       }
-      const url = URL.createObjectURL(result.blob)
-      videoSrc.value = url
+      const base = import.meta.env.VITE_API_BASE_URL || ''
+      const href = base ? new URL(result.url, base).toString() : result.url
+      videoSrc.value = href
       videoName.value = entry.name || options.t('fileExplorer.videoPreviewDefault')
-      videoType.value = result.contentType || getVideoMime(entry.name || '')
+      videoType.value = getVideoMime(entry.name || '')
       videoOpen.value = true
     } catch (error) {
       options.message.error(

@@ -323,6 +323,29 @@ export const useDiskExplorer = () => {
     await load(entry.id)
   }
 
+  const suggestAvailableName = (name: string) => {
+    const normalized = (name || '').trim()
+    if (!normalized) {
+      return ''
+    }
+    const exists = (candidate: string) =>
+      items.value.some((item) => item.name.toLowerCase() === candidate.toLowerCase())
+    if (!exists(normalized)) {
+      return normalized
+    }
+    const dot = normalized.lastIndexOf('.')
+    const hasExt = dot > 0 && dot < normalized.length - 1
+    const stem = hasExt ? normalized.slice(0, dot) : normalized
+    const ext = hasExt ? normalized.slice(dot) : ''
+    for (let index = 1; index < 1000; index += 1) {
+      const candidate = `${stem} (${index})${ext}`
+      if (!exists(candidate)) {
+        return candidate
+      }
+    }
+    return normalized
+  }
+
   const hardRemoveEntries = async (entries: DiskEntry[]) => {
     if (!entries.length) {
       return false
@@ -406,6 +429,7 @@ export const useDiskExplorer = () => {
     load,
     refresh,
     setSearchKeyword,
+    suggestAvailableName,
     createFolder,
     renameEntry,
     moveEntry,

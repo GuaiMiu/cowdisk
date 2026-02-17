@@ -2,6 +2,7 @@ import { downloadBlob, request } from '@/api/request'
 import type { AxiosRequestConfig } from 'axios'
 import type {
   DiskCompressIn,
+  DiskCompressBatchIn,
   DiskDeleteBatchOut,
   DiskEntry,
   DiskExtractIn,
@@ -215,6 +216,28 @@ export const previewFile = (file_id: number) =>
     params: { disposition: 'inline' },
   })
 
+export const previewThumbnail = (
+  file_id: number,
+  options?: {
+    w?: number
+    h?: number
+    fit?: 'cover' | 'contain'
+    fmt?: 'webp' | 'jpeg' | 'jpg' | 'png'
+    quality?: number
+  },
+) =>
+  downloadBlob({
+    url: `/api/v1/me/files/${file_id}/thumbnail`,
+    method: 'GET',
+    params: {
+      w: options?.w ?? 128,
+      h: options?.h ?? 128,
+      fit: options?.fit ?? 'cover',
+      fmt: options?.fmt ?? 'webp',
+      quality: options?.quality ?? 82,
+    },
+  })
+
 export const downloadFile = (file_id: number) =>
   downloadBlob({
     url: `/api/v1/me/files/${file_id}/content`,
@@ -225,6 +248,12 @@ export const downloadFile = (file_id: number) =>
 export const getDownloadUrl = (file_id: number) =>
   request<{ url: string; expires_in: number }>({
     url: `/api/v1/files/${file_id}/download-url`,
+    method: 'POST',
+  })
+
+export const getPreviewUrl = (file_id: number) =>
+  request<{ url: string; expires_in: number }>({
+    url: `/api/v1/files/${file_id}/preview-url`,
     method: 'POST',
   })
 
@@ -264,6 +293,13 @@ export const clearTrash = () =>
 export const prepareCompress = (payload: DiskCompressIn) =>
   request<{ job_id: string }>({
     url: '/api/v1/me/archives/compress',
+    method: 'POST',
+    data: payload,
+  })
+
+export const prepareCompressBatch = (payload: DiskCompressBatchIn) =>
+  request<{ job_id: string }>({
+    url: '/api/v1/me/archives/compress/batch',
     method: 'POST',
     data: payload,
   })

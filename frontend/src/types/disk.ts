@@ -145,6 +145,11 @@ export type DiskCompressIn = {
   name?: string | null
 }
 
+export type DiskCompressBatchIn = {
+  file_ids: number[]
+  name?: string | null
+}
+
 export type DiskExtractIn = {
   file_id: number
 }

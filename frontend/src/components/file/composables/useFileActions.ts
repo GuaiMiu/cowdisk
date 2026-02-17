@@ -14,6 +14,7 @@ type MessageApi = {
 type ExplorerApi = {
   path: Ref<string>
   parentId: Ref<number | null>
+  suggestAvailableName: (name: string) => string
   createFolder: (name: string) => Promise<boolean>
   renameEntry: (entry: DiskEntry, name: string) => Promise<boolean>
   removeEntry: (entry: DiskEntry) => Promise<unknown>
@@ -41,6 +42,7 @@ type UseFileActionsOptions = {
   explorer: ExplorerApi
   selection: SelectionApi
   uploader: UploaderApi
+  requestArchiveName: (suggested: string) => Promise<string | null>
   openShareModal: (entry: DiskEntry) => void
   openPreview: (entry: DiskEntry) => Promise<void>
   openOfficeEdit: (entry: DiskEntry) => Promise<void>
@@ -84,5 +86,7 @@ export const useFileActions = (options: UseFileActionsOptions) => {
     handleRenameInline: handlers.handleRenameInline,
     openMoveSelected: handlers.openMoveSelected,
     confirmMove: handlers.confirmMove,
+    handleCompressSelected: handlers.handleCompressSelected,
+    handleExtractSelected: handlers.handleExtractSelected,
   }
 }

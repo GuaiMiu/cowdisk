@@ -8,6 +8,7 @@ import { formatBytes, formatTime } from '@/utils/format'
 import IconButton from '@/components/common/IconButton.vue'
 import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
+import FileThumbnailIcon from '@/components/file/FileThumbnailIcon.vue'
 import { getFileKind } from '@/utils/fileType'
 import { useAuthStore } from '@/stores/auth'
 
@@ -35,7 +36,17 @@ const emit = defineEmits<{
     event: 'action',
     payload: {
       entry: DiskEntry
-      action: 'download' | 'rename' | 'delete' | 'share' | 'detail' | 'preview' | 'move' | 'edit'
+      action:
+        | 'download'
+        | 'rename'
+        | 'delete'
+        | 'share'
+        | 'detail'
+        | 'preview'
+        | 'move'
+        | 'edit'
+        | 'compress'
+        | 'extract'
     },
   ): void
   (event: 'create-confirm', name: string): void
@@ -193,7 +204,17 @@ const menuEntryPath = ref<string | null>(null)
 let closeTimer: number | null = null
 const MENU_VIEWPORT_PADDING = 8
 
-type MenuAction = 'download' | 'rename' | 'delete' | 'share' | 'detail' | 'preview' | 'move' | 'edit'
+type MenuAction =
+  | 'download'
+  | 'rename'
+  | 'delete'
+  | 'share'
+  | 'detail'
+  | 'preview'
+  | 'move'
+  | 'edit'
+  | 'compress'
+  | 'extract'
 type ContextMenuItem = {
   key: string
   label: string
@@ -212,6 +233,13 @@ const canEditEntry = (entry: DiskEntry | null) => {
     return true
   }
   return isEditableFile(entry)
+}
+
+const canExtractEntry = (entry: DiskEntry | null) => {
+  if (!entry || entry.is_dir) {
+    return false
+  }
+  return entry.name.toLowerCase().endsWith('.zip')
 }
 
 const hasPermission = (permission?: string) => {
@@ -256,11 +284,37 @@ const contextMenuItems = computed<ContextMenuItem[]>(() => {
       label: t('fileTable.actions.details'),
       action: 'detail',
     })
+    items.push({
+      key: 'compress',
+      label: t('fileTable.actions.compress'),
+      action: 'compress',
+      permission: 'disk:archive:compress',
+    })
+    items.push({
+      key: 'extract',
+      label: t('fileTable.actions.extract'),
+      action: 'extract',
+      permission: 'disk:archive:extract',
+      disabled: !canExtractEntry(entry),
+    })
   } else {
     items.push({
       key: 'detail',
       label: t('fileTable.actions.details'),
       action: 'detail',
+    })
+    items.push({
+      key: 'compress',
+      label: t('fileTable.actions.compress'),
+      action: 'compress',
+      permission: 'disk:archive:compress',
+    })
+    items.push({
+      key: 'extract',
+      label: t('fileTable.actions.extract'),
+      action: 'extract',
+      permission: 'disk:archive:extract',
+      disabled: !canExtractEntry(entry),
     })
   }
 
@@ -645,6 +699,7 @@ onBeforeUnmount(() => {
                 class="name__icon"
                 :name="creatingText ? 'new.txt' : undefined"
                 :is-dir="creatingFolder"
+                :size="24"
               />
               <input
                 v-model="createName"
@@ -699,11 +754,23 @@ onBeforeUnmount(() => {
               type="button"
               @click.stop="onNameClick(item)"
             >
-              <FileTypeIcon class="name__icon" :name="item.name" :is-dir="item.is_dir" />
+              <FileThumbnailIcon
+                class="name__icon"
+                :file-id="item.id"
+                :name="item.name"
+                :is-dir="item.is_dir"
+                :size="24"
+              />
               <span class="name__text" :title="item.name">{{ item.name }}</span>
             </button>
             <div v-else class="name name--edit name--inline">
-              <FileTypeIcon class="name__icon" :name="item.name" :is-dir="item.is_dir" />
+              <FileThumbnailIcon
+                class="name__icon"
+                :file-id="item.id"
+                :name="item.name"
+                :is-dir="item.is_dir"
+                :size="24"
+              />
               <input
                 v-model="renameValue"
                 :ref="setRenameInputRef(item)"

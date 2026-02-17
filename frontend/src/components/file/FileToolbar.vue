@@ -12,6 +12,8 @@ import {
   ChevronDown,
   FolderInput,
   Trash2,
+  FileArchive,
+  Download,
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -29,6 +31,8 @@ const emit = defineEmits<{
   (event: 'toggle-queue'): void
   (event: 'delete-selected'): void
   (event: 'move-selected'): void
+  (event: 'compress-selected'): void
+  (event: 'extract-selected'): void
 }>()
 
 const { t } = useI18n({ useScope: 'global' })
@@ -99,6 +103,24 @@ const { t } = useI18n({ useScope: 'global' })
       >
         <FolderInput :size="16" />
         {{ t('fileToolbar.moveSelected', { count: selectedCount }) }}
+      </Button>
+      <Button
+        v-if="selectedCount > 0"
+        variant="secondary"
+        v-permission="'disk:archive:compress'"
+        @click="emit('compress-selected')"
+      >
+        <FileArchive :size="16" />
+        {{ t('fileToolbar.compressSelected', { count: selectedCount }) }}
+      </Button>
+      <Button
+        v-if="selectedCount > 0"
+        variant="secondary"
+        v-permission="'disk:archive:extract'"
+        @click="emit('extract-selected')"
+      >
+        <Download :size="16" />
+        {{ t('fileToolbar.extractSelected', { count: selectedCount }) }}
       </Button>
       <Button
         v-if="selectedCount > 0"

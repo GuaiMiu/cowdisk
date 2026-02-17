@@ -12,7 +12,7 @@ from app.modules.admin.models.response import ResponseModel
 from app.modules.admin.models.user import User
 from app.shared.deps import require_permissions, require_user
 from app.core.database import get_async_redis, get_async_session
-from app.modules.disk.schemas.disk import DiskCompressIn, DiskExtractIn
+from app.modules.disk.schemas.disk import DiskCompressBatchIn, DiskCompressIn, DiskExtractIn
 from app.modules.disk.services.file import FileService
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -46,6 +46,29 @@ async def create_compress(
     """
     job_id = await FileService.create_compress_job(
         db, data.file_id, current_user.id, data.name, redis
+    )
+    return ResponseModel.success(data={"job_id": job_id})
+
+
+@archives_router.post(
+    "/compress/batch",
+    summary="创建批量压缩任务",
+    dependencies=[require_permissions(["disk:archive:compress"])],
+)
+async def create_compress_batch(
+    data: DiskCompressBatchIn,
+    current_user: User = Depends(require_user),
+    redis=Depends(get_async_redis),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """
+    创建异步批量压缩任务，输出单个 ZIP 文件。
+    file_ids 需来自同一目录，避免输出目录歧义。
+    任务状态由 Redis 记录，前端可轮询 status。
+    返回：job_id 标识任务。
+    """
+    job_id = await FileService.create_compress_batch_job(
+        db, data.file_ids, current_user.id, data.name, redis
     )
     return ResponseModel.success(data={"job_id": job_id})
 

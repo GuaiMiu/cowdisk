@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import io
 import mimetypes
 import secrets
 import time
+import tempfile
 from contextvars import ContextVar, Token
 from datetime import datetime
 from uuid import uuid4
@@ -27,6 +29,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 import zipstream
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.modules.admin.dao.user import user_crud
 from app.core.config import settings
@@ -1670,6 +1673,270 @@ class FileService:
     def cleanup_download_file(file_path: Path) -> None:
         _cleanup_abs_path(file_path)
 
+    @staticmethod
+    def _guess_preview_kind(entry: File) -> str:
+        ext = PurePosixPath(entry.name or "").suffix.lower()
+        if ext in {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".bmp",
+            ".webp",
+            ".svg",
+            ".heic",
+            ".heif",
+        }:
+            return "image"
+        if ext == ".pdf":
+            return "pdf"
+        if ext in {".mp4", ".mov", ".mkv", ".avi", ".flv", ".wmv", ".webm", ".m4v"}:
+            return "video"
+        mime_type = (entry.mime_type or "").lower()
+        if mime_type.startswith("image/"):
+            return "image"
+        if mime_type.startswith("video/"):
+            return "video"
+        if mime_type == "application/pdf":
+            return "pdf"
+        return "other"
+
+    @staticmethod
+    def _normalize_thumbnail_size(value: int, default: int) -> int:
+        if value <= 0:
+            return default
+        return max(16, min(2048, int(value)))
+
+    @staticmethod
+    def _thumbnail_media_type(fmt: str) -> str:
+        normalized = (fmt or "webp").lower()
+        if normalized in {"jpeg", "jpg"}:
+            return "image/jpeg"
+        if normalized == "png":
+            return "image/png"
+        return "image/webp"
+
+    @staticmethod
+    def _thumbnail_ext(fmt: str) -> str:
+        normalized = (fmt or "webp").lower()
+        if normalized in {"jpeg", "jpg"}:
+            return "jpg"
+        if normalized == "png":
+            return "png"
+        return "webp"
+
+    @staticmethod
+    def _thumbnail_cache_root(storage: Storage) -> Path:
+        if (storage.type or "").lower() == "local":
+            base = (storage.base_path_or_bucket or "storage").strip() or "storage"
+            return (Path(base).resolve() / ".thumb-cache")
+        return Path(tempfile.gettempdir()).resolve() / "cowdisk-thumb-cache"
+
+    @classmethod
+    def _thumbnail_cache_path(
+        cls,
+        storage: Storage,
+        file_id: int,
+        cache_key: str,
+        fmt: str,
+    ) -> Path:
+        root = cls._thumbnail_cache_root(storage)
+        ext = cls._thumbnail_ext(fmt)
+        shard = cache_key[:2] or "00"
+        return root / str(file_id) / shard / f"{cache_key}.{ext}"
+
+    @classmethod
+    def _thumbnail_cache_file_dir(cls, storage: Storage, file_id: int) -> Path:
+        root = cls._thumbnail_cache_root(storage)
+        return root / str(file_id)
+
+    @staticmethod
+    async def _read_cached_thumbnail(path: Path) -> bytes | None:
+        def _sync_read() -> bytes | None:
+            if not path.exists() or not path.is_file():
+                return None
+            return path.read_bytes()
+
+        return await asyncio.to_thread(_sync_read)
+
+    @staticmethod
+    async def _write_cached_thumbnail(path: Path, content: bytes) -> None:
+        def _sync_write() -> None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = path.with_name(f".{path.name}.tmp-{uuid4().hex}")
+            temp_path.write_bytes(content)
+            temp_path.replace(path)
+
+        await asyncio.to_thread(_sync_write)
+
+    @classmethod
+    async def _purge_thumbnail_cache_for_file(cls, storage: Storage, file_id: int) -> None:
+        cache_dir = cls._thumbnail_cache_file_dir(storage, file_id)
+
+        def _sync_delete() -> None:
+            if cache_dir.exists():
+                import shutil
+
+                shutil.rmtree(cache_dir, ignore_errors=True)
+
+        await asyncio.to_thread(_sync_delete)
+
+    @staticmethod
+    def _render_image_thumbnail(
+        abs_path: Path,
+        width: int,
+        height: int,
+        fit: str,
+        fmt: str,
+        quality: int,
+    ) -> tuple[bytes, str]:
+        with Image.open(abs_path) as image:
+            source = image.copy()
+        if fit == "contain":
+            source.thumbnail((width, height), Image.Resampling.LANCZOS)
+            if fmt in {"jpeg", "jpg"}:
+                canvas = Image.new("RGB", (width, height), (255, 255, 255))
+                offset = ((width - source.width) // 2, (height - source.height) // 2)
+                if source.mode not in {"RGB", "L"}:
+                    source = source.convert("RGB")
+                canvas.paste(source, offset)
+                rendered = canvas
+            else:
+                canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+                offset = ((width - source.width) // 2, (height - source.height) // 2)
+                if source.mode != "RGBA":
+                    source = source.convert("RGBA")
+                canvas.paste(source, offset)
+                rendered = canvas
+        else:
+            rendered = ImageOps.fit(
+                source,
+                (width, height),
+                method=Image.Resampling.LANCZOS,
+            )
+        format_name = "WEBP"
+        media_type = "image/webp"
+        save_kwargs: dict[str, int | bool] = {"quality": quality}
+        normalized_fmt = fmt.lower()
+        if normalized_fmt in {"jpeg", "jpg"}:
+            format_name = "JPEG"
+            media_type = "image/jpeg"
+            if rendered.mode not in {"RGB", "L"}:
+                rendered = rendered.convert("RGB")
+            save_kwargs = {"quality": quality, "optimize": True}
+        elif normalized_fmt == "png":
+            format_name = "PNG"
+            media_type = "image/png"
+            save_kwargs = {"optimize": True}
+        else:
+            if rendered.mode not in {"RGB", "RGBA", "L"}:
+                rendered = rendered.convert("RGBA")
+            save_kwargs = {"quality": quality, "method": 6}
+        buffer = io.BytesIO()
+        rendered.save(buffer, format=format_name, **save_kwargs)
+        return buffer.getvalue(), media_type
+
+    @classmethod
+    async def build_thumbnail(
+        cls,
+        request: Request,
+        db: AsyncSession,
+        file_id: int,
+        user_id: int,
+        width: int = 128,
+        height: int = 128,
+        fit: str = "cover",
+        fmt: str = "webp",
+        quality: int = 82,
+    ) -> Response:
+        entry = await cls._get_active_file(db, user_id, file_id)
+        if entry.is_dir:
+            raise ServiceException(msg="目录不支持缩略图预览")
+        width = cls._normalize_thumbnail_size(width, 128)
+        height = cls._normalize_thumbnail_size(height, 128)
+        fit_mode = (fit or "cover").strip().lower()
+        if fit_mode not in {"cover", "contain"}:
+            fit_mode = "cover"
+        fmt_mode = (fmt or "webp").strip().lower()
+        if fmt_mode not in {"webp", "jpeg", "jpg", "png"}:
+            fmt_mode = "webp"
+        quality_value = max(30, min(95, int(quality or 82)))
+        kind = cls._guess_preview_kind(entry)
+        if kind == "pdf":
+            raise ServiceException(msg="PDF 缩略图暂未启用")
+        if kind == "video":
+            raise ServiceException(msg="视频封面预览暂未启用")
+        if kind != "image":
+            raise ServiceException(msg="当前文件类型不支持缩略图")
+        storage = await cls._get_storage_by_id(db, entry.storage_id)
+        backend = get_storage_backend(storage)
+        abs_path = backend.resolve_abs_path(entry.storage_path)
+        if not backend.exists_abs_path(abs_path):
+            raise ServiceException(msg="文件不存在")
+        if entry.updated_at:
+            version = int(entry.updated_at.timestamp())
+        else:
+            version = 0
+        etag = sha1(
+            f"{entry.id}:{entry.etag or ''}:{width}:{height}:{fit_mode}:{fmt_mode}:{quality_value}:{version}".encode(
+                "utf-8"
+            )
+        ).hexdigest()
+        if_none_match = (request.headers.get("if-none-match") or "").strip().strip('"')
+        if if_none_match == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        cache_path = cls._thumbnail_cache_path(
+            storage=storage,
+            file_id=entry.id,
+            cache_key=etag,
+            fmt=fmt_mode,
+        )
+        cached_blob = await cls._read_cached_thumbnail(cache_path)
+        if cached_blob is not None:
+            return Response(
+                content=cached_blob,
+                media_type=cls._thumbnail_media_type(fmt_mode),
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "ETag": etag,
+                    "Content-Disposition": content_disposition(
+                        f"{PurePosixPath(entry.name).stem}.thumb.{cls._thumbnail_ext(fmt_mode)}",
+                        inline=True,
+                    ),
+                },
+            )
+        try:
+            blob, media_type = await asyncio.to_thread(
+                cls._render_image_thumbnail,
+                abs_path,
+                width,
+                height,
+                fit_mode,
+                fmt_mode,
+                quality_value,
+            )
+        except UnidentifiedImageError as exc:
+            raise ServiceException(msg="无法解析图片内容") from exc
+        except OSError as exc:
+            raise ServiceException(msg=f"缩略图生成失败: {exc}") from exc
+        try:
+            await cls._write_cached_thumbnail(cache_path, blob)
+        except Exception:
+            # 缓存写入失败不影响主流程，直接返回实时生成结果。
+            pass
+        return Response(
+            content=blob,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "public, max-age=86400",
+                "ETag": etag,
+                "Content-Disposition": content_disposition(
+                    f"{PurePosixPath(entry.name).stem}.thumb.{cls._thumbnail_ext(fmt_mode)}",
+                    inline=True,
+                ),
+            },
+        )
+
     @classmethod
     async def save_text_file(
         cls,
@@ -1774,6 +2041,31 @@ class FileService:
         await redis.expire(key, 10800)
         asyncio.create_task(
             cls._run_compress_job(job_id, user_id, file_id, name, redis)
+        )
+        return job_id
+
+    @classmethod
+    async def create_compress_batch_job(
+        cls, db: AsyncSession, file_ids: list[int], user_id: int, name: str | None, redis
+    ) -> str:
+        ids = [int(file_id) for file_id in file_ids if int(file_id) > 0]
+        if not ids:
+            raise ServiceException(msg="缺少压缩目标")
+        job_id = uuid4().hex
+        key = f"disk:compress:{job_id}"
+        await redis.hset(
+            key,
+            mapping={
+                "status": "pending",
+                "user_id": str(user_id),
+                "file_ids": ",".join(str(i) for i in ids),
+                "name": name or "",
+                "usage_updated": "0",
+            },
+        )
+        await redis.expire(key, 10800)
+        asyncio.create_task(
+            cls._run_compress_batch_job(job_id, user_id, ids, name, redis)
         )
         return job_id
 
@@ -1905,6 +2197,33 @@ class FileService:
         try:
             async with async_session() as session:
                 entry = await cls.compress_by_id(session, user_id, file_id, name)
+            await cls._set_job_ready(
+                key,
+                redis,
+                {
+                    "status": "ready",
+                    "output_path": rel_path_from_storage(
+                        entry.user_id, entry.storage_path
+                    ),
+                    "usage_updated": "0",
+                },
+            )
+        except Exception as exc:
+            await cls._set_job_error(key, redis, exc)
+
+    @classmethod
+    async def _run_compress_batch_job(
+        cls,
+        job_id: str,
+        user_id: int,
+        file_ids: list[int],
+        name: str | None,
+        redis,
+    ) -> None:
+        key = f"disk:compress:{job_id}"
+        try:
+            async with async_session() as session:
+                entry = await cls.compress_many_by_ids(session, user_id, file_ids, name)
             await cls._set_job_ready(
                 key,
                 redis,
@@ -2064,7 +2383,22 @@ class FileService:
         safe_name = ensure_name(
             base_name if base_name.lower().endswith(".zip") else f"{base_name}.zip"
         )
-        await cls._ensure_unique_name(db, user_id, parent_id, safe_name)
+        if await cls._find_active_by_name(db, user_id, parent_id, safe_name):
+            if safe_name.lower().endswith(".zip"):
+                stem = safe_name[:-4]
+                ext = ".zip"
+            else:
+                stem = safe_name
+                ext = ""
+            for index in range(1, 1000):
+                candidate = ensure_name(f"{stem} (压缩){index}{ext}")
+                if not await cls._find_active_by_name(
+                    db, user_id, parent_id, candidate
+                ):
+                    safe_name = candidate
+                    break
+            else:
+                raise ServiceException(msg="压缩失败：重名过多")
         storage = await cls._get_storage_by_id(db, target.storage_id)
         backend = get_storage_backend(storage)
         storage_path = cls._storage_path_for(user_id, parent, safe_name)
@@ -2097,90 +2431,212 @@ class FileService:
         return entry
 
     @classmethod
+    async def compress_many_by_ids(
+        cls, db: AsyncSession, user_id: int, file_ids: list[int], name: str | None
+    ) -> File:
+        unique_ids: list[int] = []
+        seen: set[int] = set()
+        for file_id in file_ids:
+            if file_id in seen:
+                continue
+            seen.add(file_id)
+            unique_ids.append(file_id)
+        if not unique_ids:
+            raise ServiceException(msg="缺少压缩目标")
+
+        targets = [await cls._get_active_file(db, user_id, file_id) for file_id in unique_ids]
+        first_parent_id = targets[0].parent_id
+        for target in targets:
+            if target.parent_id != first_parent_id:
+                raise ServiceException(msg="批量压缩仅支持同一目录下的文件")
+
+        parent = None
+        if first_parent_id is not None:
+            parent = await cls._get_active_dir(db, user_id, first_parent_id)
+
+        base_name = name or "archive.zip"
+        safe_name = ensure_name(
+            base_name if base_name.lower().endswith(".zip") else f"{base_name}.zip"
+        )
+        if await cls._find_active_by_name(db, user_id, first_parent_id, safe_name):
+            stem = safe_name[:-4] if safe_name.lower().endswith(".zip") else safe_name
+            ext = ".zip" if safe_name.lower().endswith(".zip") else ""
+            for index in range(1, 1000):
+                candidate = ensure_name(f"{stem} (压缩){index}{ext}")
+                if not await cls._find_active_by_name(
+                    db, user_id, first_parent_id, candidate
+                ):
+                    safe_name = candidate
+                    break
+            else:
+                raise ServiceException(msg="压缩失败：重名过多")
+
+        storage = await cls._get_storage_by_id(db, targets[0].storage_id)
+        for target in targets:
+            if target.storage_id != storage.id:
+                raise ServiceException(msg="批量压缩仅支持同一存储内的文件")
+        backend = get_storage_backend(storage)
+
+        def _unique_arc(base: str, used: set[str]) -> str:
+            if base not in used:
+                used.add(base)
+                return base
+            dot = base.rfind(".")
+            has_ext = dot > 0 and dot < len(base) - 1
+            stem = base[:dot] if has_ext else base
+            ext = base[dot:] if has_ext else ""
+            for i in range(1, 1000):
+                candidate = f"{stem} ({i}){ext}"
+                if candidate not in used:
+                    used.add(candidate)
+                    return candidate
+            raise ServiceException(msg="压缩失败：重名过多")
+
+        entries: list[tuple[str, str, bool]] = []
+        used_arcnames: set[str] = set()
+        for target in targets:
+            root_arc = _unique_arc(target.name or str(target.id), used_arcnames)
+            if target.is_dir:
+                entries.append((target.storage_path, root_arc, True))
+                descendants = await cls._collect_descendant_entries(db, user_id, [target.id])
+                root_prefix = target.storage_path.rstrip("/")
+                for child in descendants:
+                    if child.storage_path.startswith(root_prefix + "/"):
+                        rel = child.storage_path[len(root_prefix) + 1 :]
+                    else:
+                        rel = child.name
+                    arc = f"{root_arc}/{rel}" if rel else root_arc
+                    entries.append((child.storage_path, arc, child.is_dir))
+            else:
+                entries.append((target.storage_path, root_arc, False))
+
+        zip_path = await backend.create_zip(user_id, None, entries)
+        storage_path = cls._storage_path_for(user_id, parent, safe_name)
+        await backend.move_abs_path(zip_path, storage_path)
+        size, digest = await backend.hash_file(storage_path)
+        entry = File(
+            user_id=user_id,
+            parent_id=first_parent_id,
+            name=safe_name,
+            is_dir=False,
+            size=size,
+            mime_type="application/zip",
+            etag=digest,
+            storage_id=storage.id,
+            storage_path=storage_path,
+            storage_path_hash=cls._hash_storage_path(storage_path),
+            content_hash=digest,
+            is_deleted=False,
+            deleted_at=None,
+        )
+        db.add(entry)
+        await db.commit()
+        await db.refresh(entry)
+        return entry
+
+    @classmethod
     async def extract_by_id(cls, db: AsyncSession, user_id: int, file_id: int) -> File:
         source = await cls._get_active_file(db, user_id, file_id)
         if source.is_dir:
             raise ServiceException(msg="目标不是文件")
         if not source.name.lower().endswith(".zip"):
             raise ServiceException(msg="仅支持 ZIP 文件解压")
-        base_name = source.name.rsplit(".", 1)[0] or "extract"
-        await cls._ensure_unique_name(db, user_id, source.parent_id, base_name)
-        root_dir = await cls.create_dir(db, user_id, source.parent_id, base_name)
+        base_name = ensure_name(source.name.rsplit(".", 1)[0] or "extract")
+        root_name = base_name
+        if await cls._find_active_by_name(db, user_id, source.parent_id, root_name):
+            for index in range(1, 1000):
+                candidate = ensure_name(f"{base_name} (解压){index}")
+                if not await cls._find_active_by_name(
+                    db, user_id, source.parent_id, candidate
+                ):
+                    root_name = candidate
+                    break
+            else:
+                raise ServiceException(msg="解压失败：重名过多")
+        root_dir = await cls.create_dir(db, user_id, source.parent_id, root_name)
         storage = await cls._get_storage_by_id(db, source.storage_id)
         backend = get_storage_backend(storage)
-        extracted = await backend.extract_zip(
-            source.storage_path, root_dir.storage_path
-        )
-
-        dir_map: dict[str, File] = {"": root_dir}
-        dir_paths: set[str] = set()
-        for item in extracted:
-            rel = PurePosixPath(item.rel_path)
-            if item.is_dir:
-                if rel.as_posix():
-                    dir_paths.add(rel.as_posix())
-                continue
-            for parent in rel.parents:
-                key = parent.as_posix()
-                if key in ("", "."):
-                    break
-                dir_paths.add(key)
-
-        for dir_path in sorted(dir_paths, key=lambda p: len(PurePosixPath(p).parts)):
-            rel = PurePosixPath(dir_path)
-            parent_key = rel.parent.as_posix()
-            if parent_key in (".", ""):
-                parent_key = ""
-            parent_entry = dir_map.get(parent_key, root_dir)
-            storage_path = cls._storage_path_for(user_id, parent_entry, rel.name)
-            entry = File(
-                user_id=user_id,
-                parent_id=parent_entry.id,
-                name=rel.name,
-                is_dir=True,
-                size=0,
-                mime_type=None,
-                etag=uuid4().hex,
-                storage_id=storage.id,
-                storage_path=storage_path,
-                storage_path_hash=cls._hash_storage_path(storage_path),
-                content_hash=None,
-                is_deleted=False,
-                deleted_at=None,
+        try:
+            extracted = await backend.extract_zip(
+                source.storage_path, root_dir.storage_path
             )
-            db.add(entry)
-            await db.flush()
-            dir_map[rel.as_posix()] = entry
 
-        for item in extracted:
-            if item.is_dir:
-                continue
-            rel = PurePosixPath(item.rel_path)
-            parent_key = rel.parent.as_posix()
-            if parent_key in (".", ""):
-                parent_key = ""
-            parent_entry = dir_map.get(parent_key, root_dir)
-            storage_path = cls._storage_path_for(user_id, parent_entry, rel.name)
-            digest = item.content_hash or uuid4().hex
-            entry = File(
-                user_id=user_id,
-                parent_id=parent_entry.id,
-                name=rel.name,
-                is_dir=False,
-                size=item.size,
-                mime_type=item.mime_type or mimetypes.guess_type(rel.name)[0],
-                etag=digest,
-                storage_id=storage.id,
-                storage_path=storage_path,
-                storage_path_hash=cls._hash_storage_path(storage_path),
-                content_hash=item.content_hash,
-                is_deleted=False,
-                deleted_at=None,
-            )
-            db.add(entry)
-        await db.commit()
-        await db.refresh(root_dir)
-        return root_dir
+            dir_map: dict[str, File] = {"": root_dir}
+            dir_paths: set[str] = set()
+            for item in extracted:
+                rel = PurePosixPath(item.rel_path)
+                if item.is_dir:
+                    if rel.as_posix():
+                        dir_paths.add(rel.as_posix())
+                    continue
+                for parent in rel.parents:
+                    key = parent.as_posix()
+                    if key in ("", "."):
+                        break
+                    dir_paths.add(key)
+
+            for dir_path in sorted(dir_paths, key=lambda p: len(PurePosixPath(p).parts)):
+                rel = PurePosixPath(dir_path)
+                parent_key = rel.parent.as_posix()
+                if parent_key in (".", ""):
+                    parent_key = ""
+                parent_entry = dir_map.get(parent_key, root_dir)
+                storage_path = cls._storage_path_for(user_id, parent_entry, rel.name)
+                entry = File(
+                    user_id=user_id,
+                    parent_id=parent_entry.id,
+                    name=rel.name,
+                    is_dir=True,
+                    size=0,
+                    mime_type=None,
+                    etag=uuid4().hex,
+                    storage_id=storage.id,
+                    storage_path=storage_path,
+                    storage_path_hash=cls._hash_storage_path(storage_path),
+                    content_hash=None,
+                    is_deleted=False,
+                    deleted_at=None,
+                )
+                db.add(entry)
+                await db.flush()
+                dir_map[rel.as_posix()] = entry
+
+            for item in extracted:
+                if item.is_dir:
+                    continue
+                rel = PurePosixPath(item.rel_path)
+                parent_key = rel.parent.as_posix()
+                if parent_key in (".", ""):
+                    parent_key = ""
+                parent_entry = dir_map.get(parent_key, root_dir)
+                storage_path = cls._storage_path_for(user_id, parent_entry, rel.name)
+                digest = item.content_hash or uuid4().hex
+                entry = File(
+                    user_id=user_id,
+                    parent_id=parent_entry.id,
+                    name=rel.name,
+                    is_dir=False,
+                    size=item.size,
+                    mime_type=item.mime_type or mimetypes.guess_type(rel.name)[0],
+                    etag=digest,
+                    storage_id=storage.id,
+                    storage_path=storage_path,
+                    storage_path_hash=cls._hash_storage_path(storage_path),
+                    content_hash=item.content_hash,
+                    is_deleted=False,
+                    deleted_at=None,
+                )
+                db.add(entry)
+            await db.commit()
+            await db.refresh(root_dir)
+            return root_dir
+        except Exception:
+            await db.rollback()
+            try:
+                await cls._hard_delete_ids(db, user_id, [root_dir.id])
+            except Exception:
+                pass
+            raise
 
     @classmethod
     async def list_trash(cls, user_id: int, db: AsyncSession) -> dict:
@@ -2361,6 +2817,10 @@ class FileService:
                         backend.cleanup_empty_parents(item.storage_path, trash_root)
                     except Exception:
                         pass
+            except Exception:
+                pass
+            try:
+                await cls._purge_thumbnail_cache_for_file(storage, item.id)
             except Exception:
                 pass
         await db.execute(File.__table__.delete().where(File.id.in_(all_ids)))

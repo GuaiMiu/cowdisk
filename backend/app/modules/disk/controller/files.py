@@ -321,6 +321,35 @@ async def get_file_content(
 
 
 @files_router.get(
+    "/{file_id}/thumbnail",
+    summary="获取文件缩略图",
+    dependencies=[require_permissions(["disk:file:download"])],
+)
+async def get_file_thumbnail(
+    request: Request,
+    file_id: int,
+    w: int = 128,
+    h: int = 128,
+    fit: str = "cover",
+    fmt: str = "webp",
+    quality: int = 82,
+    current_user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    return await FileService.build_thumbnail(
+        request=request,
+        db=db,
+        file_id=file_id,
+        user_id=current_user.id,
+        width=w,
+        height=h,
+        fit=fit,
+        fmt=fmt,
+        quality=quality,
+    )
+
+
+@files_router.get(
     "/{file_id}/text",
     summary="读取可编辑文本",
     response_model=ResponseModel[DiskTextReadOut],
