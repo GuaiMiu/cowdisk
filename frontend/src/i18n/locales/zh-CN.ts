@@ -745,6 +745,12 @@ export default {
     deleteSelected: '删除选中 ({count})',
     uploadQueue: '上传队列',
     refresh: '刷新',
+    viewList: '列表视图',
+    viewThumb: '缩略图视图',
+  },
+  fileGrid: {
+    selectAll: '全选',
+    selectedCount: '已选 {count} 项',
   },
   fileActionsMenu: {
     more: '更多',

@@ -9,6 +9,10 @@ import IconButton from '@/components/common/IconButton.vue'
 import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import FileThumbnailIcon from '@/components/file/FileThumbnailIcon.vue'
+import {
+  useFileEntryActionsMenu,
+  type FileEntryAction,
+} from '@/components/file/composables/useFileEntryActionsMenu'
 import { getFileKind } from '@/utils/fileType'
 import { useAuthStore } from '@/stores/auth'
 
@@ -16,7 +20,6 @@ type SortKey = 'name' | 'size' | 'type' | 'updatedAt'
 
 const props = defineProps<{
   items: DiskEntry[]
-  selected: Set<string>
   allSelected: boolean
   indeterminate: boolean
   isSelected: (item: DiskEntry) => boolean
@@ -36,17 +39,7 @@ const emit = defineEmits<{
     event: 'action',
     payload: {
       entry: DiskEntry
-      action:
-        | 'download'
-        | 'rename'
-        | 'delete'
-        | 'share'
-        | 'detail'
-        | 'preview'
-        | 'move'
-        | 'edit'
-        | 'compress'
-        | 'extract'
+      action: FileEntryAction
     },
   ): void
   (event: 'create-confirm', name: string): void
@@ -98,20 +91,6 @@ const {
 } = useOverlayScrollbar()
 
 const isEditing = (entry: DiskEntry) => props.editingEntry?.id === entry.id
-const isEditableFile = (entry: DiskEntry | null) => {
-  if (!entry || entry.is_dir) {
-    return false
-  }
-  const kind = getFileKind(entry.name, entry.is_dir)
-  return (
-    kind === 'text' ||
-    kind === 'code' ||
-    kind === 'doc' ||
-    kind === 'sheet' ||
-    kind === 'slide'
-  )
-}
-
 watch([() => props.creatingFolder, () => props.creatingText], ([creatingFolder, creatingText]) => {
   if (creatingFolder || creatingText) {
     createName.value = creatingFolder
@@ -204,44 +183,6 @@ const menuEntryPath = ref<string | null>(null)
 let closeTimer: number | null = null
 const MENU_VIEWPORT_PADDING = 8
 
-type MenuAction =
-  | 'download'
-  | 'rename'
-  | 'delete'
-  | 'share'
-  | 'detail'
-  | 'preview'
-  | 'move'
-  | 'edit'
-  | 'compress'
-  | 'extract'
-type ContextMenuItem = {
-  key: string
-  label: string
-  action: MenuAction
-  permission?: string
-  danger?: boolean
-  disabled?: boolean
-  dividerBefore?: boolean
-}
-
-const canEditEntry = (entry: DiskEntry | null) => {
-  if (!entry) {
-    return false
-  }
-  if (entry.is_dir) {
-    return true
-  }
-  return isEditableFile(entry)
-}
-
-const canExtractEntry = (entry: DiskEntry | null) => {
-  if (!entry || entry.is_dir) {
-    return false
-  }
-  return entry.name.toLowerCase().endsWith('.zip')
-}
-
 const hasPermission = (permission?: string) => {
   if (!permission) {
     return true
@@ -249,109 +190,11 @@ const hasPermission = (permission?: string) => {
   return authStore.hasPerm(permission)
 }
 
-const contextMenuItems = computed<ContextMenuItem[]>(() => {
-  const entry = contextMenu.value.entry
-  if (!entry) {
-    return []
-  }
-  const editLabel = entry.is_dir ? t('fileTable.actions.openEditor') : t('fileTable.actions.edit')
-  const items: ContextMenuItem[] = [
-    {
-      key: 'preview',
-      label: t('fileTable.actions.preview'),
-      action: 'preview',
-      permission: 'disk:file:download',
-      disabled: entry.is_dir,
-    },
-    {
-      key: 'edit',
-      label: editLabel,
-      action: 'edit',
-      permission: entry.is_dir ? 'disk:file:view' : 'disk:file:download',
-      disabled: !canEditEntry(entry),
-    },
-  ]
-
-  if (contextMenu.value.mode === 'full') {
-    items.push({
-      key: 'download',
-      label: t('fileTable.actions.download'),
-      action: 'download',
-      permission: 'disk:file:download',
-    })
-    items.push({
-      key: 'detail',
-      label: t('fileTable.actions.details'),
-      action: 'detail',
-    })
-    items.push({
-      key: 'compress',
-      label: t('fileTable.actions.compress'),
-      action: 'compress',
-      permission: 'disk:archive:compress',
-    })
-    items.push({
-      key: 'extract',
-      label: t('fileTable.actions.extract'),
-      action: 'extract',
-      permission: 'disk:archive:extract',
-      disabled: !canExtractEntry(entry),
-    })
-  } else {
-    items.push({
-      key: 'detail',
-      label: t('fileTable.actions.details'),
-      action: 'detail',
-    })
-    items.push({
-      key: 'compress',
-      label: t('fileTable.actions.compress'),
-      action: 'compress',
-      permission: 'disk:archive:compress',
-    })
-    items.push({
-      key: 'extract',
-      label: t('fileTable.actions.extract'),
-      action: 'extract',
-      permission: 'disk:archive:extract',
-      disabled: !canExtractEntry(entry),
-    })
-  }
-
-  items.push(
-    {
-      key: 'rename',
-      label: t('fileTable.actions.rename'),
-      action: 'rename',
-      permission: 'disk:file:move',
-      dividerBefore: true,
-    },
-    {
-      key: 'move',
-      label: t('fileTable.actions.move'),
-      action: 'move',
-      permission: 'disk:file:move',
-    },
-    {
-      key: 'share',
-      label: t('fileTable.actions.share'),
-      action: 'share',
-      permission: 'disk:file:download',
-    },
-  )
-
-  if (contextMenu.value.mode === 'full') {
-    items.push({
-      key: 'delete',
-      label: t('fileTable.actions.delete'),
-      action: 'delete',
-      permission: 'disk:file:delete',
-      danger: true,
-      dividerBefore: true,
-    })
-  }
-
-  return items.filter((item) => hasPermission(item.permission))
+const contextMenuItems = useFileEntryActionsMenu({
+  entry: computed(() => contextMenu.value.entry),
+  mode: computed(() => contextMenu.value.mode),
+  t,
+  hasPermission,
 })
 
 const closeContextMenu = () => {
@@ -576,7 +419,7 @@ const onWindowKey = (event: KeyboardEvent) => {
   }
 }
 
-const triggerContextMenuAction = (action: MenuAction) => {
+const triggerContextMenuAction = (action: FileEntryAction) => {
   if (!contextMenu.value.entry) {
     return
   }

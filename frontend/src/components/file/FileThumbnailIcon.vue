@@ -4,6 +4,50 @@ import { previewThumbnail } from '@/api/modules/userDisk'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import { getFileKind } from '@/utils/fileType'
 
+const callbacks = new WeakMap<Element, () => void>()
+let sharedObserver: IntersectionObserver | null = null
+
+const getObserver = () => {
+  if (typeof window === 'undefined' || typeof window.IntersectionObserver === 'undefined') {
+    return null
+  }
+  if (!sharedObserver) {
+    sharedObserver = new window.IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) {
+          continue
+        }
+        const callback = callbacks.get(entry.target)
+        if (!callback) {
+          continue
+        }
+        callbacks.delete(entry.target)
+        sharedObserver?.unobserve(entry.target)
+        callback()
+      }
+    })
+  }
+  return sharedObserver
+}
+
+const observeVisible = (element: Element, callback: () => void) => {
+  const observer = getObserver()
+  if (!observer) {
+    callback()
+    return
+  }
+  callbacks.set(element, callback)
+  observer.observe(element)
+}
+
+const unobserveVisible = (element: Element | null) => {
+  if (!element || !sharedObserver) {
+    return
+  }
+  callbacks.delete(element)
+  sharedObserver.unobserve(element)
+}
+
 const props = withDefaults(
   defineProps<{
     fileId?: number
@@ -23,27 +67,20 @@ const hostRef = ref<HTMLElement | null>(null)
 const thumbUrl = ref('')
 const loading = ref(false)
 const failed = ref(false)
+let requestId = 0
 const iconSize = computed(() => props.size)
 const requestSize = computed(() => {
   const base = Number(iconSize.value || 16)
   return Math.max(48, Math.min(512, Math.ceil(base * 3)))
 })
 const isImageEntry = computed(() => getFileKind(props.name, props.isDir) === 'image' && !props.isDir)
-let observer: IntersectionObserver | null = null
-let requestId = 0
 
 const revokeThumb = () => {
-  if (thumbUrl.value) {
-    URL.revokeObjectURL(thumbUrl.value)
-    thumbUrl.value = ''
+  if (!thumbUrl.value) {
+    return
   }
-}
-
-const stopObserve = () => {
-  if (observer) {
-    observer.disconnect()
-    observer = null
-  }
+  URL.revokeObjectURL(thumbUrl.value)
+  thumbUrl.value = ''
 }
 
 const loadThumb = async () => {
@@ -79,31 +116,26 @@ const loadThumb = async () => {
 }
 
 const observeOrLoad = () => {
-  stopObserve()
+  unobserveVisible(hostRef.value)
   if (!isImageEntry.value || thumbUrl.value || failed.value || !hostRef.value) {
     return
   }
-  if (typeof window === 'undefined' || typeof window.IntersectionObserver === 'undefined') {
-    void loadThumb()
-    return
-  }
-  observer = new window.IntersectionObserver((entries) => {
-    const visible = entries.some((entry) => entry.isIntersecting)
-    if (!visible) {
-      return
-    }
-    stopObserve()
-    void loadThumb()
+  observeVisible(hostRef.value, () => {
+    loadThumb()
   })
-  observer.observe(hostRef.value)
+}
+
+const onThumbError = () => {
+  failed.value = true
+  revokeThumb()
 }
 
 watch(
   () => [props.fileId, props.name, props.isDir] as const,
   () => {
     requestId += 1
-    failed.value = false
     loading.value = false
+    failed.value = false
     revokeThumb()
     void nextTick(() => observeOrLoad())
   },
@@ -115,7 +147,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   requestId += 1
-  stopObserve()
+  loading.value = false
+  unobserveVisible(hostRef.value)
   revokeThumb()
 })
 </script>
@@ -130,6 +163,7 @@ onBeforeUnmount(() => {
       loading="lazy"
       decoding="async"
       draggable="false"
+      @error="onThumbError"
     />
     <FileTypeIcon v-else :name="name" :is-dir="isDir" :size="iconSize" />
   </span>

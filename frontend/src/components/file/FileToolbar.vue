@@ -8,6 +8,8 @@ import {
   FolderPlus,
   FileText,
   RefreshCw,
+  List,
+  LayoutGrid,
   ListChecks,
   ChevronDown,
   FolderInput,
@@ -20,6 +22,7 @@ const props = defineProps<{
   selectedCount: number
   queuePendingCount: number
   queueErrorCount: number
+  viewMode?: 'list' | 'thumb'
 }>()
 
 const emit = defineEmits<{
@@ -33,6 +36,7 @@ const emit = defineEmits<{
   (event: 'move-selected'): void
   (event: 'compress-selected'): void
   (event: 'extract-selected'): void
+  (event: 'change-view', mode: 'list' | 'thumb'): void
 }>()
 
 const { t } = useI18n({ useScope: 'global' })
@@ -133,6 +137,22 @@ const { t } = useI18n({ useScope: 'global' })
       </Button>
     </div>
     <div class="toolbar__right">
+      <div class="view-toggle">
+        <IconButton
+          :aria-label="t('fileToolbar.viewList')"
+          :variant="props.viewMode === 'list' ? 'secondary' : 'ghost'"
+          @click="emit('change-view', 'list')"
+        >
+          <List :size="18" />
+        </IconButton>
+        <IconButton
+          :aria-label="t('fileToolbar.viewThumb')"
+          :variant="props.viewMode === 'thumb' ? 'secondary' : 'ghost'"
+          @click="emit('change-view', 'thumb')"
+        >
+          <LayoutGrid :size="18" />
+        </IconButton>
+      </div>
       <div class="queue-trigger">
         <IconButton
           :aria-label="t('fileToolbar.uploadQueue')"
@@ -182,6 +202,12 @@ const { t } = useI18n({ useScope: 'global' })
 .queue-trigger {
   position: relative;
   display: inline-flex;
+}
+
+.view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .queue-trigger__badge {

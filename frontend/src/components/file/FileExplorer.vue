@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import FileToolbar from './FileToolbar.vue'
 import FileBreadcrumb from './FileBreadcrumb.vue'
 import FileTable from './FileTable.vue'
+import FileGrid from './FileGrid.vue'
 import FileMoveDialog from './FileMoveDialog.vue'
 import UploadQueueDrawer from './UploadQueueDrawer.vue'
 import Modal from '@/components/common/Modal.vue'
@@ -59,6 +60,7 @@ const queueErrorCount = computed(
 )
 
 const queueOpen = ref(false)
+const viewMode = ref<'list' | 'thumb'>('list')
 const refreshTimer = ref<number | null>(null)
 const successInViewIds = ref(new Set<string>())
 const observedUploadsPath = ref<string>('')
@@ -67,6 +69,7 @@ const archiveNameInput = ref('')
 const archiveNameResolver = ref<((value: string | null) => void) | null>(null)
 const LAST_PATH_KEY = 'cowdisk:last_path'
 const LAST_STACK_KEY = 'cowdisk:last_stack'
+const VIEW_MODE_KEY = 'cowdisk:view_mode'
 
 const requestArchiveName = (suggested: string) =>
   new Promise<string | null>((resolve) => {
@@ -91,6 +94,10 @@ const cancelArchiveNameRequest = () => {
 
 const confirmArchiveNameRequest = () => {
   closeArchiveNameModal(archiveNameInput.value)
+}
+
+const setViewMode = (mode: 'list' | 'thumb') => {
+  viewMode.value = mode
 }
 
 const {
@@ -231,6 +238,10 @@ const {
 })
 
 onMounted(() => {
+  const savedViewMode = sessionStorage.getItem(VIEW_MODE_KEY)
+  if (savedViewMode === 'list' || savedViewMode === 'thumb') {
+    viewMode.value = savedViewMode
+  }
   const savedStack = sessionStorage.getItem(LAST_STACK_KEY)
   if (savedStack) {
     try {
@@ -267,6 +278,13 @@ watch(
       sessionStorage.setItem(LAST_PATH_KEY, value)
     }
     sessionStorage.setItem(LAST_STACK_KEY, JSON.stringify(explorer.folderStack.value))
+  },
+)
+
+watch(
+  () => viewMode.value,
+  (value) => {
+    sessionStorage.setItem(VIEW_MODE_KEY, value)
   },
 )
 
@@ -324,6 +342,7 @@ onBeforeUnmount(() => {
       :selected-count="selection.selectedItems.value.length"
       :queue-pending-count="queuePendingCount"
       :queue-error-count="queueErrorCount"
+      :view-mode="viewMode"
       @new-folder="openFolderModal"
       @new-text="openNewTextInline"
       @upload="openUpload"
@@ -334,6 +353,7 @@ onBeforeUnmount(() => {
       @move-selected="openMoveSelected"
       @compress-selected="handleCompressSelected"
       @extract-selected="handleExtractSelected"
+      @change-view="setViewMode"
     />
     <div class="explorer__bar">
       <FileBreadcrumb :items="breadcrumbItems" @navigate="explorer.goToBreadcrumb" />
@@ -343,8 +363,8 @@ onBeforeUnmount(() => {
     </div>
     <div class="explorer__table">
       <FileTable
+        v-if="viewMode === 'list'"
         :items="displayItems"
-        :selected="selection.selected.value"
         :all-selected="selection.allSelected.value"
         :indeterminate="selection.indeterminate.value"
         :is-selected="selection.isSelected"
@@ -357,6 +377,27 @@ onBeforeUnmount(() => {
         :editing-entry="renamingEntry"
         :editing-name="renamingName"
         @sort-change="explorer.setSort"
+        @open="handleOpen"
+        @action="handleAction"
+        @create-confirm="handleCreateInline"
+        @create-text-confirm="handleCreateTextInline"
+        @create-cancel="cancelCreateInline"
+        @rename-confirm="handleRenameInline"
+        @rename-cancel="cancelRenameInline"
+      />
+      <FileGrid
+        v-else
+        :items="displayItems"
+        :selected-count="selection.selectedItems.value.length"
+        :all-selected="selection.allSelected.value"
+        :indeterminate="selection.indeterminate.value"
+        :is-selected="selection.isSelected"
+        :toggle="selection.toggle"
+        :toggle-all="selection.toggleAll"
+        :creating-folder="creatingFolder"
+        :creating-text="creatingText"
+        :editing-entry="renamingEntry"
+        :editing-name="renamingName"
         @open="handleOpen"
         @action="handleAction"
         @create-confirm="handleCreateInline"

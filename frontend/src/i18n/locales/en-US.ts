@@ -745,6 +745,12 @@ export default {
     deleteSelected: 'Delete selected ({count})',
     uploadQueue: 'Upload queue',
     refresh: 'Refresh',
+    viewList: 'List view',
+    viewThumb: 'Thumbnail view',
+  },
+  fileGrid: {
+    selectAll: 'Select all',
+    selectedCount: 'Selected {count} items',
   },
   fileActionsMenu: {
     more: 'More',
