@@ -5,6 +5,7 @@ export const useFileActionState = () => {
   const deleteConfirm = ref(false)
   const deleteBatch = ref<DiskEntry[]>([])
   const deleteSubmitting = ref(false)
+  const deleteMode = ref<'trash' | 'hard'>('trash')
 
   const detailModal = ref(false)
   const detailEntry = ref<DiskEntry | null>(null)
@@ -56,6 +57,7 @@ export const useFileActionState = () => {
 
   const closeDeleteConfirm = () => {
     deleteConfirm.value = false
+    deleteMode.value = 'trash'
   }
 
   const cancelCreateInline = () => {
@@ -71,6 +73,7 @@ export const useFileActionState = () => {
     deleteConfirm,
     deleteBatch,
     deleteSubmitting,
+    deleteMode,
     detailModal,
     detailEntry,
     moveModal,

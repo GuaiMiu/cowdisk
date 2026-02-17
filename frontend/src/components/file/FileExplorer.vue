@@ -167,6 +167,7 @@ const {
   handleDelete,
   closeDeleteConfirm,
   confirmDelete,
+  confirmDeletePermanently,
   openUpload,
   openFolderUpload,
   handleOpen,
@@ -471,8 +472,13 @@ onBeforeUnmount(() => {
     :open="deleteConfirm"
     :title="t('fileExplorer.modals.confirmDeleteTitle')"
     :message="t('fileExplorer.modals.confirmDeleteMessage')"
+    :confirm-text="t('fileExplorer.modals.confirmDeleteMoveToTrashText')"
+    :cancel-text="t('common.cancel')"
+    :extra-text="t('fileExplorer.modals.confirmDeleteHardDeleteText')"
+    extra-variant="danger"
     @close="closeDeleteConfirm"
     @confirm="confirmDelete"
+    @extra="confirmDeletePermanently"
   />
 </template>
 

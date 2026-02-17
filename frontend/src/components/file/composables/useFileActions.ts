@@ -18,6 +18,7 @@ type ExplorerApi = {
   renameEntry: (entry: DiskEntry, name: string) => Promise<boolean>
   removeEntry: (entry: DiskEntry) => Promise<unknown>
   removeEntries: (entries: DiskEntry[]) => Promise<unknown>
+  hardRemoveEntries: (entries: DiskEntry[]) => Promise<unknown>
   moveEntries: (entries: DiskEntry[], parentId: number | null) => Promise<unknown>
   openEntry: (entry: DiskEntry) => Promise<unknown>
   downloadEntry: (entry: DiskEntry) => Promise<unknown>
@@ -73,6 +74,7 @@ export const useFileActions = (options: UseFileActionsOptions) => {
     cancelRenameInline: state.cancelRenameInline,
     handleDelete: handlers.handleDelete,
     confirmDelete: handlers.confirmDelete,
+    confirmDeletePermanently: handlers.confirmDeletePermanently,
     openUpload: handlers.openUpload,
     openFolderUpload: handlers.openFolderUpload,
     handleOpen: handlers.handleOpen,

@@ -6,6 +6,7 @@ import {
   renameFile,
   moveFile,
   deleteFiles,
+  batchDeleteTrash,
   getDownloadUrl,
   searchFiles,
 } from '@/api/modules/userDisk'
@@ -322,6 +323,56 @@ export const useDiskExplorer = () => {
     await load(entry.id)
   }
 
+  const hardRemoveEntries = async (entries: DiskEntry[]) => {
+    if (!entries.length) {
+      return false
+    }
+    try {
+      const ids = entries.map((entry) => entry.id)
+      const softDeleteResult = await deleteFiles(ids)
+      if (softDeleteResult.success.length === 0) {
+        message.error(
+          t('fileExplorer.toasts.hardDeleteFailedTitle'),
+          softDeleteResult.failed[0]?.error || t('fileExplorer.toasts.hardDeleteFailedMessage'),
+        )
+        return false
+      }
+
+      const hardDeleteResult = await batchDeleteTrash({
+        ids: softDeleteResult.success.map((id) => String(id)),
+      })
+
+      const failedCount = softDeleteResult.failed.length + hardDeleteResult.failed.length
+      if (failedCount === 0) {
+        message.success(
+          t('fileExplorer.toasts.hardDeleteSuccessTitle'),
+          t('fileExplorer.toasts.hardDeleteSuccessMessage', { count: hardDeleteResult.success }),
+        )
+      } else if (hardDeleteResult.success > 0) {
+        message.warning(
+          t('fileExplorer.toasts.hardDeletePartialTitle'),
+          t('fileExplorer.toasts.hardDeletePartialMessage', {
+            success: hardDeleteResult.success,
+            failed: failedCount,
+          }),
+        )
+      } else {
+        message.error(t('fileExplorer.toasts.hardDeleteFailedTitle'), t('fileExplorer.toasts.hardDeleteFailedMessage'))
+      }
+
+      if (hardDeleteResult.success > 0) {
+        await refresh()
+      }
+      return failedCount === 0
+    } catch (error) {
+      message.error(
+        t('fileExplorer.toasts.hardDeleteFailedTitle'),
+        normalizeDiskError(error, t('fileExplorer.toasts.hardDeleteFailedMessage')),
+      )
+      return false
+    }
+  }
+
   const goToBreadcrumb = async (targetId: number | string | null) => {
     if (targetId === null) {
       folderStack.value = []
@@ -361,6 +412,7 @@ export const useDiskExplorer = () => {
     moveEntries,
     removeEntry,
     removeEntries,
+    hardRemoveEntries,
     downloadEntry,
     canGoUp,
     openEntry,

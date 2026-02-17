@@ -20,6 +20,7 @@ type ExplorerApi = {
   renameEntry: (entry: DiskEntry, name: string) => Promise<boolean>
   removeEntry: (entry: DiskEntry) => Promise<unknown>
   removeEntries: (entries: DiskEntry[]) => Promise<unknown>
+  hardRemoveEntries: (entries: DiskEntry[]) => Promise<unknown>
   moveEntries: (entries: DiskEntry[], parentId: number | null) => Promise<unknown>
   openEntry: (entry: DiskEntry) => Promise<unknown>
   downloadEntry: (entry: DiskEntry) => Promise<unknown>
@@ -37,6 +38,7 @@ type UploaderApi = {
 }
 
 type EntryAction = 'download' | 'rename' | 'delete' | 'share' | 'detail' | 'preview' | 'move' | 'edit'
+type DeleteMode = 'trash' | 'hard'
 
 type UseFileActionHandlersOptions = {
   t: Translate
@@ -79,18 +81,22 @@ export const useFileActionHandlers = (options: UseFileActionHandlersOptions) => 
 
   const handleDelete = (entries: DiskEntry[]) => {
     options.state.deleteBatch.value = entries
+    options.state.deleteMode.value = 'trash'
     options.state.deleteConfirm.value = true
   }
 
-  const confirmDelete = async () => {
+  const runDelete = async (mode: DeleteMode) => {
     if (options.state.deleteSubmitting.value) {
       return
     }
     options.state.deleteSubmitting.value = true
     const targets = options.state.deleteBatch.value
+    options.state.deleteMode.value = mode
     options.state.deleteConfirm.value = false
     try {
-      if (targets.length === 1) {
+      if (mode === 'hard') {
+        await options.explorer.hardRemoveEntries(targets)
+      } else if (targets.length === 1) {
         const [first] = targets
         if (first) {
           await options.explorer.removeEntry(first)
@@ -104,6 +110,10 @@ export const useFileActionHandlers = (options: UseFileActionHandlersOptions) => 
       options.state.deleteSubmitting.value = false
     }
   }
+
+  const confirmDelete = async () => runDelete('trash')
+
+  const confirmDeletePermanently = async () => runDelete('hard')
 
   const openUpload = () => {
     const input = document.createElement('input')
@@ -266,6 +276,7 @@ export const useFileActionHandlers = (options: UseFileActionHandlersOptions) => 
   return {
     handleDelete,
     confirmDelete,
+    confirmDeletePermanently,
     openUpload,
     openFolderUpload,
     handleOpen,
