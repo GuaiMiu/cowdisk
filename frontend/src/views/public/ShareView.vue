@@ -484,7 +484,7 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
           class="file-card__icon"
           :name="shareMeta.name"
           :is-dir="false"
-          :size="28"
+          :size="24"
         />
         <div class="file-card__header-info">
           <div class="file-card__title" :title="shareMeta.name">
@@ -636,7 +636,7 @@ const handleBreadcrumbNavigate = async (targetId: number | string | null) => {
                   ? openDirectory(asEntry(row))
                   : openPreviewForFile(asEntry(row))"
               >
-                <FileTypeIcon :name="asEntry(row).name" :is-dir="asEntry(row).is_dir" />
+                <FileTypeIcon :name="asEntry(row).name" :is-dir="asEntry(row).is_dir" :size="24" />
                 <span class="name__text">{{ asEntry(row).name }}</span>
               </button>
               <div v-if="!asEntry(row).is_dir" class="share-row-actions">
