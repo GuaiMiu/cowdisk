@@ -38,6 +38,6 @@ COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD wget -q -O /dev/null http://127.0.0.1/api/v1/system/setup/status || exit 1
+    CMD wget -q -O /dev/null http://127.0.0.1:10086/api/v1/system/setup/status || exit 1
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
