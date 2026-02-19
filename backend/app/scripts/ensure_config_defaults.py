@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from app.core.database import async_session
-from app.modules.system.service.config import ConfigCenterService
+from app.modules.system.services.config import ConfigCenterService
 
 
 async def main() -> None:
@@ -14,3 +14,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+

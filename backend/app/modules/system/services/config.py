@@ -18,7 +18,7 @@ from app.core.audit_context import get_audit_context
 from app.core.config import settings
 from app.core.exception import ServiceException
 from app.modules.system.repo.config import ConfigRepository
-from app.modules.system.service.providers import (
+from app.modules.system.services.providers import (
     DefaultConfigProvider,
     DynamicConfigProvider,
     InstalledStateResolver,
@@ -540,3 +540,4 @@ def build_runtime_config(
         runtime_service = ConfigCenterService(db, request_cache=request_cache)
     provider = RequestConfigProvider(runtime_service)
     return Config(provider=provider)
+

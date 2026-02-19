@@ -8,7 +8,7 @@ from fastapi import Depends, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.database import get_async_session
-from app.modules.system.service.config import ConfigCenterService, build_runtime_config
+from app.modules.system.services.config import ConfigCenterService, build_runtime_config
 from app.modules.system.typed.config import Config
 
 
@@ -55,3 +55,4 @@ async def get_config(
 ConfigDep = Annotated[Config, Depends(get_config)]
 ConfigServiceDep = Annotated[ConfigCenterService, Depends(get_config_service)]
 ConfigContextDep = Annotated[ConfigContext, Depends(get_config_context)]
+

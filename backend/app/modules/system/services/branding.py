@@ -9,7 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
 from app.core.exception import ServiceException
-from app.modules.system.service.config import ConfigCenterService
+from app.modules.system.services.config import ConfigCenterService
 from app.modules.system.typed.keys import ConfigKey
 
 
@@ -117,3 +117,4 @@ class BrandingService:
                 stale.unlink(missing_ok=True)
             except OSError:
                 continue
+

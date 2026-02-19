@@ -1,7 +1,15 @@
-"""
-@File: __init__.py
-@Author: GuaiMiu
-@Date: 2026/02/09
-@Version: 1.0
-@Description: 系统配置服务
-"""
+from app.modules.system.services.branding import BrandingService
+from app.modules.system.services.config import (
+    ConfigBatchUpdateResult,
+    ConfigCenterService,
+    ConfigReadResult,
+    build_runtime_config,
+)
+
+__all__ = [
+    "BrandingService",
+    "ConfigBatchUpdateResult",
+    "ConfigCenterService",
+    "ConfigReadResult",
+    "build_runtime_config",
+]

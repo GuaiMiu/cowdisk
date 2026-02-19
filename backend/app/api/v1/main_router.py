@@ -24,7 +24,7 @@ from app.modules.disk.controller.shares import shares_router
 from app.modules.disk.controller.trash import trash_router
 from app.modules.disk.controller.uploads import uploads_router
 from app.modules.disk.controller.wopi import wopi_router
-from app.modules.system.router.config import system_config_router
+from app.modules.system.controller.config import system_config_router
 from app.audit.router import audit_router
 from app.modules.system.controller.setup import setup_router
 from app.modules.system.controller.monitor import monitor_router

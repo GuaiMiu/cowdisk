@@ -17,7 +17,7 @@ from app.core.config import settings
 from app.core.database import get_async_session
 from app.modules.admin.models.user import User
 from app.modules.system.deps import get_config
-from app.modules.system.service.branding import BrandingService
+from app.modules.system.services.branding import BrandingService
 from app.modules.system.typed.config import Config
 from app.modules.system.typed.keys import ConfigKey
 from app.modules.system.typed.specs import get_default
@@ -233,6 +233,7 @@ async def upload_site_asset(
         updated_by=current_user.id,
     )
     return ResponseModel.success(data=SiteLogoUploadOut.model_validate(data))
+
 
 
 

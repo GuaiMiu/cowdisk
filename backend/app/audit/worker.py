@@ -17,7 +17,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.audit.repo import AuditRepo
 from app.core.database import async_session, is_database_configured
-from app.modules.system.service.config import build_runtime_config
+from app.modules.system.services.config import build_runtime_config
 from app.utils.logger import logger
 
 
@@ -115,3 +115,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -24,7 +24,7 @@ from app.core.exception import ServiceException
 from app.utils.logger import logger
 from app.modules.disk.storage.backends.base import ExtractedItem, StoredFileMeta, StorageBackend
 from app.modules.disk.utils.io_pool import run_io
-from app.modules.system.service.config import build_runtime_config
+from app.modules.system.services.config import build_runtime_config
 
 
 async def _run_io(func, *args, **kwargs):
@@ -761,4 +761,5 @@ class LocalStorageBackend(StorageBackend):
             if current == stop_abs:
                 break
             current = current.parent
+
 

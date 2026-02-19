@@ -10,7 +10,7 @@ import asyncio
 
 from app.audit.usecase import AuditUsecase
 from app.core.database import async_session
-from app.modules.system.service.config import build_runtime_config
+from app.modules.system.services.config import build_runtime_config
 
 
 async def main():
@@ -25,4 +25,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 

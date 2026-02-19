@@ -20,7 +20,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.audit.constants import AUDIT_OUTBOX_EVENT_TYPE, AuditOutboxStatus
 from app.audit.models import AuditOutbox
 from app.core.audit_context import get_audit_context
-from app.modules.system.service.config import build_runtime_config
+from app.modules.system.services.config import build_runtime_config
 
 
 _SENSITIVE_KEYS = {
@@ -177,3 +177,4 @@ class AuditService:
                     continue
                 merged[key] = value
         return merged
+

@@ -9,7 +9,7 @@ from app.modules.admin.models.user import User
 from app.modules.admin.services.auth import get_user_permissions
 from app.modules.system.deps import get_config, get_config_service
 from app.modules.system.permissions import build_config_permission
-from app.modules.system.service.config import ConfigCenterService
+from app.modules.system.services.config import ConfigCenterService
 from app.modules.system.schemas.config_center import (
     ConfigBatchErrorOut,
     ConfigBatchUpdateIn,
@@ -134,3 +134,4 @@ async def get_upload_config(config: Config = Depends(get_config)):
         "max_single_file_mb": await config.upload.max_single_file_mb(),
     }
     return ResponseModel.success(data=data)
+

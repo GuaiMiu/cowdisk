@@ -22,7 +22,7 @@ from redis import asyncio as aioredis
 from app.core.config import settings
 from app.core.database import reload_runtime
 from app.core.exception import ServiceException
-from app.modules.system.service.config import ConfigCenterService
+from app.modules.system.services.config import ConfigCenterService
 from app.modules.system.services.install_state import InstallStateService
 from app.modules.system.services.setup_fields import (
     SETUP_DEFAULTS,
@@ -689,3 +689,4 @@ class SetupService:
             result["redis"] = cls._build_check(True, redis_message, False)
         await cls._finalize_setup_success(cleanup=rollback)
         return result
+

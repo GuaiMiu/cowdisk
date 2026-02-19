@@ -19,4 +19,5 @@ dependencies = [
     "sqlakeyset>=2.0.174",
     "sqlmodel>=0.0.34",
     "zipstream-ng>=1.9.0",
+    "psutil>=7.2.2",
 ]

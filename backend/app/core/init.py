@@ -5,7 +5,7 @@ from sqlalchemy.exc import OperationalError
 
 import app.core.database as db_runtime
 from app.core.config import settings
-from app.modules.system.service.config import ConfigCenterService
+from app.modules.system.services.config import ConfigCenterService
 from app.modules.system.services.setup import SetupService
 from app.utils.logger import logger
 
@@ -101,3 +101,4 @@ async def app_init(_app: FastAPI):
             logger.warning("Close redis failed: %s", e)
 
         logger.info("%s Closing...", settings.APP_NAME)
+

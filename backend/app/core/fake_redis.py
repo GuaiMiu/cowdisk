@@ -2,7 +2,7 @@
 @File: fake_redis.py
 @Author: GuaiMiu
 @Date: 2025/4/5 20:26
-@Version: 2.0
+@Version: 2.1
 @Description:
     FakeRedis: 用内存结构模拟一小部分 redis-py asyncio 客户端行为。
     目标：
@@ -12,6 +12,8 @@
         * key 不存在: ttl = -2
         * key 存在但无过期: ttl = -1
         * key 存在且有过期: ttl >= 0
+    - 支持 pipeline()/execute()（用于批量操作）
+    - 支持 scan_iter(match=..., count=...)（用于替代 KEYS）
     - 不做后台线程清理；访问时惰性清理
 """
 
@@ -26,27 +28,72 @@ from typing import Any, Iterable
 SecondsLike = int | float | timedelta
 
 
+class FakeRedisPipeline:
+    """
+    最小可用 pipeline：收集命令，execute 时顺序执行并返回结果列表。
+    注意：这不是真正的网络批量，只是为了兼容接口/调用方式。
+    """
+
+    def __init__(self, client: "FakeRedis"):
+        self._client = client
+        self._ops: list[tuple[str, tuple, dict]] = []
+
+    def _add(self, name: str, *args, **kwargs):
+        self._ops.append((name, args, kwargs))
+        return self
+
+    # --- 常用命令（按你当前项目补） ---
+    def get(self, key: str):
+        return self._add("get", key)
+
+    def ttl(self, key: str):
+        return self._add("ttl", key)
+
+    def set(self, key: str, value: str, **kwargs):
+        return self._add("set", key, value, **kwargs)
+
+    def delete(self, *keys: str):
+        return self._add("delete", *keys)
+
+    def smembers(self, key: str):
+        return self._add("smembers", key)
+
+    def srem(self, key: str, *members: str):
+        return self._add("srem", key, *members)
+
+    def ping(self):
+        return self._add("ping")
+
+    async def execute(self):
+        results = []
+        for name, args, kwargs in self._ops:
+            fn = getattr(self._client, name)
+            results.append(await fn(*args, **kwargs))
+        self._ops.clear()
+        return results
+
+
 class FakeRedis:
     """
     用字典模拟的 Redis 客户端（async 风格），支持：
     - String: get/set/setex/mget/mset/exists/delete/incr
     - TTL: expire/ttl
-    - Keys: keys(pattern)
+    - Keys: keys(pattern), scan_iter(match, count)
     - Set: sadd/smembers/srem
     - Hash: hset/hget/hgetall/hdel/hexists
     - ping
+    - pipeline
     """
+
+    is_fake = True
 
     def __init__(self):
         # string
         self.store: dict[str, str] = {}
-
         # key -> expire timestamp (float)
         self.expire_times: dict[str, float] = {}
-
         # set
         self.set_store: dict[str, set[str]] = {}
-
         # hash
         self.hash_store: dict[str, dict[str, str]] = {}
 
@@ -68,13 +115,24 @@ class FakeRedis:
         return ts is not None and self._now() > ts
 
     async def _purge_if_expired(self, key: str) -> bool:
-        """
-        如果 key 已过期：删除并返回 True，否则 False
-        """
         if self._is_expired(key):
             await self.delete(key)
             return True
         return False
+
+    # -----------------------
+    # redis-py compatible
+    # -----------------------
+
+    def pipeline(self):
+        # ⚠️ 这里必须是同步方法，不能 async
+        return FakeRedisPipeline(self)
+
+    async def scan_iter(self, match: str = "*", count: int = 10):
+        # count 参数这里不严格使用，只为签名兼容
+        keys = await self.keys(match)
+        for k in keys:
+            yield k
 
     # -----------------------
     # basic / health
@@ -101,21 +159,9 @@ class FakeRedis:
         nx: bool = False,
         xx: bool = False,
     ) -> bool:
-        """
-        兼容一部分 redis-py:
-        - ex: 秒
-        - px: 毫秒（这里也当 seconds-like 处理，若传 int 毫秒你可自己换算；为了简单不做自动 ms->s）
-        - nx: 仅当不存在时设置
-        - xx: 仅当存在时设置
-        返回：
-        - True: 设置成功
-        - False: 未设置（nx/xx 条件不满足）
-        """
-        # 先清理过期
         await self._purge_if_expired(key)
 
         exists = self._key_exists(key)
-
         if nx and exists:
             return False
         if xx and not exists:
@@ -123,7 +169,6 @@ class FakeRedis:
 
         self.store[key] = str(value)
 
-        # ttl
         ttl = None
         if ex is not None:
             ttl = self._seconds(ex)
@@ -133,7 +178,6 @@ class FakeRedis:
         if ttl is not None and ttl > 0:
             self.expire_times[key] = self._now() + ttl
         else:
-            # 不设置/清除 ttl
             self.expire_times.pop(key, None)
 
         return True
@@ -142,10 +186,7 @@ class FakeRedis:
         return await self.set(key, value, ex=time_seconds)
 
     async def mget(self, keys: Iterable[str]) -> list[str | None]:
-        res: list[str | None] = []
-        for k in keys:
-            res.append(await self.get(k))
-        return res
+        return [await self.get(k) for k in keys]
 
     async def mset(self, mapping: dict[str, Any]) -> bool:
         for k, v in mapping.items():
@@ -153,9 +194,6 @@ class FakeRedis:
         return True
 
     async def exists(self, *keys: str) -> int:
-        """
-        返回存在的 key 数量（redis 行为）
-        """
         count = 0
         for k in keys:
             if await self._purge_if_expired(k):
@@ -165,19 +203,14 @@ class FakeRedis:
         return count
 
     async def incr(self, key: str, amount: int = 1) -> int:
-        """
-        简化版 INCRBY：只支持 int
-        """
         if await self._purge_if_expired(key):
-            # 过期后当不存在
             current = 0
         else:
             raw = self.store.get(key)
             current = int(raw) if raw is not None else 0
 
         current += int(amount)
-        # INCR 会写回 string value，并保持原 ttl（Redis 会保持 ttl）
-        # 这里我们也保持：如果原来有 expire_times[key] 就不动
+        # 保持 TTL：不修改 expire_times[key]
         self.store[key] = str(current)
         return current
 
@@ -186,37 +219,28 @@ class FakeRedis:
     # -----------------------
 
     async def expire(self, key: str, seconds: SecondsLike) -> bool:
-        """
-        key 存在且未过期 -> 设置 ttl 返回 True
-        key 不存在/已过期 -> False
-        """
         if await self._purge_if_expired(key):
             return False
         if not self._key_exists(key):
             return False
+
         ttl = self._seconds(seconds)
         if ttl <= 0:
-            # Redis: expire <=0 等价于立即过期；这里做 delete
             await self.delete(key)
             return True
+
         self.expire_times[key] = self._now() + ttl
         return True
 
     async def ttl(self, key: str) -> int:
-        """
-        Redis 语义：
-        -2: key 不存在
-        -1: key 存在但无过期
-        >=0: 剩余秒数
-        """
         if await self._purge_if_expired(key):
             return -2
         if not self._key_exists(key):
             return -2
         if key not in self.expire_times:
             return -1
+
         remaining = self.expire_times[key] - self._now()
-        # 若出现极小负值，按 -2（已过期）处理
         if remaining <= 0:
             await self.delete(key)
             return -2
@@ -227,9 +251,6 @@ class FakeRedis:
     # -----------------------
 
     async def delete(self, *keys: str) -> int:
-        """
-        兼容 redis: delete(*keys) -> 删除数量
-        """
         removed = 0
         for key in keys:
             existed = self._key_exists(key)
@@ -242,11 +263,6 @@ class FakeRedis:
         return removed
 
     async def keys(self, pattern: str = "*") -> list[str]:
-        """
-        兼容 redis: keys(pattern="*")
-        使用 fnmatch 做简单通配符匹配（*, ?, []）
-        """
-        # 惰性清理：遍历所有 key，把过期的删了
         all_keys = set(self.store.keys()) | set(self.set_store.keys()) | set(self.hash_store.keys())
         expired = [k for k in all_keys if self._is_expired(k)]
         if expired:
@@ -255,7 +271,6 @@ class FakeRedis:
         all_keys = set(self.store.keys()) | set(self.set_store.keys()) | set(self.hash_store.keys())
         if pattern in ("*", ""):
             return list(all_keys)
-
         return [k for k in all_keys if fnmatch.fnmatch(k, pattern)]
 
     # -----------------------
@@ -263,9 +278,6 @@ class FakeRedis:
     # -----------------------
 
     async def sadd(self, key: str, *members: str) -> int:
-        """
-        返回实际添加的成员数量
-        """
         await self._purge_if_expired(key)
 
         if key not in self.set_store:
@@ -304,12 +316,6 @@ class FakeRedis:
     # -----------------------
 
     async def hset(self, key: str, mapping: dict | None = None, **kwargs) -> int:
-        """
-        支持：
-        - hset(key, mapping={...})
-        - hset(key, field=value, ...)
-        返回新增字段数量（贴近 redis）
-        """
         await self._purge_if_expired(key)
 
         if mapping is None:
@@ -347,14 +353,17 @@ class FakeRedis:
         h = self.hash_store.get(key)
         if not h:
             return 0
+
         removed = 0
         for f in fields:
             f = str(f)
             if f in h:
                 del h[f]
                 removed += 1
+
         if not h:
             self.hash_store.pop(key, None)
+
         return removed
 
     async def hexists(self, key: str, field: str) -> bool:
