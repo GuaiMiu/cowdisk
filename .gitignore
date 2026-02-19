@@ -18,3 +18,4 @@ frontend/dist/
 /backend/app/static/branding/
 /backend/.install_state.json
 /backend/.installed
+/data.db

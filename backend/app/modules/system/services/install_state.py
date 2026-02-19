@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
-
-from app.core.config import settings
 
 InstallPhase = Literal["PENDING", "RUNNING", "FAILED", "DONE"]
 
@@ -20,41 +17,35 @@ class InstallStatus:
 
 
 class InstallStateService:
-    _STATE_FILE = Path.cwd() / ".install_state.json"
     _SENTINEL_FILE = Path.cwd() / ".installed"
+    _phase: InstallPhase = "PENDING"
+    _message: str | None = None
+    _updated_at: str | None = None
 
     @classmethod
     def _now_iso(cls) -> str:
         return datetime.now().isoformat()
 
     @classmethod
-    def _safe_read_state(cls) -> dict:
-        if not cls._STATE_FILE.exists():
-            return {}
-        try:
-            raw = cls._STATE_FILE.read_text(encoding="utf-8")
-            data = json.loads(raw)
-            return data if isinstance(data, dict) else {}
-        except Exception:
-            return {}
-
-    @classmethod
-    def _write_state(cls, data: dict) -> None:
-        payload = json.dumps(data, ensure_ascii=False, indent=2)
-        cls._STATE_FILE.write_text(payload, encoding="utf-8")
-
-    @classmethod
     def is_done_fast(cls) -> bool:
-        return bool(settings.INSTALL_COMPLETED) or cls._SENTINEL_FILE.exists()
+        return cls._SENTINEL_FILE.exists()
 
     @classmethod
     def mark_phase(cls, phase: InstallPhase, message: str | None = None) -> None:
-        data = {
-            "phase": phase,
-            "message": message,
-            "updated_at": cls._now_iso(),
-        }
-        cls._write_state(data)
+        normalized_phase = phase.upper()
+        if normalized_phase not in {"PENDING", "RUNNING", "FAILED", "DONE"}:
+            normalized_phase = "PENDING"
+        cls._phase = normalized_phase  # type: ignore[assignment]
+        cls._message = message
+        cls._updated_at = cls._now_iso()
+
+    @classmethod
+    def mark_running(cls, message: str | None = None) -> None:
+        cls.mark_phase("RUNNING", message=message or "安装流程启动")
+
+    @classmethod
+    def mark_failed(cls, message: str | None = None) -> None:
+        cls.mark_phase("FAILED", message=message or "安装流程失败")
 
     @classmethod
     def mark_done(cls, message: str | None = None) -> None:
@@ -63,29 +54,16 @@ class InstallStateService:
 
     @classmethod
     def get_status(cls) -> InstallStatus:
-        if bool(settings.INSTALL_COMPLETED):
-            state = cls._safe_read_state()
-            return InstallStatus(
-                installed=True,
-                phase="DONE",
-                message=str(state.get("message") or "安装已完成"),
-                updated_at=str(state.get("updated_at") or cls._now_iso()),
-            )
         if cls._SENTINEL_FILE.exists():
-            state = cls._safe_read_state()
             return InstallStatus(
                 installed=True,
                 phase="DONE",
-                message=str(state.get("message") or "安装已完成"),
-                updated_at=str(state.get("updated_at") or cls._now_iso()),
+                message=cls._message or "安装已完成",
+                updated_at=cls._updated_at or cls._now_iso(),
             )
-        state = cls._safe_read_state()
-        phase = str(state.get("phase") or "PENDING").upper()
-        if phase not in {"PENDING", "RUNNING", "FAILED", "DONE"}:
-            phase = "PENDING"
         return InstallStatus(
             installed=False,
-            phase=phase,  # type: ignore[arg-type]
-            message=str(state.get("message") or ""),
-            updated_at=str(state.get("updated_at") or ""),
+            phase=cls._phase,
+            message=cls._message,
+            updated_at=cls._updated_at,
         )

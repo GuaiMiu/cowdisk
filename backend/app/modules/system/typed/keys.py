@@ -66,6 +66,7 @@ class ConfigKey:
     REDIS_ENABLE = "redis.enable"
     REDIS_HOST = "redis.host"
     REDIS_PORT = "redis.port"
+    REDIS_USERNAME = "redis.username"
     REDIS_DB = "redis.db"
 
 

@@ -6,6 +6,8 @@
 @Description: 初次安装引导接口
 """
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -32,7 +34,10 @@ class SetupStatusOut(BaseModel):
     安装状态输出模型。
     """
 
+    installed: bool = Field(..., description="是否已安装")
     phase: str = Field(..., description="安装阶段")
+    message: str | None = Field(default=None, description="阶段消息")
+    updated_at: str | None = Field(default=None, description="状态更新时间")
 
 
 class SetupPayload(BaseModel):
@@ -40,21 +45,19 @@ class SetupPayload(BaseModel):
     安装引导输入模型。
     """
 
-    database_type: str = Field(..., description="数据库类型(sqlite/mysql)")
+    database_url: str = Field(..., description="数据库连接 URL")
     app_name: str | None = Field(default=None, description="应用名称")
-    database_host: str | None = Field(default=None, description="数据库主机")
-    database_port: int | None = Field(default=None, description="数据库端口")
-    database_user: str | None = Field(default=None, description="数据库用户名")
-    database_password: str | None = Field(default=None, description="数据库密码")
-    database_name: str | None = Field(default=None, description="数据库名称")
-    database_url: str | None = Field(default=None, description="数据库连接 URL")
     superuser_name: str = Field(..., description="超级管理员账号")
     superuser_password: str = Field(..., description="超级管理员密码")
     superuser_mail: str = Field(..., description="超级管理员邮箱")
     allow_register: bool = Field(default=True, description="是否允许注册")
     redis_enable: bool = Field(default=False, description="是否启用 Redis")
+    redis_auth_mode: Literal["none", "password", "username_password"] | None = Field(
+        default=None, description="Redis 认证方式"
+    )
     redis_host: str | None = Field(default=None, description="Redis 主机")
     redis_port: int | None = Field(default=None, description="Redis 端口")
+    redis_username: str | None = Field(default=None, description="Redis 用户名")
     redis_password: str | None = Field(default=None, description="Redis 密码")
     redis_db: int | None = Field(default=None, description="Redis DB")
     storage_path: str = Field(..., description="文件存储路径")
@@ -86,11 +89,6 @@ class SetupProgressOut(BaseModel):
 
 class SetupFormDefaultsOut(BaseModel):
     app_name: str
-    database_type: str
-    database_host: str
-    database_port: int
-    database_user: str
-    database_name: str
     database_url: str
     superuser_name: str
     superuser_mail: str
@@ -98,6 +96,8 @@ class SetupFormDefaultsOut(BaseModel):
     redis_enable: bool
     redis_host: str
     redis_port: int
+    redis_auth_mode: str
+    redis_username: str
     redis_db: int
     storage_path: str
 
@@ -126,7 +126,14 @@ async def get_setup_status(
     获取系统是否已完成安装。
     """
     state = InstallStateService.get_status()
-    return ResponseModel.success(data=SetupStatusOut(phase=state.phase))
+    return ResponseModel.success(
+        data=SetupStatusOut(
+            installed=state.installed,
+            phase=state.phase,
+            message=state.message,
+            updated_at=state.updated_at,
+        )
+    )
 
 
 @setup_router.post(

@@ -3,6 +3,9 @@ import { getSetupStatus } from '@/api/modules/setup'
 
 type SetupState = {
   phase: 'PENDING' | 'RUNNING' | 'FAILED' | 'DONE'
+  installed: boolean
+  message: string
+  updatedAt: string
   checked: boolean
   loading: boolean
 }
@@ -10,11 +13,14 @@ type SetupState = {
 export const useSetupStore = defineStore('setup', {
   state: (): SetupState => ({
     phase: 'PENDING',
+    installed: false,
+    message: '',
+    updatedAt: '',
     checked: false,
     loading: false,
   }),
   getters: {
-    installed: (state) => state.phase === 'DONE',
+    isInstalled: (state) => state.phase === 'DONE' || state.installed,
   },
   actions: {
     async fetchStatus(force = false) {
@@ -25,10 +31,16 @@ export const useSetupStore = defineStore('setup', {
       try {
         const status = await getSetupStatus()
         this.phase = status?.phase || 'PENDING'
+        this.installed = Boolean(status?.installed)
+        this.message = status?.message || ''
+        this.updatedAt = status?.updated_at || ''
         this.checked = true
       } catch {
         // 状态接口异常时默认允许进入 setup，避免新安装场景被误拦截
         this.phase = 'PENDING'
+        this.installed = false
+        this.message = ''
+        this.updatedAt = ''
         this.checked = true
       } finally {
         this.loading = false

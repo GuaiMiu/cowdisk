@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.core.config import settings
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.modules.system.repo.config import ConfigRepository
+from app.modules.system.services.install_state import InstallStateService
 from app.modules.system.typed.specs import ConfigSpec, STATIC_ENV_KEYS
 from app.utils.logger import logger
 
@@ -21,21 +21,7 @@ class ProviderResult:
 
 class InstalledStateResolver:
     async def is_installed(self) -> bool:
-        value = settings.INSTALL_COMPLETED
-        if isinstance(value, bool):
-            return value
-        if value in (None, ""):
-            return False
-        if isinstance(value, (int, float)):
-            return bool(value)
-        if isinstance(value, str):
-            lowered = value.strip().lower()
-            if lowered in {"1", "true", "yes", "on"}:
-                return True
-            if lowered in {"0", "false", "no", "off"}:
-                return False
-        logger.warning("INSTALL_COMPLETED 环境变量解析失败，回退 False")
-        return False
+        return InstallStateService.is_done_fast()
 
 
 class DynamicConfigProvider:

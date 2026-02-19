@@ -25,7 +25,6 @@ class CustomBaseSettings(BaseSettings):
 class Config(CustomBaseSettings):
     # Install / bootstrap
     APP_VERSION: str = "0.1.0"
-    INSTALL_COMPLETED: bool = False
     SUPERUSER_MAIL: str | None = None
     SUPERUSER_PASSWORD: str | None = None
     SUPERUSER_NAME: str | None = None
@@ -69,6 +68,7 @@ class Config(CustomBaseSettings):
     REDIS_HOST: str = "127.0.0.1"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
+    REDIS_USERNAME: str | None = None
     REDIS_PASSWORD: str | None = None
 
     # Disk / upload
@@ -98,10 +98,6 @@ class Config(CustomBaseSettings):
     UVICORN_LOG_BACKUP_COUNT: int = 10
 
     @property
-    def install_mode(self) -> bool:
-        return not bool(self.INSTALL_COMPLETED)
-
-    @property
     def database_configured(self) -> bool:
         if self.DATABASE_URL:
             return True
@@ -128,6 +124,7 @@ class Config(CustomBaseSettings):
         "DATABASE_NAME",
         "DATABASE_URL",
         "DATABASE_TYPE",
+        "REDIS_USERNAME",
         "REDIS_PASSWORD",
         "UVICORN_LOG_FILE",
         mode="before",
@@ -136,8 +133,10 @@ class Config(CustomBaseSettings):
     def _normalize_optional_str(cls, value):
         return None if value == "" else value
 
-    @field_validator(
+    _INT_NORMALIZE_FIELDS = (
         "DATABASE_PORT",
+        "REDIS_PORT",
+        "REDIS_DB",
         "JWT_EXPIRE_MINUTES",
         "JWT_REDIS_EXPIRE_MINUTES",
         "JWT_REFRESH_ROTATE_LIMIT",
@@ -155,20 +154,17 @@ class Config(CustomBaseSettings):
         "DOWNLOAD_TOKEN_TTL",
         "PREVIEW_TOKEN_TTL",
         "PREVIEW_MAX_DURATION",
+    )
+
+    @field_validator(
+        *_INT_NORMALIZE_FIELDS,
         mode="before",
     )
     @classmethod
-    def _normalize_optional_int(cls, value, info: ValidationInfo):
+    def _normalize_int_fields(cls, value, info: ValidationInfo):
         if value == "" or value is None:
             default = cls.model_fields[info.field_name].default
             return default if default is not None else None
-        return value
-
-    @field_validator("REDIS_DB", "REDIS_PORT", mode="before")
-    @classmethod
-    def _normalize_redis_int_fields(cls, value, info: ValidationInfo):
-        if value == "" or value is None:
-            return cls.model_fields[info.field_name].default
         return value
 
     @field_validator("UVICORN_LOG_MAX_BYTES", "UVICORN_LOG_BACKUP_COUNT", mode="after")

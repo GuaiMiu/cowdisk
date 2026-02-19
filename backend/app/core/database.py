@@ -59,7 +59,7 @@ def _build_async_database_url() -> str:
 
     db_type = (settings.DATABASE_TYPE or "").lower().strip()
     if db_type == "sqlite":
-        return "sqlite+aiosqlite:///./data.db"
+        return "sqlite+aiosqlite:////app/config/data.db"
 
     required_fields = [
         settings.DATABASE_USER,
@@ -165,6 +165,7 @@ class RedisClient:
         host: str,
         port: int,
         db: int,
+        username: str = None,
         password: str = None,
         max_connections: int = 10,
     ):
@@ -173,6 +174,7 @@ class RedisClient:
             host=host,
             port=port,
             db=db,
+            username=username,
             password=password,
             decode_responses=True,
             max_connections=max_connections,
@@ -207,6 +209,7 @@ redis_client = RedisClient(
     host=settings.REDIS_HOST,
     port=settings.REDIS_PORT,
     db=settings.REDIS_DB,
+    username=settings.REDIS_USERNAME,
     password=settings.REDIS_PASSWORD,
     max_connections=10,
 )
@@ -228,6 +231,7 @@ async def reload_redis():
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
         db=settings.REDIS_DB,
+        username=settings.REDIS_USERNAME,
         password=settings.REDIS_PASSWORD,
         max_connections=10,
     )
