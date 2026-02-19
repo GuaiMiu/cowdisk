@@ -39,18 +39,28 @@ const iconMap: Record<FileKind, unknown> = {
 }
 
 const icon = computed(() => iconMap[kind.value] ?? File)
+const iconSize = computed(() => props.size ?? 16)
 </script>
 
 <template>
   <span class="file-icon" :class="`file-icon--${kind}`">
-    <component :is="icon" :size="16" />
+    <component :is="icon" :size="iconSize" />
   </span>
 </template>
 
 <style scoped>
-.file-icon {
+/*.file-icon {
   width: 28px;
   height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-muted);
+  flex-shrink: 0;
+}*/
+.file-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;

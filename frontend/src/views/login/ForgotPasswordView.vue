@@ -4,10 +4,13 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
-import { useToastStore } from '@/stores/toast'
+import { useAppStore } from '@/stores/app'
+import { useMessage } from '@/stores/message'
 
 const { t } = useI18n({ useScope: 'global' })
-const toast = useToastStore()
+const appStore = useAppStore()
+const message = useMessage()
+const siteName = computed(() => appStore.siteName || 'CowDisk')
 const mail = ref('')
 const submitting = ref(false)
 const errors = reactive({
@@ -35,7 +38,7 @@ const onSubmit = async () => {
   }
   submitting.value = true
   try {
-    toast.info(t('auth.forgot.unavailableTitle'), t('auth.forgot.unavailableMessage'))
+    message.info(t('auth.forgot.unavailableTitle'), t('auth.forgot.unavailableMessage'))
   } finally {
     submitting.value = false
   }
@@ -45,7 +48,7 @@ const onSubmit = async () => {
 <template>
   <div class="forgot">
     <div class="forgot__panel">
-      <div class="forgot__brand">CowDisk</div>
+      <div class="forgot__brand" :title="siteName">{{ siteName }}</div>
       <h1 class="forgot__title">{{ t('auth.forgot.title') }}</h1>
       <p class="forgot__subtitle">{{ t('auth.forgot.subtitle') }}</p>
       <form class="forgot__form" @submit.prevent="onSubmit">
@@ -72,23 +75,35 @@ const onSubmit = async () => {
   place-items: center;
   padding: var(--space-9);
   overflow: auto;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 10%, #ffffff) 0%, #f7fafc 100%);
+  background-image:
+    var(--runtime-login-bg-image),
+    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 10%, #ffffff) 0%, #f7fafc 100%);
+  background-size: cover;
+  background-position: center;
 }
 
 .forgot__panel {
-  background: var(--color-surface);
+  background: color-mix(in srgb, var(--color-surface) 76%, transparent);
   border-radius: var(--radius-xl);
-  border: 1px solid var(--color-border);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
   padding: var(--space-7);
   display: grid;
   gap: var(--space-4);
   box-shadow: var(--shadow-md);
   width: min(420px, 100%);
+  backdrop-filter: blur(10px);
 }
 
 .forgot__brand {
   font-family: var(--font-display);
   font-weight: 700;
   color: var(--color-primary);
+  max-width: min(220px, 70vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .forgot__title {

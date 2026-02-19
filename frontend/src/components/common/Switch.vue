@@ -45,7 +45,9 @@ const emit = defineEmits<{
   border-radius: 999px;
   background: var(--color-border);
   position: relative;
-  transition: background var(--transition-base);
+  transition:
+    background var(--transition-base),
+    box-shadow var(--transition-fast);
 }
 
 .switch__track::after {
@@ -67,6 +69,12 @@ const emit = defineEmits<{
 
 .switch input:checked + .switch__track::after {
   transform: translateX(16px);
+}
+
+.switch input:focus-visible + .switch__track {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  box-shadow: var(--interaction-focus-ring);
 }
 
 .switch.is-disabled {

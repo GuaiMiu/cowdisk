@@ -1,6 +1,7 @@
 import './styles/tokens.css'
 import './styles/base.css'
 import './styles/utilities.css'
+import './styles/layout-shell.css'
 import './styles/nprogress.css'
 
 import { createApp } from 'vue'

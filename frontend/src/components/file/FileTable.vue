@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Check, Download, MoreHorizontal, Trash2, X } from 'lucide-vue-next'
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Check, Download, MoreHorizontal, Share2, Trash2, X } from 'lucide-vue-next'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ComponentPublicInstance, VNodeRef } from 'vue'
 import type { DiskEntry } from '@/types/disk'
@@ -8,11 +8,18 @@ import { formatBytes, formatTime } from '@/utils/format'
 import IconButton from '@/components/common/IconButton.vue'
 import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
+import FileThumbnailIcon from '@/components/file/FileThumbnailIcon.vue'
+import {
+  useFileEntryActionsMenu,
+  type FileEntryAction,
+} from '@/components/file/composables/useFileEntryActionsMenu'
 import { getFileKind } from '@/utils/fileType'
+import { useAuthStore } from '@/stores/auth'
+
+type SortKey = 'name' | 'size' | 'type' | 'updatedAt'
 
 const props = defineProps<{
   items: DiskEntry[]
-  selected: Set<string>
   allSelected: boolean
   indeterminate: boolean
   isSelected: (item: DiskEntry) => boolean
@@ -22,19 +29,46 @@ const props = defineProps<{
   creatingText?: boolean
   editingEntry?: DiskEntry | null
   editingName?: string
+  sortKey?: SortKey | null
+  sortOrder?: 'asc' | 'desc' | null
 }>()
 
 const emit = defineEmits<{
   (event: 'open', entry: DiskEntry): void
-  (event: 'action', payload: { entry: DiskEntry; action: 'download' | 'rename' | 'delete' | 'share' | 'detail' | 'preview' | 'move' | 'edit' }): void
+  (
+    event: 'action',
+    payload: {
+      entry: DiskEntry
+      action: FileEntryAction
+    },
+  ): void
   (event: 'create-confirm', name: string): void
   (event: 'create-text-confirm', name: string): void
   (event: 'create-cancel'): void
   (event: 'rename-confirm', payload: { entry: DiskEntry; name: string }): void
   (event: 'rename-cancel'): void
+  (event: 'sort-change', key: SortKey): void
 }>()
 
 const { t } = useI18n({ useScope: 'global' })
+const authStore = useAuthStore()
+const sortableKeys: SortKey[] = ['name', 'size', 'type', 'updatedAt']
+
+const isSortable = (key: SortKey) => sortableKeys.includes(key)
+
+const onSortClick = (key: SortKey) => {
+  if (!isSortable(key)) {
+    return
+  }
+  emit('sort-change', key)
+}
+
+const sortIndicator = (key: SortKey) => {
+  if (props.sortKey !== key) {
+    return ''
+  }
+  return props.sortOrder === 'asc' ? 'asc' : 'desc'
+}
 
 const createName = ref('')
 const renameValue = ref('')
@@ -56,29 +90,18 @@ const {
   onThumbMouseDown,
 } = useOverlayScrollbar()
 
-const isEditing = (entry: DiskEntry) => props.editingEntry?.path === entry.path
-const isEditableFile = (entry: DiskEntry | null) => {
-  if (!entry || entry.is_dir) {
-    return false
+const isEditing = (entry: DiskEntry) => props.editingEntry?.id === entry.id
+watch([() => props.creatingFolder, () => props.creatingText], ([creatingFolder, creatingText]) => {
+  if (creatingFolder || creatingText) {
+    createName.value = creatingFolder
+      ? t('fileTable.createFolderName')
+      : t('fileTable.createTextFileName')
+    void nextTick(() => {
+      createInputRef.value?.focus()
+      createInputRef.value?.select()
+    })
   }
-  const kind = getFileKind(entry.name, entry.is_dir)
-  return kind === 'text' || kind === 'code'
-}
-
-watch(
-  [() => props.creatingFolder, () => props.creatingText],
-  ([creatingFolder, creatingText]) => {
-    if (creatingFolder || creatingText) {
-      createName.value = creatingFolder
-        ? t('fileTable.createFolderName')
-        : t('fileTable.createTextFileName')
-      void nextTick(() => {
-        createInputRef.value?.focus()
-        createInputRef.value?.select()
-      })
-    }
-  },
-)
+})
 
 watch(
   [() => props.editingEntry, () => props.editingName],
@@ -88,7 +111,7 @@ watch(
     }
     renameValue.value = name ?? entry.name ?? ''
     void nextTick(() => {
-      const input = renameInputRefs.value.get(entry.path)
+      const input = renameInputRefs.value.get(String(entry.id))
       input?.focus()
       input?.select()
     })
@@ -139,9 +162,9 @@ const setRenameInputRef = (entry: DiskEntry): VNodeRef => {
   return (ref: Element | ComponentPublicInstance | null) => {
     const input = ref instanceof HTMLInputElement ? ref : null
     if (input) {
-      renameInputRefs.value.set(entry.path, input)
+      renameInputRefs.value.set(String(entry.id), input)
     } else {
-      renameInputRefs.value.delete(entry.path)
+      renameInputRefs.value.delete(String(entry.id))
     }
   }
 }
@@ -152,11 +175,27 @@ const contextMenu = ref({
   y: 0,
   entry: null as DiskEntry | null,
   mode: 'full' as 'full' | 'more',
-  width: 180,
+  width: 228,
 })
+const contextMenuRef = ref<HTMLElement | null>(null)
 const menuHovering = ref(false)
 const menuEntryPath = ref<string | null>(null)
 let closeTimer: number | null = null
+const MENU_VIEWPORT_PADDING = 8
+
+const hasPermission = (permission?: string) => {
+  if (!permission) {
+    return true
+  }
+  return authStore.hasPerm(permission)
+}
+
+const contextMenuItems = useFileEntryActionsMenu({
+  entry: computed(() => contextMenu.value.entry),
+  mode: computed(() => contextMenu.value.mode),
+  t,
+  hasPermission,
+})
 
 const closeContextMenu = () => {
   contextMenu.value.open = false
@@ -168,24 +207,76 @@ const closeContextMenu = () => {
   }
 }
 
+const focusFirstMenuItem = () => {
+  void nextTick(() => {
+    const first = contextMenuRef.value?.querySelector<HTMLElement>(
+      '.context-menu__item[data-menu-item]:not(:disabled):not([hidden])',
+    )
+    first?.focus()
+  })
+}
+
+const clampMenuPosition = (x: number, y: number, width: number, height: number) => {
+  return {
+    x: Math.max(MENU_VIEWPORT_PADDING, Math.min(x, window.innerWidth - width - MENU_VIEWPORT_PADDING)),
+    y: Math.max(MENU_VIEWPORT_PADDING, Math.min(y, window.innerHeight - height - MENU_VIEWPORT_PADDING)),
+  }
+}
+
+const realignContextMenu = () => {
+  void nextTick(() => {
+    if (!contextMenu.value.open || !contextMenuRef.value) {
+      return
+    }
+    const menuWidth = contextMenuRef.value.offsetWidth || contextMenu.value.width
+    const menuHeight = contextMenuRef.value.offsetHeight || 260
+    const next = clampMenuPosition(contextMenu.value.x, contextMenu.value.y, menuWidth, menuHeight)
+    contextMenu.value = { ...contextMenu.value, ...next, width: menuWidth }
+  })
+}
+
 const openContextMenu = (event: MouseEvent, entry: DiskEntry) => {
   event.preventDefault()
-  const width = 180
-  const height = 210
-  const x = Math.min(event.clientX, window.innerWidth - width - 8)
-  const y = Math.min(event.clientY, window.innerHeight - height - 8)
+  const width = 228
+  const roughHeight = 320
+  const { x, y } = clampMenuPosition(event.clientX, event.clientY, width, roughHeight)
   contextMenu.value = { open: true, x, y, entry, mode: 'full', width }
+  focusFirstMenuItem()
+  realignContextMenu()
+}
+
+const openContextMenuAtElement = (element: HTMLElement, entry: DiskEntry, mode: 'full' | 'more') => {
+  const width = mode === 'more' ? 212 : 228
+  const roughHeight = mode === 'more' ? 260 : 320
+  const rect = element.getBoundingClientRect()
+  const anchorX = rect.left + rect.width / 2 - width / 2
+  const anchorY = rect.bottom + 6
+  const { x, y } = clampMenuPosition(anchorX, anchorY, width, roughHeight)
+  contextMenu.value = { open: true, x, y, entry, mode, width }
+  menuEntryPath.value = String(entry.id)
+  focusFirstMenuItem()
+  realignContextMenu()
 }
 
 const openMoreMenu = (event: MouseEvent, entry: DiskEntry) => {
   event.stopPropagation()
-  const width = 140
-  const height = 160
+  const width = 212
+  const roughHeight = 260
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  const x = Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8)
-  const y = Math.min(rect.bottom + 6, window.innerHeight - height - 8)
+  const x = Math.max(
+    MENU_VIEWPORT_PADDING,
+    Math.min(rect.right - width, window.innerWidth - width - MENU_VIEWPORT_PADDING),
+  )
+  const spaceBelow = window.innerHeight - rect.bottom
+  const spaceAbove = rect.top
+  const preferTop = spaceBelow < roughHeight + 12 && spaceAbove > spaceBelow
+  const y = preferTop
+    ? Math.max(rect.top - roughHeight - 6, MENU_VIEWPORT_PADDING)
+    : Math.min(rect.bottom + 6, window.innerHeight - roughHeight - MENU_VIEWPORT_PADDING)
   contextMenu.value = { open: true, x, y, entry, mode: 'more', width }
-  menuEntryPath.value = entry.path
+  menuEntryPath.value = String(entry.id)
+  focusFirstMenuItem()
+  realignContextMenu()
 }
 
 const onMenuEnter = () => {
@@ -203,7 +294,11 @@ const onMenuLeave = () => {
 }
 
 const onRowLeave = (entry: DiskEntry) => {
-  if (contextMenu.value.open && contextMenu.value.entry?.path === entry.path && !menuHovering.value) {
+  if (
+    contextMenu.value.open &&
+    contextMenu.value.entry?.id === entry.id &&
+    !menuHovering.value
+  ) {
     if (closeTimer) {
       window.clearTimeout(closeTimer)
     }
@@ -217,10 +312,21 @@ const formatEntryType = (entry: DiskEntry) => {
   if (entry.is_dir) {
     return t('common.folder')
   }
-  const name = entry.name || ''
-  const parts = name.split('.')
-  const ext = parts.length > 1 ? parts[parts.length - 1] : ''
-  return ext ? ext.toUpperCase() : t('common.file')
+  const kind = getFileKind(entry.name, entry.is_dir)
+  const map: Record<string, string> = {
+    image: t('fileTable.types.image'),
+    video: t('fileTable.types.video'),
+    audio: t('fileTable.types.audio'),
+    pdf: t('fileTable.types.pdf'),
+    doc: t('fileTable.types.doc'),
+    sheet: t('fileTable.types.sheet'),
+    slide: t('fileTable.types.slide'),
+    archive: t('fileTable.types.archive'),
+    code: t('fileTable.types.code'),
+    text: t('fileTable.types.text'),
+    other: t('fileTable.types.other'),
+  }
+  return map[kind] || t('fileTable.types.other')
 }
 
 const onNameClick = (entry: DiskEntry) => {
@@ -235,10 +341,90 @@ const onRowClick = (entry: DiskEntry) => {
   props.toggle(entry)
 }
 
+const onRowKeyDown = (event: KeyboardEvent, entry: DiskEntry) => {
+  const current = event.target as HTMLElement | null
+  if (!current) {
+    return
+  }
+  if (
+    current.closest('button') ||
+    current.closest('input') ||
+    current.closest('textarea') ||
+    current.closest('select')
+  ) {
+    return
+  }
+  if (event.key === ' ') {
+    event.preventDefault()
+    props.toggle(entry)
+    return
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    onNameClick(entry)
+    return
+  }
+  if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
+    event.preventDefault()
+    openContextMenuAtElement(event.currentTarget as HTMLElement, entry, 'full')
+  }
+}
+
+const onContextMenuKeyDown = (event: KeyboardEvent) => {
+  if (!contextMenu.value.open) {
+    return
+  }
+  const items = Array.from(
+    contextMenuRef.value?.querySelectorAll<HTMLElement>(
+      '.context-menu__item[data-menu-item]:not(:disabled):not([hidden])',
+    ) ?? [],
+  )
+  if (!items.length) {
+    return
+  }
+  const active = document.activeElement as HTMLElement | null
+  const currentIndex = items.findIndex((item) => item === active)
+  const safeIndex = currentIndex < 0 ? 0 : currentIndex
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    const next = (safeIndex + 1) % items.length
+    items[next]?.focus()
+    return
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    const next = (safeIndex - 1 + items.length) % items.length
+    items[next]?.focus()
+    return
+  }
+  if (event.key === 'Home') {
+    event.preventDefault()
+    items[0]?.focus()
+    return
+  }
+  if (event.key === 'End') {
+    event.preventDefault()
+    items[items.length - 1]?.focus()
+    return
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeContextMenu()
+  }
+}
+
 const onWindowKey = (event: KeyboardEvent) => {
   if (event.key === 'Escape') {
     closeContextMenu()
   }
+}
+
+const triggerContextMenuAction = (action: FileEntryAction) => {
+  if (!contextMenu.value.entry) {
+    return
+  }
+  emit('action', { entry: contextMenu.value.entry, action })
+  closeContextMenu()
 }
 
 onMounted(() => {
@@ -293,10 +479,50 @@ onBeforeUnmount(() => {
           @change="toggleAll"
         />
       </label>
-      <div class="table__cell">{{ t('fileTable.headers.name') }}</div>
-      <div class="table__cell table__cell--size">{{ t('fileTable.headers.size') }}</div>
-      <div class="table__cell table__cell--type">{{ t('fileTable.headers.type') }}</div>
-      <div class="table__cell table__cell--time">{{ t('fileTable.headers.updatedAt') }}</div>
+      <div class="table__cell">
+        <button
+          type="button"
+          class="table__sort"
+          :class="[`is-${sortIndicator('name')}`, { 'is-active': props.sortKey === 'name' }]"
+          @click="onSortClick('name')"
+        >
+          {{ t('fileTable.headers.name') }}
+          <span class="table__sort-indicator"></span>
+        </button>
+      </div>
+      <div class="table__cell table__cell--size">
+        <button
+          type="button"
+          class="table__sort"
+          :class="[`is-${sortIndicator('size')}`, { 'is-active': props.sortKey === 'size' }]"
+          @click="onSortClick('size')"
+        >
+          {{ t('fileTable.headers.size') }}
+          <span class="table__sort-indicator"></span>
+        </button>
+      </div>
+      <div class="table__cell table__cell--type">
+        <button
+          type="button"
+          class="table__sort"
+          :class="[`is-${sortIndicator('type')}`, { 'is-active': props.sortKey === 'type' }]"
+          @click="onSortClick('type')"
+        >
+          {{ t('fileTable.headers.type') }}
+          <span class="table__sort-indicator"></span>
+        </button>
+      </div>
+      <div class="table__cell table__cell--time">
+        <button
+          type="button"
+          class="table__sort"
+          :class="[`is-${sortIndicator('updatedAt')}`, { 'is-active': props.sortKey === 'updatedAt' }]"
+          @click="onSortClick('updatedAt')"
+        >
+          {{ t('fileTable.headers.updatedAt') }}
+          <span class="table__sort-indicator"></span>
+        </button>
+      </div>
     </div>
     <div
       v-if="items.length || creatingFolder || creatingText"
@@ -312,7 +538,12 @@ onBeforeUnmount(() => {
           </label>
           <div class="table__cell table__cell--name">
             <div class="name name--edit name--inline">
-              <FileTypeIcon class="name__icon" :name="creatingText ? 'new.txt' : undefined" :is-dir="creatingFolder" />
+              <FileTypeIcon
+                class="name__icon"
+                :name="creatingText ? 'new.txt' : undefined"
+                :is-dir="creatingFolder"
+                :size="24"
+              />
               <input
                 v-model="createName"
                 ref="createInputRef"
@@ -322,10 +553,20 @@ onBeforeUnmount(() => {
                 @keydown="onCreateKey"
               />
               <div class="name__actions">
-                <IconButton size="sm" variant="secondary" :aria-label="t('fileTable.aria.confirm')" @click="confirmCreate">
+                <IconButton
+                  size="sm"
+                  variant="secondary"
+                  :aria-label="t('fileTable.aria.confirm')"
+                  @click="confirmCreate"
+                >
                   <Check :size="14" />
                 </IconButton>
-                <IconButton size="sm" variant="ghost" :aria-label="t('fileTable.aria.cancel')" @click="emit('create-cancel')">
+                <IconButton
+                  size="sm"
+                  variant="ghost"
+                  :aria-label="t('fileTable.aria.cancel')"
+                  @click="emit('create-cancel')"
+                >
                   <X :size="14" />
                 </IconButton>
               </div>
@@ -338,9 +579,11 @@ onBeforeUnmount(() => {
 
         <div
           v-for="item in items"
-          :key="item.path"
+          :key="item.id"
           :class="['table__row', isEditing(item) ? 'table__row--edit' : '']"
+          :tabindex="isEditing(item) ? -1 : 0"
           @click="onRowClick(item)"
+          @keydown="onRowKeyDown($event, item)"
           @contextmenu="openContextMenu($event, item)"
           @mouseleave="onRowLeave(item)"
         >
@@ -348,37 +591,66 @@ onBeforeUnmount(() => {
             <input type="checkbox" :checked="isSelected(item)" @click.stop @change="toggle(item)" />
           </label>
           <div class="table__cell table__cell--name">
-            <button v-if="!isEditing(item)" class="name" type="button" @click.stop="onNameClick(item)">
-            <FileTypeIcon class="name__icon" :name="item.name" :is-dir="item.is_dir" />
-            <span class="name__text" :title="item.name">{{ item.name }}</span>
-          </button>
-          <div v-else class="name name--edit name--inline">
-            <FileTypeIcon class="name__icon" :name="item.name" :is-dir="item.is_dir" />
-            <input
-              v-model="renameValue"
-              :ref="setRenameInputRef(item)"
-              class="name__input"
-              :placeholder="t('fileTable.placeholders.rename')"
-              autofocus
-              @keydown="(event) => onRenameKey(event, item)"
-            />
-            <div class="name__actions">
-              <IconButton size="sm" variant="secondary" :aria-label="t('fileTable.aria.confirm')" @click="confirmRename(item)">
-                <Check :size="14" />
-              </IconButton>
-              <IconButton size="sm" variant="ghost" :aria-label="t('fileTable.aria.cancel')" @click="emit('rename-cancel')">
-                <X :size="14" />
-              </IconButton>
+            <button
+              v-if="!isEditing(item)"
+              class="name"
+              type="button"
+              @click.stop="onNameClick(item)"
+            >
+              <FileThumbnailIcon
+                class="name__icon"
+                :file-id="item.id"
+                :name="item.name"
+                :is-dir="item.is_dir"
+                :size="24"
+              />
+              <span class="name__text" :title="item.name">{{ item.name }}</span>
+            </button>
+            <div v-else class="name name--edit name--inline">
+              <FileThumbnailIcon
+                class="name__icon"
+                :file-id="item.id"
+                :name="item.name"
+                :is-dir="item.is_dir"
+                :size="24"
+              />
+              <input
+                v-model="renameValue"
+                :ref="setRenameInputRef(item)"
+                class="name__input"
+                :placeholder="t('fileTable.placeholders.rename')"
+                autofocus
+                @keydown="(event) => onRenameKey(event, item)"
+              />
+              <div class="name__actions">
+                <IconButton
+                  size="sm"
+                  variant="secondary"
+                  :aria-label="t('fileTable.aria.confirm')"
+                  @click="confirmRename(item)"
+                >
+                  <Check :size="14" />
+                </IconButton>
+                <IconButton
+                  size="sm"
+                  variant="ghost"
+                  :aria-label="t('fileTable.aria.cancel')"
+                  @click="emit('rename-cancel')"
+                >
+                  <X :size="14" />
+                </IconButton>
+              </div>
             </div>
           </div>
+          <div class="table__cell table__cell--size">
+            {{ item.is_dir ? '-' : formatBytes(item.size) }}
           </div>
-          <div class="table__cell table__cell--size">{{ item.is_dir ? '-' : formatBytes(item.size) }}</div>
           <div class="table__cell table__cell--type">{{ formatEntryType(item) }}</div>
-          <div class="table__cell table__cell--time">{{ formatTime(item.modified_time) }}</div>
+          <div class="table__cell table__cell--time">{{ formatTime(item.updated_at) }}</div>
           <div
             v-if="!isEditing(item)"
             class="table__row-actions"
-            :class="{ 'is-hovered': menuHovering && menuEntryPath === item.path }"
+            :class="{ 'is-hovered': menuHovering && menuEntryPath === String(item.id) }"
             @click.stop
           >
             <IconButton
@@ -389,6 +661,15 @@ onBeforeUnmount(() => {
               @click="emit('action', { entry: item, action: 'download' })"
             >
               <Download :size="14" />
+            </IconButton>
+            <IconButton
+              size="sm"
+              variant="ghost"
+              :aria-label="t('fileTable.actions.share')"
+              v-permission="'disk:file:download'"
+              @click="emit('action', { entry: item, action: 'share' })"
+            >
+              <Share2 :size="14" />
             </IconButton>
             <IconButton
               size="sm"
@@ -423,87 +704,34 @@ onBeforeUnmount(() => {
 
     <div
       v-if="contextMenu.open && contextMenu.entry"
+      ref="contextMenuRef"
       class="context-menu"
-      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px`, width: `${contextMenu.width}px` }"
+      role="menu"
+      :aria-label="t('common.actions')"
+      :style="{
+        left: `${contextMenu.x}px`,
+        top: `${contextMenu.y}px`,
+        width: `${contextMenu.width}px`,
+      }"
+      @keydown="onContextMenuKeyDown"
       @mouseenter="onMenuEnter"
       @mouseleave="onMenuLeave"
       @click.stop
     >
-      <button
-        class="context-menu__item"
-        type="button"
-        @click="emit('action', { entry: contextMenu.entry, action: 'detail' }); closeContextMenu()"
-      >
-        {{ t('fileTable.actions.details') }}
-      </button>
-      <button
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:download'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'preview' }); closeContextMenu()"
-      >
-        {{ t('fileTable.actions.preview') }}
-      </button>
-      <button
-        v-if="contextMenu.entry?.is_dir"
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:list'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'edit' }); closeContextMenu()"
-      >
-        {{ t('fileTable.actions.openEditor') }}
-      </button>
-      <button
-        v-else-if="isEditableFile(contextMenu.entry)"
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:download'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'edit' }); closeContextMenu()"
-      >
-        {{ t('fileTable.actions.edit') }}
-      </button>
-      <button
-        v-if="contextMenu.mode === 'full'"
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:download'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'download' }); closeContextMenu()"
-      >
-        {{ t('fileTable.actions.download') }}
-      </button>
-      <button
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:rename'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'rename' }); closeContextMenu()"
-      >
-        {{ t('fileTable.actions.rename') }}
-      </button>
-      <button
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:rename'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'move' }); closeContextMenu()"
-      >
-        {{ t('fileTable.actions.move') }}
-      </button>
-      <button
-        class="context-menu__item"
-        type="button"
-        v-permission="'disk:file:download'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'share' }); closeContextMenu()"
-      >
-        {{ t('fileTable.actions.share') }}
-      </button>
-      <button
-        v-if="contextMenu.mode === 'full'"
-        class="context-menu__item context-menu__item--danger"
-        type="button"
-        v-permission="'disk:file:delete'"
-        @click="emit('action', { entry: contextMenu.entry, action: 'delete' }); closeContextMenu()"
-      >
-        {{ t('fileTable.actions.delete') }}
-      </button>
+      <template v-for="item in contextMenuItems" :key="item.key">
+        <div v-if="item.dividerBefore" class="context-menu__separator"></div>
+        <button
+          class="context-menu__item"
+          :class="{ 'context-menu__item--danger': item.danger }"
+          type="button"
+          role="menuitem"
+          data-menu-item
+          :disabled="item.disabled"
+          @click="triggerContextMenuAction(item.action)"
+        >
+          <span class="context-menu__label">{{ item.label }}</span>
+        </button>
+      </template>
     </div>
   </div>
 </template>
@@ -534,9 +762,16 @@ onBeforeUnmount(() => {
 .table__row {
   height: 48px;
   position: relative;
+  transition: background var(--transition-fast);
 }
 
 .table__row:hover {
+  background: var(--color-surface-2);
+}
+
+.table__row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
   background: var(--color-surface-2);
 }
 
@@ -544,6 +779,40 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: var(--color-muted);
   letter-spacing: 0.06em;
+}
+
+.table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.table__sort-indicator {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 6px solid var(--color-muted);
+  opacity: 0;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.table__sort.is-active .table__sort-indicator {
+  opacity: 1;
+}
+
+.table__sort.is-asc .table__sort-indicator {
+  transform: rotate(180deg);
+}
+
+.table__sort.is-desc .table__sort-indicator {
+  transform: rotate(0deg);
 }
 
 .table__body {
@@ -620,6 +889,7 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+  transition: color var(--transition-fast);
 }
 
 .name:hover .name__text {
@@ -635,6 +905,16 @@ onBeforeUnmount(() => {
   background: var(--color-surface);
   font-size: 14px;
   line-height: 1.2;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-base);
+}
+
+.name__input:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--interaction-focus-ring);
 }
 
 .name__actions {
@@ -659,13 +939,15 @@ onBeforeUnmount(() => {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(0.96);
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--transition-base);
+  transition:
+    opacity var(--transition-base),
+    transform var(--transition-base);
 }
 
 .table__row-actions .icon-btn {
@@ -676,6 +958,7 @@ onBeforeUnmount(() => {
 .table__row--edit .table__row-actions,
 .table__row-actions.is-hovered {
   opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
   pointer-events: auto;
 }
 
@@ -693,6 +976,11 @@ onBeforeUnmount(() => {
 }
 
 .context-menu__item {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   background: transparent;
@@ -701,10 +989,42 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-size: 13px;
   color: var(--color-text);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .context-menu__item:hover {
   background: var(--color-surface-2);
+}
+
+.context-menu__item:disabled {
+  cursor: not-allowed;
+  color: var(--color-muted);
+  opacity: 0.72;
+}
+
+.context-menu__item:disabled:hover {
+  background: transparent;
+}
+
+.context-menu__item:focus-visible {
+  outline: none;
+  border-color: var(--color-primary-soft-strong);
+  background: var(--color-surface-2);
+}
+
+.context-menu__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-menu__separator {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--color-border);
 }
 
 .context-menu__item--danger {
@@ -746,6 +1066,12 @@ onBeforeUnmount(() => {
     transform: translateY(-50%);
     opacity: 1;
     pointer-events: auto;
+  }
+
+  .table__row:hover .table__row-actions,
+  .table__row--edit .table__row-actions,
+  .table__row-actions.is-hovered {
+    transform: translateY(-50%);
   }
 }
 </style>

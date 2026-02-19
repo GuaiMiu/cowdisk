@@ -1,9 +1,9 @@
 import { addMenu, deleteMenu, editMenu, getMenuList } from '@/api/modules/adminSystem'
 import type { MenuAddIn, MenuEditIn, MenuOut } from '@/types/menu'
-import { usePagedCrud } from './usePagedCrud'
+import { useCursorCrud } from './useCursorCrud'
 
 export const useAdminMenus = () => {
-  const crud = usePagedCrud<MenuOut, MenuAddIn, MenuEditIn, number>({
+  const crud = useCursorCrud<MenuOut, MenuAddIn, MenuEditIn, number>({
     list: getMenuList,
     create: addMenu,
     update: editMenu,
@@ -26,7 +26,11 @@ export const useAdminMenus = () => {
     total: crud.total,
     page: crud.page,
     size: crud.size,
-    fetchMenus: crud.fetchPage,
+    hasNext: crud.hasNext,
+    hasPrev: crud.hasPrev,
+    fetchMenus: crud.fetchFirst,
+    fetchNext: crud.fetchNext,
+    fetchPrev: crud.fetchPrev,
     createMenu: crud.createItem,
     updateMenu: crud.updateItem,
     removeMenu: crud.removeItem,

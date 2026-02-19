@@ -22,6 +22,18 @@ export const getMe = () =>
     method: 'GET',
   })
 
+export const updateMe = (payload: {
+  nickname?: string | null
+  mail?: string | null
+  current_password?: string
+  new_password?: string
+}) =>
+  request<UserOut>({
+    url: '/api/v1/auth/me',
+    method: 'PATCH',
+    data: payload,
+  })
+
 export const getPermissions = () =>
   request<string[]>({
     url: '/api/v1/auth/permissions',
@@ -37,7 +49,13 @@ export const getRouters = () =>
 export const logout = () =>
   request<boolean>({
     url: '/api/v1/auth/logout',
-    method: 'GET',
+    method: 'POST',
+  })
+
+export const refreshToken = () =>
+  request<TokenOut>({
+    url: '/api/v1/auth/refresh-token',
+    method: 'POST',
   })
 
 export const getAvatar = () =>
@@ -45,3 +63,13 @@ export const getAvatar = () =>
     url: '/api/v1/user/avatar',
     method: 'GET',
   })
+
+export const uploadAvatar = (file: File) => {
+  const formData = new FormData()
+  formData.append('avatar', file)
+  return request<{ avatar_path: string; avatar_url: string }>({
+    url: '/api/v1/user/avatar',
+    method: 'POST',
+    data: formData,
+  })
+}

@@ -5,13 +5,16 @@ import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useAppStore } from '@/stores/app'
 import { getLocale, setLocale } from '@/i18n'
 
 const authStore = useAuthStore()
+const appStore = useAppStore()
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 const currentLocale = computed(() => getLocale())
+const siteName = computed(() => appStore.siteName || 'CowDisk')
 
 const username = ref('')
 const password = ref('')
@@ -56,7 +59,7 @@ const switchLocale = async (locale: string) => {
   <div class="login">
     <div class="login__panel">
       <div class="login__brand-row">
-        <div class="login__brand">CowDisk</div>
+        <div class="login__brand" :title="siteName">{{ siteName }}</div>
         <div class="lang-switch">
           <button
             type="button"
@@ -111,17 +114,25 @@ const switchLocale = async (locale: string) => {
   place-items: center;
   padding: var(--space-9);
   overflow: auto;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 10%, #ffffff) 0%, #f7fafc 100%);
+  background-image:
+    var(--runtime-login-bg-image),
+    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 10%, #ffffff) 0%, #f7fafc 100%);
+  background-size: cover;
+  background-position: center;
 }
 
 .login__panel {
-  background: var(--color-surface);
+  background: color-mix(in srgb, var(--color-surface) 76%, transparent);
   border-radius: var(--radius-xl);
-  border: 1px solid var(--color-border);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
   padding: var(--space-7);
   display: grid;
   gap: var(--space-4);
   box-shadow: var(--shadow-md);
   width: min(420px, 100%);
+  backdrop-filter: blur(10px);
 }
 
 .login__brand-row {
@@ -135,6 +146,10 @@ const switchLocale = async (locale: string) => {
   font-family: var(--font-display);
   font-weight: 700;
   color: var(--color-primary);
+  max-width: min(220px, 52vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .login__title {

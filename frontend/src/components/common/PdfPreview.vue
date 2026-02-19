@@ -68,7 +68,12 @@ onBeforeUnmount(() => {
         <div class="pdf-preview__top">
           <div class="pdf-preview__title">{{ name || t('preview.pdfTitle') }}</div>
           <div class="pdf-preview__top-actions">
-            <button type="button" class="pdf-preview__top-btn" :title="t('common.openInNewTab')" @click="openInNewTab">
+            <button
+              type="button"
+              class="pdf-preview__top-btn"
+              :title="t('common.openInNewTab')"
+              @click="openInNewTab"
+            >
               <ExternalLink :size="18" />
             </button>
             <button
@@ -80,19 +85,19 @@ onBeforeUnmount(() => {
             >
               <Download :size="18" />
             </button>
-            <button type="button" class="pdf-preview__top-btn" :title="t('common.close')" @click="close">
+            <button
+              type="button"
+              class="pdf-preview__top-btn"
+              :title="t('common.close')"
+              @click="close"
+            >
               <X :size="18" />
             </button>
           </div>
         </div>
 
         <div class="pdf-preview__canvas">
-          <iframe
-            v-if="src"
-            class="pdf-preview__frame"
-            :src="src"
-            title="PDF Preview"
-          ></iframe>
+          <iframe v-if="src" class="pdf-preview__frame" :src="src" title="PDF Preview"></iframe>
           <div v-else class="pdf-preview__placeholder">{{ t('common.loadingEllipsis') }}</div>
         </div>
       </div>

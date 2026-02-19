@@ -10,7 +10,7 @@ const props = withDefaults(
     modelValue: string
     language?: string
     readOnly?: boolean
-    theme?: 'vs' | 'vs-dark'
+    theme?: 'vs' | 'vs-dark' | 'vscode-light' | 'vscode-dark'
     wordWrap?: boolean
     minimap?: boolean
     lineNumbers?: boolean
@@ -20,7 +20,7 @@ const props = withDefaults(
   {
     language: 'plaintext',
     readOnly: false,
-    theme: 'vs',
+    theme: 'vscode-dark',
     wordWrap: true,
     minimap: false,
     lineNumbers: true,
@@ -36,7 +36,49 @@ const emit = defineEmits<{
 const rootRef = ref<HTMLDivElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 let lastValue = ''
+let themesDefined = false
 const { locale } = useI18n({ useScope: 'global' })
+
+const ensureThemes = () => {
+  if (themesDefined) {
+    return
+  }
+  monaco.editor.defineTheme('vscode-dark', {
+    base: 'vs-dark',
+    inherit: true,
+    colors: {
+      'editor.background': '#1e1e1e',
+      'editor.foreground': '#d4d4d4',
+      'editorLineNumber.foreground': '#858585',
+      'editorLineNumber.activeForeground': '#c6c6c6',
+      'editorCursor.foreground': '#aeafad',
+      'editor.selectionBackground': '#264f78',
+      'editor.inactiveSelectionBackground': '#3a3d41',
+      'editor.lineHighlightBackground': '#2a2d2e',
+      'editorIndentGuide.background1': '#404040',
+      'editorIndentGuide.activeBackground1': '#707070',
+    },
+    rules: [],
+  })
+  monaco.editor.defineTheme('vscode-light', {
+    base: 'vs',
+    inherit: true,
+    colors: {
+      'editor.background': '#ffffff',
+      'editor.foreground': '#1f2328',
+      'editorLineNumber.foreground': '#9aa0a6',
+      'editorLineNumber.activeForeground': '#4d5358',
+      'editorCursor.foreground': '#24292f',
+      'editor.selectionBackground': '#add6ff',
+      'editor.inactiveSelectionBackground': '#e5ebf1',
+      'editor.lineHighlightBackground': '#f6f8fa',
+      'editorIndentGuide.background1': '#d0d7de',
+      'editorIndentGuide.activeBackground1': '#8c959f',
+    },
+    rules: [],
+  })
+  themesDefined = true
+}
 
 const syncValue = (value: string) => {
   if (!editor) {
@@ -59,6 +101,7 @@ const createEditor = async (value: string) => {
     return
   }
   await loadMonacoLocale(locale.value)
+  ensureThemes()
   editor = monaco.editor.create(rootRef.value, {
     value,
     language: props.language,
@@ -102,17 +145,14 @@ watch(
   },
 )
 
-watch(
-  locale,
-  async () => {
-    if (!rootRef.value) {
-      return
-    }
-    const currentValue = editor?.getValue() ?? props.modelValue ?? ''
-    disposeEditor()
-    await createEditor(currentValue)
-  },
-)
+watch(locale, async () => {
+  if (!rootRef.value) {
+    return
+  }
+  const currentValue = editor?.getValue() ?? props.modelValue ?? ''
+  disposeEditor()
+  await createEditor(currentValue)
+})
 
 watch(
   () => props.language,

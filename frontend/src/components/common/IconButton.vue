@@ -21,7 +21,11 @@ const props = withDefaults(
   },
 )
 
-const classes = computed(() => ['icon-btn', `icon-btn--${props.variant}`, `icon-btn--${props.size}`])
+const classes = computed(() => [
+  'icon-btn',
+  `icon-btn--${props.variant}`,
+  `icon-btn--${props.size}`,
+])
 </script>
 
 <template>
@@ -40,8 +44,12 @@ const classes = computed(() => ['icon-btn', `icon-btn--${props.variant}`, `icon-
   background: transparent;
   color: var(--color-text);
   cursor: pointer;
-  transition: background var(--transition-base), transform var(--transition-fast),
-    box-shadow var(--transition-base);
+  transition:
+    background var(--transition-base),
+    transform var(--transition-fast),
+    box-shadow var(--transition-base),
+    border-color var(--transition-base),
+    color var(--transition-base);
 }
 
 .icon-btn--primary {
@@ -81,7 +89,16 @@ const classes = computed(() => ['icon-btn', `icon-btn--${props.variant}`, `icon-
 }
 
 .icon-btn:not(:disabled):hover {
-  transform: translateY(-1px);
+  transform: var(--interaction-hover-lift);
   box-shadow: var(--shadow-sm);
+}
+
+.icon-btn:not(:disabled):active {
+  transform: var(--interaction-press-scale);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 </style>

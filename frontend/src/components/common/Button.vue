@@ -33,7 +33,7 @@ const classes = computed(() => [
 </script>
 
 <template>
-  <button :type="type" :class="classes" :disabled="disabled || loading">
+  <button :type="type" :class="classes" :disabled="disabled || loading" :aria-busy="loading">
     <span v-if="loading" class="btn__spinner" aria-hidden="true"></span>
     <span class="btn__content"><slot /></span>
   </button>
@@ -48,8 +48,15 @@ const classes = computed(() => [
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-4);
   font-weight: 600;
-  transition: transform var(--transition-fast), box-shadow var(--transition-base),
-    background var(--transition-base), color var(--transition-base);
+  line-height: 1.1;
+  white-space: nowrap;
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-base),
+    background var(--transition-base),
+    color var(--transition-base),
+    border-color var(--transition-base),
+    opacity var(--transition-fast);
   cursor: pointer;
   border: 1px solid transparent;
   background: var(--color-primary);
@@ -78,15 +85,18 @@ const classes = computed(() => [
 .btn--sm {
   padding: var(--space-1) var(--space-3);
   font-size: 13px;
+  min-height: 32px;
 }
 
 .btn--md {
   font-size: 14px;
+  min-height: 40px;
 }
 
 .btn--lg {
   padding: var(--space-3) var(--space-5);
   font-size: 15px;
+  min-height: 48px;
 }
 
 .btn--block {
@@ -100,8 +110,17 @@ const classes = computed(() => [
 }
 
 .btn:not(:disabled):hover {
-  transform: translateY(-1px);
+  transform: var(--interaction-hover-lift);
   box-shadow: var(--shadow-sm);
+}
+
+.btn:not(:disabled):active {
+  transform: var(--interaction-press-scale);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .btn__spinner {

@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="TRow extends Record<string, unknown>">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
 import Empty from './Empty.vue'
 import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
 
@@ -71,6 +71,16 @@ const gridTemplate = computed(() =>
   props.columns.map((col) => col.width || 'minmax(120px, 1fr)').join(' '),
 )
 
+const getCellStyle = (align?: Column['align']) => {
+  const normalized = align || 'left'
+  const justifyItems =
+    normalized === 'center' ? 'center' : normalized === 'right' ? 'end' : 'start'
+  return {
+    textAlign: normalized,
+    justifyItems,
+  }
+}
+
 const tableStyle = computed(() => ({
   ...(props.scrollable ? { '--table-row-height': `${props.rowHeight}px` } : undefined),
   '--table-columns': gridTemplate.value,
@@ -78,7 +88,13 @@ const tableStyle = computed(() => ({
 
 defineSlots<{
   [K in `cell-${string}`]?: (props: { row: TRow }) => unknown
+} & {
+  [K in `head-${string}`]?: (props: { column: Column }) => unknown
 }>()
+
+const slots = useSlots()
+const hasHeadSlot = (key: string) => Boolean(slots[`head-${key}` as `head-${string}`])
+const headSlotName = (key: string) => `head-${key}` as `head-${string}`
 
 let observer: ResizeObserver | null = null
 
@@ -114,9 +130,12 @@ onBeforeUnmount(() => {
         v-for="col in columns"
         :key="col.key"
         class="table__cell table__cell--head"
-        :style="{ textAlign: col.align || 'left' }"
+        :style="getCellStyle(col.align)"
       >
-        {{ col.label }}
+        <slot v-if="hasHeadSlot(col.key)" :name="headSlotName(col.key)" :column="col">
+          {{ col.label }}
+        </slot>
+        <template v-else>{{ col.label }}</template>
       </div>
     </div>
     <div
@@ -132,7 +151,7 @@ onBeforeUnmount(() => {
             v-for="col in columns"
             :key="col.key"
             class="table__cell"
-            :style="{ textAlign: col.align || 'left' }"
+            :style="getCellStyle(col.align)"
           >
             <slot :name="`cell-${col.key}`" :row="row">
               {{ row[col.key] }}
@@ -146,13 +165,13 @@ onBeforeUnmount(() => {
             class="table__row table__row--placeholder"
           >
             <div
-            v-for="col in columns"
-            :key="col.key"
-            class="table__cell"
-            :style="{ textAlign: col.align || 'left' }"
-          >
-            &nbsp;
-          </div>
+              v-for="col in columns"
+              :key="col.key"
+              class="table__cell"
+              :style="getCellStyle(col.align)"
+            >
+              &nbsp;
+            </div>
           </div>
         </div>
       </div>
@@ -217,8 +236,10 @@ onBeforeUnmount(() => {
 .table__row {
   display: grid;
   grid-template-columns: var(--table-columns, repeat(auto-fit, minmax(120px, 1fr)));
+  align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
+  box-sizing: border-box;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
   min-height: 48px;
@@ -231,6 +252,9 @@ onBeforeUnmount(() => {
 
 .table__cell {
   font-size: 14px;
+  display: grid;
+  align-content: center;
+  min-height: 0;
 }
 
 .table__cell--head {

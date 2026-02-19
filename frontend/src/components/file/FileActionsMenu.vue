@@ -24,10 +24,20 @@ const { t } = useI18n({ useScope: 'global' })
     </template>
     <template #content>
       <div class="menu">
-        <button class="menu__item" type="button" v-permission="'disk:file:rename'" @click="emit('action', 'rename')">
+        <button
+          class="menu__item"
+          type="button"
+          v-permission="'disk:file:move'"
+          @click="emit('action', 'rename')"
+        >
           {{ t('fileActionsMenu.rename') }}
         </button>
-        <button class="menu__item" type="button" v-permission="'disk:file:download'" @click="emit('action', 'share')">
+        <button
+          class="menu__item"
+          type="button"
+          v-permission="'disk:file:download'"
+          @click="emit('action', 'share')"
+        >
           {{ t('fileActionsMenu.share') }}
         </button>
       </div>
@@ -50,10 +60,18 @@ const { t } = useI18n({ useScope: 'global' })
   cursor: pointer;
   font-size: 13px;
   color: var(--color-text);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .menu__item:hover {
   background: var(--color-surface-2);
+}
+
+.menu__item:active {
+  transform: var(--interaction-press-scale);
 }
 
 .menu__item--danger {

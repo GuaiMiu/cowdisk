@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Pencil, Trash2 } from 'lucide-vue-next'
-import PageHeader from '@/components/common/PageHeader.vue'
+import { useRoute } from 'vue-router'
+import { CheckCircle2, Pencil, Power, Trash2, RotateCcw } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import IconButton from '@/components/common/IconButton.vue'
 import Table from '@/components/common/Table.vue'
@@ -14,17 +14,37 @@ import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import ShareForm, { type ShareFormValue } from '@/components/share/ShareForm.vue'
 import { useShareActions } from '@/composables/useShareActions'
+import { useSelection } from '@/composables/useSelection'
 import { formatTime } from '@/utils/format'
 import type { Share } from '@/types/share'
 import { copyToClipboard } from '@/utils/clipboard'
-import { useToastStore } from '@/stores/toast'
+import { useMessage } from '@/stores/message'
+import { getRouteSearchKeyword } from '@/composables/useHeaderSearch'
 
 const shareActions = useShareActions()
-const toast = useToastStore()
+const message = useMessage()
+const route = useRoute()
+const searchKeyword = computed(() => getRouteSearchKeyword(route).toLowerCase())
+const filteredItems = computed(() => {
+  const keyword = searchKeyword.value
+  if (!keyword) {
+    return shareActions.items.value
+  }
+  return shareActions.items.value.filter((item) => {
+    const name = (item.name || '').toLowerCase()
+    const type = (item.resourceType || '').toLowerCase()
+    return name.includes(keyword) || type.includes(keyword)
+  })
+})
+const selection = useSelection(
+  () => filteredItems.value,
+  (item) => String(item.id),
+)
 
 const { t } = useI18n({ useScope: 'global' })
 
 const columns = computed(() => [
+  { key: 'select', label: '', width: '32px', align: 'center' as const },
   { key: 'name', label: t('shares.columns.name'), width: 'minmax(240px, 1fr)' },
   { key: 'status', label: t('shares.columns.status'), width: '90px' },
   { key: 'resourceType', label: t('shares.columns.resourceType'), width: '80px' },
@@ -48,6 +68,9 @@ const editModal = ref(false)
 const editingShare = ref<Share | null>(null)
 const editSubmitting = ref(false)
 const editShareLink = ref('')
+const editShareLinkWithCode = ref('')
+const editShareCode = ref('')
+const editIncludeCode = ref(true)
 const editForm = ref<ShareFormValue>({
   expiresInDays: 7,
   expiresAt: null,
@@ -57,9 +80,40 @@ const editForm = ref<ShareFormValue>({
 const toggling = ref(new Set<string>())
 const deleteConfirm = ref(false)
 const deletingShare = ref<Share | null>(null)
+const batchConfirm = ref(false)
+const batchAction = ref<'revoke' | 'enable' | 'delete' | null>(null)
+const selectAllRef = ref<HTMLInputElement | null>(null)
 
 const isToggling = (id: string) => toggling.value.has(id)
 const asShare = (row: unknown) => row as Share
+const selectedCount = computed(() => selection.selectedItems.value.length)
+
+watch(
+  () => selection.indeterminate.value,
+  (value) => {
+    if (selectAllRef.value) {
+      selectAllRef.value.indeterminate = value
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => filteredItems.value,
+  (items) => {
+    const valid = new Set(items.map((item) => item.id))
+    const next = new Set<string>()
+    selection.selected.value.forEach((id) => {
+      if (valid.has(id)) {
+        next.add(id)
+      }
+    })
+    if (next.size !== selection.selected.value.size) {
+      selection.selected.value = next
+    }
+  },
+  { deep: true },
+)
 
 const toLocalInputValue = (date: Date) => {
   const pad = (num: number) => String(num).padStart(2, '0')
@@ -76,17 +130,24 @@ const openEdit = (share: Share) => {
     requiresCode: share.hasCode ?? false,
     code: share.code ?? '',
   }
-  editShareLink.value = `${window.location.origin}/public/shares/${share.token}`
+  editShareCode.value = share.code ?? ''
+  editShareLink.value = buildShareUrl(share.token)
+  editShareLinkWithCode.value = buildShareUrl(share.token, share.code)
+  editIncludeCode.value = true
   editModal.value = true
 }
 
 const copyShareLink = async (share: Share) => {
-  const link = `${window.location.origin}/public/shares/${share.token}`
-  const ok = await copyToClipboard(link)
+  const link = buildShareUrl(share.token)
+  const linkWithCode = buildShareUrl(share.token, share.code)
+  const text = share.code
+    ? `${t('shares.edit.copyLinkPrefix')}: ${linkWithCode} ${t('shares.edit.copyCodePrefix')}: ${share.code}`
+    : link
+  const ok = await copyToClipboard(text)
   if (ok) {
-    toast.success(t('shares.toasts.copySuccess'))
+    message.success(t('shares.toasts.copySuccess'))
   } else {
-    toast.error(t('shares.toasts.copyFailTitle'), t('shares.toasts.copyFailMessage'))
+    message.error(t('shares.toasts.copyFailTitle'), t('shares.toasts.copyFailMessage'))
   }
 }
 
@@ -123,17 +184,38 @@ const toggleStatus = async (row: Share, next: boolean) => {
 }
 
 const copyLink = async () => {
-  const ok = await copyToClipboard(editShareLink.value)
+  const link =
+    editIncludeCode.value && editShareCode.value ? editShareLinkWithCode.value : editShareLink.value
+  const text = editShareCode.value
+    ? `${t('shares.edit.copyLinkPrefix')}: ${link} ${t('shares.edit.copyCodePrefix')}: ${editShareCode.value}`
+    : link
+  const ok = await copyToClipboard(text)
   if (ok) {
-    toast.success(t('shares.toasts.copySuccess'))
+    message.success(t('shares.toasts.copySuccess'))
   } else {
-    toast.error(t('shares.toasts.copyFailTitle'), t('shares.toasts.copyFailMessage'))
+    message.error(t('shares.toasts.copyFailTitle'), t('shares.toasts.copyFailMessage'))
   }
+}
+
+const buildShareUrl = (token: string, code?: string | null) => {
+  const url = new URL(`/s/${token}`, window.location.origin)
+  if (code) {
+    url.searchParams.set('code', code)
+  }
+  return url.toString()
 }
 
 const requestDelete = (share: Share) => {
   deletingShare.value = share
   deleteConfirm.value = true
+}
+
+const requestBatch = (action: 'revoke' | 'enable' | 'delete') => {
+  if (selectedCount.value === 0) {
+    return
+  }
+  batchAction.value = action
+  batchConfirm.value = true
 }
 
 const confirmDelete = async () => {
@@ -144,6 +226,69 @@ const confirmDelete = async () => {
   deletingShare.value = null
 }
 
+const confirmBatch = async () => {
+  if (!batchAction.value) {
+    return
+  }
+  const ids = selection.selectedItems.value.map((item) => item.id).filter(Boolean)
+  if (ids.length === 0) {
+    batchConfirm.value = false
+    return
+  }
+  if (batchAction.value === 'revoke') {
+    const result = await shareActions.revokeBatch(ids)
+    if (result.failed.length === 0) {
+      message.success(
+        t('shares.toasts.batchRevokeTitle'),
+        t('shares.toasts.batchSuccessMessage', { count: result.success }),
+      )
+    } else {
+      message.warning(
+        t('shares.toasts.batchRevokePartialTitle'),
+        t('shares.toasts.batchPartialMessage', {
+          success: result.success,
+          failed: result.failed.length,
+        }),
+      )
+    }
+  } else if (batchAction.value === 'enable') {
+    const result = await shareActions.enableBatch(ids)
+    if (result.failed.length === 0) {
+      message.success(
+        t('shares.toasts.batchEnableTitle'),
+        t('shares.toasts.batchSuccessMessage', { count: result.success }),
+      )
+    } else {
+      message.warning(
+        t('shares.toasts.batchEnablePartialTitle'),
+        t('shares.toasts.batchPartialMessage', {
+          success: result.success,
+          failed: result.failed.length,
+        }),
+      )
+    }
+  } else {
+    const result = await shareActions.removeBatch(ids)
+    if (result.failed.length === 0) {
+      message.success(
+        t('shares.toasts.batchDeleteTitle'),
+        t('shares.toasts.batchSuccessMessage', { count: result.success }),
+      )
+    } else {
+      message.warning(
+        t('shares.toasts.batchDeletePartialTitle'),
+        t('shares.toasts.batchPartialMessage', {
+          success: result.success,
+          failed: result.failed.length,
+        }),
+      )
+    }
+  }
+  selection.clear()
+  batchConfirm.value = false
+  batchAction.value = null
+}
+
 onMounted(() => {
   void shareActions.fetchShares()
 })
@@ -151,22 +296,58 @@ onMounted(() => {
 
 <template>
   <section class="page">
-    <PageHeader :title="t('shares.title')" :subtitle="t('shares.subtitle')">
-      <template #actions>
-        <Button variant="secondary" @click="shareActions.fetchShares(shareActions.currentPage.value)">
-          {{ t('shares.refresh') }}
-        </Button>
-      </template>
-    </PageHeader>
+    <div class="page__bar">
+      <div v-show="selectedCount > 0" class="page__actions">
+        <div class="bulk-actions">
+          <div class="bulk-actions__buttons">
+            <Button variant="secondary" @click="requestBatch('revoke')">
+              <Trash2 :size="16" />
+              {{ t('shares.bulk.revokeSelected', { count: selectedCount }) }}
+            </Button>
+            <Button variant="secondary" @click="requestBatch('enable')">
+              <RotateCcw :size="16" />
+              {{ t('shares.bulk.enableSelected', { count: selectedCount }) }}
+            </Button>
+            <Button variant="danger" @click="requestBatch('delete')">
+              <Trash2 :size="16" />
+              {{ t('shares.bulk.deleteSelected', { count: selectedCount }) }}
+            </Button>
+          </div>
+        </div>
+      </div>
+      <div class="page__info">
+        {{ t('shares.itemsCount', { count: filteredItems.length }) }}
+      </div>
+    </div>
 
     <div class="table-wrap shares-table">
       <Table
         :columns="columns"
-        :rows="shareActions.items.value"
+        :rows="filteredItems"
         :min-rows="shareActions.limit.value"
         scrollable
         fill
       >
+        <template #head-select>
+          <div class="select-cell">
+            <input
+              ref="selectAllRef"
+              type="checkbox"
+              :checked="selection.allSelected.value"
+              @change="selection.toggleAll()"
+            />
+          </div>
+        </template>
+        <template #cell-select="{ row }">
+          <div class="select-cell">
+            <input
+              type="checkbox"
+              :checked="selection.isSelected(asShare(row))"
+              @click.stop
+              @change="selection.toggle(asShare(row))"
+            />
+          </div>
+        </template>
         <template #cell-name="{ row }">
           <button type="button" class="name name--link" @click="copyShareLink(asShare(row))">
             <FileTypeIcon :name="asShare(row).name" :resource-type="asShare(row).resourceType" />
@@ -174,7 +355,9 @@ onMounted(() => {
           </button>
         </template>
         <template #cell-status="{ row }">
-          <Tag v-if="asShare(row).status === -1" tone="danger">{{ t('shares.status.missing') }}</Tag>
+          <Tag v-if="asShare(row).status === -1" tone="danger">{{
+            t('shares.status.missing')
+          }}</Tag>
           <label
             v-else
             class="status-switch"
@@ -196,7 +379,11 @@ onMounted(() => {
           {{ formatTime(asShare(row).createdAt as number) }}
         </template>
         <template #cell-expiresAt="{ row }">
-          {{ asShare(row).expiresAt ? formatTime(asShare(row).expiresAt as number) : t('shares.permanent') }}
+          {{
+            asShare(row).expiresAt
+              ? formatTime(asShare(row).expiresAt as number)
+              : t('shares.permanent')
+          }}
         </template>
         <template #cell-actions="{ row }">
           <div class="actions">
@@ -233,7 +420,19 @@ onMounted(() => {
   <Modal :open="editModal" :title="t('shares.edit.title')" @close="editModal = false">
     <ShareForm v-model="editForm" />
     <div class="share-link">
-      <Input :model-value="editShareLink" :label="t('shares.edit.linkLabel')" :readonly="true" />
+      <Input
+        :model-value="
+          editShareCode
+            ? `${t('shares.edit.copyLinkPrefix')}: ${editIncludeCode ? editShareLinkWithCode : editShareLink} ${t('shares.edit.copyCodePrefix')}: ${editShareCode}`
+            : editShareLink
+        "
+        :label="t('shares.edit.linkLabel')"
+        :readonly="true"
+      />
+      <label class="share-link__toggle">
+        <input type="checkbox" v-model="editIncludeCode" />
+        <span>{{ t('shares.edit.includeCodeInLink') }}</span>
+      </label>
       <Button variant="secondary" @click="copyLink">
         {{ t('shares.edit.copyLink') }}
       </Button>
@@ -251,6 +450,26 @@ onMounted(() => {
     @close="deleteConfirm = false"
     @confirm="confirmDelete"
   />
+
+  <ConfirmDialog
+    :open="batchConfirm"
+    :title="
+      batchAction === 'revoke'
+        ? t('shares.bulk.confirmRevokeTitle')
+        : batchAction === 'enable'
+          ? t('shares.bulk.confirmEnableTitle')
+          : t('shares.bulk.confirmDeleteTitle')
+    "
+    :message="
+      batchAction === 'revoke'
+        ? t('shares.bulk.confirmRevokeMessage', { count: selectedCount })
+        : batchAction === 'enable'
+          ? t('shares.bulk.confirmEnableMessage', { count: selectedCount })
+          : t('shares.bulk.confirmDeleteMessage', { count: selectedCount })
+    "
+    @close="batchConfirm = false"
+    @confirm="confirmBatch"
+  />
 </template>
 
 <style scoped>
@@ -263,9 +482,64 @@ onMounted(() => {
   overflow: hidden;
 }
 
+.page__bar {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  gap: var(--space-3);
+  min-height: 65.6px;
+}
+
+.page__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  min-height: 28px;
+}
+
+.bulk-actions__buttons {
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
+}
+
+.page__info {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-left: auto;
+}
+
 .table-wrap {
   height: 100%;
   min-height: 0;
+  min-width: 0;
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.bulk-actions__count {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.bulk-actions__buttons {
+  margin-left: auto;
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.bulk-actions__buttons :deep(button) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .actions {
@@ -295,6 +569,7 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--transition-fast);
 }
 
 .name--link {
@@ -305,9 +580,51 @@ onMounted(() => {
   color: var(--color-primary);
 }
 
+.name--link:active {
+  transform: var(--interaction-press-scale);
+}
+
+.select-cell {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+}
+
+.shares-table :deep(.table__cell:first-child) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.shares-table :deep(.table__cell:nth-child(2)) {
+  display: flex;
+  align-items: center;
+}
+
+.shares-table :deep(.table),
+.shares-table :deep(.table__row),
+.shares-table :deep(.table__header) {
+  min-width: 0;
+  width: 100%;
+}
+
+.shares-table :deep(.table__cell) {
+  min-width: 0;
+}
+
 .share-link {
   display: grid;
   gap: var(--space-3);
+}
+
+.share-link__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--color-muted);
 }
 
 .status-switch {
@@ -328,7 +645,9 @@ onMounted(() => {
   border-radius: 999px;
   background: var(--color-border);
   position: relative;
-  transition: background var(--transition-base);
+  transition:
+    background var(--transition-base),
+    box-shadow var(--transition-fast);
 }
 
 .status-switch__track::after {
@@ -352,6 +671,11 @@ onMounted(() => {
   transform: translateX(16px);
 }
 
+.status-switch input:focus-visible + .status-switch__track {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  box-shadow: var(--interaction-focus-ring);
+}
 
 .status-switch.is-disabled {
   opacity: 0.6;
@@ -359,14 +683,19 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
-  .shares-table :deep(.table) {
-    --table-columns: minmax(180px, 1fr) 88px;
+  .page__bar {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
-  .shares-table :deep(.table__cell:nth-child(2)),
+  .shares-table :deep(.table) {
+    --table-columns: 32px minmax(0, 1fr) 88px;
+  }
+
   .shares-table :deep(.table__cell:nth-child(3)),
   .shares-table :deep(.table__cell:nth-child(4)),
-  .shares-table :deep(.table__cell:nth-child(5)) {
+  .shares-table :deep(.table__cell:nth-child(5)),
+  .shares-table :deep(.table__cell:nth-child(6)) {
     display: none;
   }
 }

@@ -1,11 +1,20 @@
 import { computed, ref } from 'vue'
-import { getPublicShare, getShareDownloadUrl, listShareEntries, previewShare, saveShare, unlockShare } from '@/api/modules/shares'
-import { useToastStore } from '@/stores/toast'
-import type { SharePublicResult } from '@/types/share'
+import { useI18n } from 'vue-i18n'
+import {
+  getPublicShare,
+  getShareDownloadUrl,
+  listShareEntries,
+  previewShare,
+  saveShare,
+  unlockShare,
+} from '@/api/modules/shares'
+import { useMessage } from '@/stores/message'
+import type { ShareEntry, SharePublicResult } from '@/types/share'
 import { openBlob } from '@/utils/download'
 
 export const usePublicShare = (token: string) => {
-  const toast = useToastStore()
+  const { t } = useI18n({ useScope: 'global' })
+  const message = useMessage()
   const loading = ref(false)
   const accessToken = ref<string | null>(null)
   const share = ref<SharePublicResult['share'] | null>(null)
@@ -13,8 +22,22 @@ export const usePublicShare = (token: string) => {
   const unlockError = ref('')
   const errorMessage = ref('')
   const fileMeta = ref<SharePublicResult['fileMeta'] | null>(null)
-  const items = ref<Record<string, unknown>[]>([])
-  const currentPath = ref<string | undefined>(undefined)
+  const items = ref<ShareEntry[]>([])
+  const currentParentId = ref<number | null>(null)
+  const pendingCount = ref(0)
+  let shareRequestId = 0
+  let entryRequestId = 0
+
+  const withLoading = async <T>(task: () => Promise<T>) => {
+    pendingCount.value += 1
+    loading.value = true
+    try {
+      return await task()
+    } finally {
+      pendingCount.value = Math.max(0, pendingCount.value - 1)
+      loading.value = pendingCount.value > 0
+    }
+  }
 
   const isFile = computed(() => {
     const resourceType = (share.value as { resourceType?: string } | null)?.resourceType
@@ -22,92 +45,111 @@ export const usePublicShare = (token: string) => {
   })
 
   const loadShare = async () => {
-    loading.value = true
-    try {
+    const requestId = ++shareRequestId
+    return withLoading(async () => {
       const data = await getPublicShare(token, accessToken.value ?? undefined)
+      if (requestId !== shareRequestId) {
+        return
+      }
       locked.value = data.locked
       share.value = data.share
       fileMeta.value = data.fileMeta ?? null
       errorMessage.value = ''
       if (!data.locked && !isFile.value) {
-        await loadEntries()
+        currentParentId.value = null
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '请稍后重试'
-      errorMessage.value = message
-      toast.error('加载分享失败', message)
-    } finally {
-      loading.value = false
-    }
+    }).catch((error) => {
+      if (requestId !== shareRequestId) {
+        return
+      }
+      const detail =
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage')
+      errorMessage.value = detail
+      message.error(t('sharePublic.toasts.loadFailTitle'), detail)
+    })
   }
 
   const unlock = async (code: string) => {
-    loading.value = true
-    try {
+    return withLoading(async () => {
       const data = await unlockShare(token, { code })
       if (!data.accessToken && !data.ok) {
-        const message = '提取码错误'
-        unlockError.value = message
-        toast.error('解锁失败', message)
+        const detail = t('sharePublic.toasts.unlockWrongCode')
+        unlockError.value = detail
+        message.error(t('sharePublic.toasts.unlockFailTitle'), detail)
         return false
       }
       accessToken.value = data.accessToken ?? null
       await loadShare()
       unlockError.value = ''
-      toast.success('分享已解锁')
+      message.success(t('sharePublic.toasts.unlockSuccessTitle'))
       return true
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '请稍后重试'
-      unlockError.value = message
-      toast.error('解锁失败', message)
+    }).catch((error) => {
+      const detail =
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage')
+      unlockError.value = detail
+      message.error(t('sharePublic.toasts.unlockFailTitle'), detail)
       return false
-    } finally {
-      loading.value = false
-    }
+    })
   }
 
-  const loadEntries = async (path?: string) => {
+  const loadEntries = async (parent_id?: number | null) => {
+    const requestId = ++entryRequestId
     try {
       const data = await listShareEntries(
         token,
-        { path },
+        { parent_id: parent_id ?? null },
         accessToken.value ?? undefined,
       )
+      if (requestId !== entryRequestId) {
+        return
+      }
       items.value = data.items || []
-      currentPath.value = path ?? '/'
+      currentParentId.value = parent_id ?? null
     } catch (error) {
-      toast.error('加载分享目录失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('sharePublic.toasts.listFailTitle'),
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage'),
+      )
     }
   }
 
-  const download = async (path?: string) => {
+  const download = async (file_id?: number | null) => {
     try {
-      const url = getShareDownloadUrl(token, { path }, accessToken.value ?? undefined)
+      const url = getShareDownloadUrl(token, { file_id }, accessToken.value ?? undefined)
       const link = document.createElement('a')
       link.href = url
       link.rel = 'noopener'
       link.click()
-      toast.success('下载已开始')
+      message.success(t('sharePublic.toasts.downloadStarted'))
     } catch (error) {
-      toast.error('下载失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('sharePublic.toasts.downloadFailTitle'),
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage'),
+      )
     }
   }
 
-  const preview = async (path?: string) => {
+  const preview = async (file_id?: number | null) => {
     try {
-      const result = await previewShare(token, { path }, accessToken.value ?? undefined)
+      const result = await previewShare(token, { file_id }, accessToken.value ?? undefined)
       openBlob(result.blob)
     } catch (error) {
-      toast.error('预览失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('sharePublic.toasts.previewFailTitle'),
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage'),
+      )
     }
   }
 
-  const saveToDrive = async (targetPath: string) => {
+  const saveToDrive = async (targetParentId: number | null) => {
     try {
-      await saveShare(token, { targetPath })
-      toast.success('已保存到网盘')
+      await saveShare(token, { targetParentId })
+      message.success(t('sharePublic.toasts.saveSuccessTitle'))
     } catch (error) {
-      toast.error('保存失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('sharePublic.toasts.saveFailTitle'),
+        error instanceof Error ? error.message : t('sharePublic.toasts.commonFailMessage'),
+      )
     }
   }
 
@@ -117,7 +159,7 @@ export const usePublicShare = (token: string) => {
     share,
     fileMeta,
     items,
-    currentPath,
+    currentParentId,
     isFile,
     accessToken,
     unlockError,

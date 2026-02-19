@@ -6,9 +6,9 @@ import Button from '@/components/common/Button.vue'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import { listDir } from '@/api/modules/userDisk'
 import type { DiskEntry } from '@/types/disk'
-import { toRelativePath } from '@/utils/path'
 
 type TreeNode = {
+  id: number | null
   name: string
   path: string
   children: TreeNode[]
@@ -21,16 +21,18 @@ const props = defineProps<{
   open: boolean
   entries: DiskEntry[]
   currentPath: string
+  currentParentId: number | null
 }>()
 
 const emit = defineEmits<{
   (event: 'close'): void
-  (event: 'confirm', targetPath: string): void
+  (event: 'confirm', targetParentId: number | null): void
 }>()
 
 const { t, locale } = useI18n({ useScope: 'global' })
 
 const rootNode = ref<TreeNode>({
+  id: null,
   name: '',
   path: '',
   children: [],
@@ -39,11 +41,11 @@ const rootNode = ref<TreeNode>({
   loaded: false,
 })
 const selectedPath = ref('')
-
-const normalizedCurrentPath = computed(() => toRelativePath(props.currentPath || '/'))
+const selectedId = ref<number | null>(null)
 const rootName = computed(() => t('files.rootName'))
 
 const buildNode = (entry: DiskEntry): TreeNode => ({
+  id: entry.id,
   name: entry.name,
   path: entry.path,
   children: [],
@@ -58,10 +60,8 @@ const loadChildren = async (node: TreeNode) => {
   }
   node.loading = true
   try {
-    const data = await listDir(node.path)
-    node.children = (data.items || [])
-      .filter((item) => item.is_dir)
-      .map((item) => buildNode(item))
+    const data = await listDir(node.id ?? null)
+    node.children = (data.items || []).filter((item) => item.is_dir).map((item) => buildNode(item))
     node.loaded = true
   } finally {
     node.loading = false
@@ -79,6 +79,7 @@ const toggleNode = async (node: TreeNode) => {
 
 const selectNode = (node: TreeNode) => {
   selectedPath.value = node.path
+  selectedId.value = node.id
 }
 
 const flatNodes = computed(() => {
@@ -100,8 +101,8 @@ const invalidReason = computed(() => {
     return t('fileMoveDialog.noneSelected')
   }
   const target = selectedPath.value
-  const current = normalizedCurrentPath.value
-  if (target === current) {
+  const targetId = selectedId.value ?? null
+  if (props.entries.every((entry) => entry.parent_id === targetId)) {
     return t('fileMoveDialog.sameFolder')
   }
   for (const entry of props.entries) {
@@ -126,8 +127,10 @@ watch(
     if (!open) {
       return
     }
-    selectedPath.value = normalizedCurrentPath.value
+    selectedPath.value = props.currentPath || ''
+    selectedId.value = props.currentParentId ?? null
     rootNode.value = {
+      id: null,
       name: rootName.value,
       path: '',
       children: [],
@@ -149,11 +152,13 @@ watch(locale, () => {
 <template>
   <Modal :open="open" :title="t('fileMoveDialog.title')" @close="emit('close')">
     <div class="move">
-      <div class="move__meta">{{ t('fileMoveDialog.selectedCount', { count: props.entries.length }) }}</div>
+      <div class="move__meta">
+        {{ t('fileMoveDialog.selectedCount', { count: props.entries.length }) }}
+      </div>
       <div class="move__tree">
         <div
           v-for="{ node, level } in flatNodes"
-          :key="`${node.path || 'root'}`"
+          :key="`${node.id ?? 'root'}`"
           class="move__row"
           :class="{ 'is-selected': selectedPath === node.path }"
           @click="selectNode(node)"
@@ -179,7 +184,9 @@ watch(locale, () => {
     </div>
     <template #footer>
       <Button variant="ghost" @click="emit('close')">{{ t('fileMoveDialog.cancel') }}</Button>
-      <Button :disabled="!canSubmit" @click="emit('confirm', selectedPath)">{{ t('fileMoveDialog.move') }}</Button>
+      <Button :disabled="!canSubmit" @click="emit('confirm', selectedId)">{{
+        t('fileMoveDialog.move')
+      }}</Button>
     </template>
   </Modal>
 </template>

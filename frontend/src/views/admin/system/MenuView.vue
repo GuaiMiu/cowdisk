@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
 import Table from '@/components/common/Table.vue'
 import Tag from '@/components/common/Tag.vue'
-import Pagination from '@/components/common/Pagination.vue'
 import Modal from '@/components/common/Modal.vue'
 import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
@@ -13,8 +13,10 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Switch from '@/components/common/Switch.vue'
 import { useAdminMenus } from '@/composables/useAdminMenus'
 import type { MenuOut } from '@/types/menu'
+import { getRouteSearchKeyword } from '@/composables/useHeaderSearch'
 
 const menuStore = useAdminMenus()
+const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 const columns = computed(() => [
   { key: 'name', label: t('admin.menu.columns.name') },
@@ -44,10 +46,8 @@ const boolOptions = computed(() => [
 const formOpen = ref(false)
 const deleteConfirm = ref(false)
 const currentMenu = ref<MenuOut | null>(null)
-const keyword = ref('')
-const statusFilter = ref('all')
-const typeFilter = ref('all')
 const toggling = ref(new Set<number>())
+const searchKeyword = computed(() => getRouteSearchKeyword(route).toLowerCase())
 
 const form = reactive({
   id: 0,
@@ -79,26 +79,6 @@ const parentOptions = computed(() => [
     value: String(item.id || 0),
   })),
 ])
-
-const filteredMenus = computed(() => {
-  const keywordValue = keyword.value.trim().toLowerCase()
-  return menuStore.items.value.filter((menu) => {
-    const statusMatch =
-      statusFilter.value === 'all' ||
-      (statusFilter.value === 'true' ? !!menu.status : !menu.status)
-    const typeMatch =
-      typeFilter.value === 'all' || String(menu.type ?? '') === typeFilter.value
-    if (!statusMatch || !typeMatch) {
-      return false
-    }
-    if (!keywordValue) {
-      return true
-    }
-    return [menu.name, menu.permission_char, menu.router_path]
-      .filter(Boolean)
-      .some((field) => String(field).toLowerCase().includes(keywordValue))
-  })
-})
 
 type TreeNode = MenuOut & { children?: TreeNode[]; _level?: number }
 
@@ -141,10 +121,11 @@ const toggleCollapse = (id: number) => {
 }
 
 const treeRows = computed(() => {
-  const source = filteredMenus.value
+  const source = menuStore.items.value
   if (!source.length) {
     return [] as Array<MenuOut & { _level: number }>
   }
+  const keyword = searchKeyword.value
   const map = new Map<number, MenuOut>()
   source.forEach((item) => {
     if (item.id) {
@@ -152,7 +133,22 @@ const treeRows = computed(() => {
     }
   })
   const included = new Set<number>()
-  const matches = new Set(source.map((item) => item.id).filter((id): id is number => !!id))
+  const matches = new Set<number>()
+  source.forEach((item) => {
+    if (!item.id) {
+      return
+    }
+    if (!keyword) {
+      matches.add(item.id)
+      return
+    }
+    const name = (item.name || '').toLowerCase()
+    const permission = (item.permission_char || '').toLowerCase()
+    const path = (item.router_path || '').toLowerCase()
+    if (name.includes(keyword) || permission.includes(keyword) || path.includes(keyword)) {
+      matches.add(item.id)
+    }
+  })
   matches.forEach((id) => {
     let current = map.get(id)
     while (current?.id) {
@@ -180,7 +176,7 @@ const treeRows = computed(() => {
 
 const treeMap = computed(() => {
   const map = new Map<number, TreeNode>()
-  const source = filteredMenus.value
+  const source = menuStore.items.value
   source.forEach((item) => {
     if (item.id) {
       map.set(item.id, { ...item })
@@ -331,35 +327,14 @@ onMounted(() => {
   <section class="page">
     <PageHeader :title="t('admin.menu.title')" :subtitle="t('admin.menu.subtitle')">
       <template #actions>
-        <Button variant="secondary" @click="menuStore.fetchMenus(menuStore.page.value)">
+        <Button variant="secondary" @click="menuStore.fetchMenus()">
           {{ t('admin.menu.refresh') }}
         </Button>
-        <Button v-permission="'system:menu:add'" @click="openCreate">{{ t('admin.menu.add') }}</Button>
+        <Button v-permission="'system:menu:create'" @click="openCreate">{{
+          t('admin.menu.add')
+        }}</Button>
       </template>
     </PageHeader>
-
-    <div class="filters">
-      <Input v-model="keyword" :label="t('admin.menu.searchLabel')" :placeholder="t('admin.menu.searchPlaceholder')" />
-      <Select
-        v-model="typeFilter"
-        :label="t('admin.menu.typeLabel')"
-        :options="[
-          { label: t('admin.menu.typeOptions.all'), value: 'all' },
-          { label: t('admin.menu.typeOptions.directory'), value: '1' },
-          { label: t('admin.menu.typeOptions.menu'), value: '2' },
-          { label: t('admin.menu.typeOptions.button'), value: '3' },
-        ]"
-      />
-      <Select
-        v-model="statusFilter"
-        :label="t('admin.menu.statusLabel')"
-        :options="[
-          { label: t('admin.menu.statusOptions.all'), value: 'all' },
-          { label: t('admin.menu.statusOptions.enabled'), value: 'true' },
-          { label: t('admin.menu.statusOptions.disabled'), value: 'false' },
-        ]"
-      />
-    </div>
 
     <div class="table-wrap">
       <Table :columns="columns" :rows="treeRows" :min-rows="menuStore.size.value" scrollable fill>
@@ -373,6 +348,7 @@ onMounted(() => {
             >
               {{ collapsed.has(Number(row.id ?? 0)) ? '▸' : '▾' }}
             </button>
+            <span v-else class="tree-toggle tree-toggle--placeholder"></span>
             <span class="tree-label">{{ row.name }}</span>
           </span>
         </template>
@@ -396,10 +372,20 @@ onMounted(() => {
         </template>
         <template #cell-actions="{ row }">
           <div class="actions">
-            <Button size="sm" variant="secondary" v-permission="'system:menu:edit'" @click="openEdit(row)">
+            <Button
+              size="sm"
+              variant="secondary"
+              v-permission="'system:menu:update'"
+              @click="openEdit(row)"
+            >
               {{ t('common.edit') }}
             </Button>
-            <Button size="sm" variant="ghost" v-permission="'system:menu:delete'" @click="requestDelete(row)">
+            <Button
+              size="sm"
+              variant="ghost"
+              v-permission="'system:menu:delete'"
+              @click="requestDelete(row)"
+            >
               {{ t('common.delete') }}
             </Button>
           </div>
@@ -407,52 +393,115 @@ onMounted(() => {
       </Table>
     </div>
 
-    <Pagination
-      :total="menuStore.total.value"
-      :page-size="menuStore.size.value"
-      :current-page="menuStore.page.value"
-      @update:currentPage="menuStore.fetchMenus"
-      @update:pageSize="(size) => { menuStore.size.value = size; menuStore.fetchMenus(1) }"
-    />
   </section>
 
   <Modal
     :open="formOpen"
+    :width="860"
     :title="form.id ? t('admin.menu.modal.editTitle') : t('admin.menu.modal.createTitle')"
     @close="formOpen = false"
   >
     <div class="form">
       <Input
+        class="form__field"
         v-model="form.name"
+        size="sm"
         :label="t('admin.menu.form.name')"
         :placeholder="t('admin.menu.placeholders.name')"
         :error="errors.name"
       />
-      <Select v-model="form.type" :label="t('admin.menu.form.type')" :options="typeOptions" :error="errors.type" />
-      <Select v-model="form.pid" :label="t('admin.menu.form.parent')" :options="parentOptions" />
-      <Input v-model="form.route_name" :label="t('admin.menu.form.routeName')" :placeholder="t('admin.common.optional')" />
+      <Select
+        class="form__field"
+        v-model="form.type"
+        size="sm"
+        :label="t('admin.menu.form.type')"
+        :options="typeOptions"
+        :error="errors.type"
+      />
+      <Select
+        class="form__field"
+        v-model="form.pid"
+        size="sm"
+        :label="t('admin.menu.form.parent')"
+        :options="parentOptions"
+      />
       <Input
+        class="form__field"
+        v-model="form.route_name"
+        size="sm"
+        :label="t('admin.menu.form.routeName')"
+        :placeholder="t('admin.common.optional')"
+      />
+      <Input
+        class="form__field"
         v-model="form.router_path"
+        size="sm"
         :label="t('admin.menu.form.routerPath')"
         :placeholder="t('admin.menu.placeholders.routerPath')"
       />
       <Input
+        class="form__field"
         v-model="form.permission_char"
+        size="sm"
         :label="t('admin.menu.form.permission')"
         :placeholder="t('admin.menu.placeholders.permission')"
       />
       <Input
+        class="form__field"
         v-model="form.sort"
+        size="sm"
         :label="t('admin.menu.form.sort')"
         :placeholder="t('admin.menu.placeholders.sort')"
       />
-      <Select v-model="form.status" :label="t('admin.menu.form.status')" :options="statusOptions" />
-      <Select v-model="form.keep_alive" :label="t('admin.menu.form.keepAlive')" :options="boolOptions" />
-      <Select v-model="form.is_frame" :label="t('admin.menu.form.isFrame')" :options="boolOptions" />
-      <Input v-model="form.redirect" :label="t('admin.menu.form.redirect')" :placeholder="t('admin.common.optional')" />
-      <Input v-model="form.component_path" :label="t('admin.menu.form.componentPath')" :placeholder="t('admin.common.optional')" />
-      <Input v-model="form.icon" :label="t('admin.menu.form.icon')" :placeholder="t('admin.common.optional')" />
-      <Input v-model="form.description" :label="t('admin.menu.form.description')" :placeholder="t('admin.common.optional')" />
+      <Select
+        class="form__field"
+        v-model="form.status"
+        size="sm"
+        :label="t('admin.menu.form.status')"
+        :options="statusOptions"
+      />
+      <Select
+        class="form__field"
+        v-model="form.keep_alive"
+        size="sm"
+        :label="t('admin.menu.form.keepAlive')"
+        :options="boolOptions"
+      />
+      <Select
+        class="form__field"
+        v-model="form.is_frame"
+        size="sm"
+        :label="t('admin.menu.form.isFrame')"
+        :options="boolOptions"
+      />
+      <Input
+        class="form__field"
+        v-model="form.redirect"
+        size="sm"
+        :label="t('admin.menu.form.redirect')"
+        :placeholder="t('admin.common.optional')"
+      />
+      <Input
+        class="form__field"
+        v-model="form.component_path"
+        size="sm"
+        :label="t('admin.menu.form.componentPath')"
+        :placeholder="t('admin.common.optional')"
+      />
+      <Input
+        class="form__field"
+        v-model="form.icon"
+        size="sm"
+        :label="t('admin.menu.form.icon')"
+        :placeholder="t('admin.common.optional')"
+      />
+      <Input
+        class="form__field form__field--full"
+        v-model="form.description"
+        size="sm"
+        :label="t('admin.menu.form.description')"
+        :placeholder="t('admin.common.optional')"
+      />
     </div>
     <template #footer>
       <Button variant="secondary" @click="formOpen = false">{{ t('common.cancel') }}</Button>
@@ -475,7 +524,7 @@ onMounted(() => {
   gap: var(--space-4);
   height: 100%;
   min-height: 0;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto 1fr;
   overflow: hidden;
 }
 
@@ -488,23 +537,23 @@ onMounted(() => {
 .actions {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: var(--space-2);
+  height: 100%;
 }
-
 
 .form {
   display: grid;
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-2) var(--space-3);
 }
 
-.filters {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(160px, 200px) minmax(160px, 200px);
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+.form__field {
+  min-width: 0;
+}
+
+.form__field--full {
+  grid-column: 1 / -1;
 }
 
 .tree-name {
@@ -530,11 +579,14 @@ onMounted(() => {
 
 .tree-label {
   font-weight: 600;
+  color: var(--color-text);
 }
 
-@media (max-width: 768px) {
-  .filters {
-    grid-template-columns: 1fr;
-  }
+.tree-toggle--placeholder {
+  opacity: 0;
+  cursor: default;
+  pointer-events: none;
 }
+
 </style>
+

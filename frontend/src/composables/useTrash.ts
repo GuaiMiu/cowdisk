@@ -1,10 +1,12 @@
 import { ref } from 'vue'
-import { clearTrash, deleteTrash, listTrash, restoreTrash } from '@/api/modules/userDisk'
-import { useToastStore } from '@/stores/toast'
+import { useI18n } from 'vue-i18n'
+import { batchDeleteTrash, batchRestoreTrash, clearTrash, listTrash } from '@/api/modules/userDisk'
+import { useMessage } from '@/stores/message'
 import type { DiskTrashEntry } from '@/types/disk'
 
 export const useTrash = () => {
-  const toast = useToastStore()
+  const { t } = useI18n({ useScope: 'global' })
+  const message = useMessage()
   const loading = ref(false)
   const items = ref<DiskTrashEntry[]>([])
 
@@ -14,7 +16,10 @@ export const useTrash = () => {
       const data = await listTrash()
       items.value = data.items || []
     } catch (error) {
-      toast.error('加载回收站失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('trash.toasts.loadFailTitle'),
+        error instanceof Error ? error.message : t('trash.toasts.loadFailMessage'),
+      )
     } finally {
       loading.value = false
     }
@@ -22,24 +27,30 @@ export const useTrash = () => {
 
   const restore = async (entry: DiskTrashEntry) => {
     try {
-      await restoreTrash({ id: entry.id })
-      toast.success('已恢复')
+      await batchRestoreTrash({ ids: [entry.id] })
+      message.success(t('trash.toasts.restoreSuccessTitle'), entry.name)
       await fetchTrash()
       return true
     } catch (error) {
-      toast.error('恢复失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('trash.toasts.restoreFailTitle'),
+        error instanceof Error ? error.message : t('trash.toasts.restoreFailMessage'),
+      )
       return false
     }
   }
 
   const remove = async (entry: DiskTrashEntry) => {
     try {
-      await deleteTrash({ id: entry.id })
-      toast.success('已删除')
+      await batchDeleteTrash({ ids: [entry.id] })
+      message.success(t('trash.toasts.deleteSuccessTitle'), entry.name)
       await fetchTrash()
       return true
     } catch (error) {
-      toast.error('删除失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('trash.toasts.deleteFailTitle'),
+        error instanceof Error ? error.message : t('trash.toasts.deleteFailMessage'),
+      )
       return false
     }
   }
@@ -47,11 +58,14 @@ export const useTrash = () => {
   const clear = async () => {
     try {
       await clearTrash()
-      toast.success('回收站已清空')
+      message.success(t('trash.toasts.clearSuccessTitle'))
       await fetchTrash()
       return true
     } catch (error) {
-      toast.error('清空失败', error instanceof Error ? error.message : '请稍后重试')
+      message.error(
+        t('trash.toasts.clearFailTitle'),
+        error instanceof Error ? error.message : t('trash.toasts.clearFailMessage'),
+      )
       return false
     }
   }
@@ -63,5 +77,15 @@ export const useTrash = () => {
     restore,
     remove,
     clear,
+    restoreBatch: async (ids: string[]) => {
+      const result = await batchRestoreTrash({ ids })
+      await fetchTrash()
+      return result
+    },
+    removeBatch: async (ids: string[]) => {
+      const result = await batchDeleteTrash({ ids })
+      await fetchTrash()
+      return result
+    },
   }
 }

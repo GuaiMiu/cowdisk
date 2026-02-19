@@ -168,7 +168,9 @@ const toggle = (item: TreeCheckItem) => {
         @change="toggle(row.item)"
       />
       <span class="tree-checklist__label">{{ row.item.label }}</span>
-      <span v-if="row.item.description" class="tree-checklist__desc">{{ row.item.description }}</span>
+      <span v-if="row.item.description" class="tree-checklist__desc">{{
+        row.item.description
+      }}</span>
     </label>
   </div>
 </template>

@@ -62,7 +62,6 @@ export const setLocale = async (locale: string) => {
   await loadMonacoLocale(normalized)
 }
 
-export const getLocale = (): AppLocale =>
-  normalizeLocale(i18n.global.locale.value)
+export const getLocale = (): AppLocale => normalizeLocale(i18n.global.locale.value)
 
 export { SUPPORTED_LOCALES, type AppLocale }

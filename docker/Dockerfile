@@ -14,8 +14,12 @@ ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 ENV PYTHONUNBUFFERED=1
 ENV DISK_ROOT=/app/data
+ENV UVICORN_LOG_DIR=/app/logs
+ENV PATH="/app/backend/.venv/bin:$PATH"
+ENV PYTHONPATH=/app/backend
+
 RUN apk add --no-cache nginx
-RUN mkdir -p /app/frontend /app/data /app/logs /app/config
+RUN mkdir -p /app/frontend /app/data /app/logs /app/logs/app /app/logs/uv /app/logs/nginx /app/config
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=backend/uv.lock,target=uv.lock \
@@ -24,7 +28,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY backend/pyproject.toml backend/uv.lock ./
 COPY backend/ ./
-COPY backend/.env.example /app/config/.env
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
@@ -34,10 +37,7 @@ COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-
-ENV PATH="/app/backend/.venv/bin:$PATH"
-ENV PYTHONPATH=/app/backend
-
-RUN mkdir -p /app/logs
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:10086/api/v1/system/setup/status || exit 1
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

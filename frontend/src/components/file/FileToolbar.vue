@@ -3,10 +3,26 @@ import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import IconButton from '@/components/common/IconButton.vue'
 import Dropdown from '@/components/common/Dropdown.vue'
-import { UploadCloud, FolderPlus, FileText, RefreshCw, ListChecks, ChevronDown, FolderInput, Trash2 } from 'lucide-vue-next'
+import {
+  UploadCloud,
+  FolderPlus,
+  FileText,
+  RefreshCw,
+  List,
+  LayoutGrid,
+  ListChecks,
+  ChevronDown,
+  FolderInput,
+  Trash2,
+  FileArchive,
+  Download,
+} from 'lucide-vue-next'
 
 const props = defineProps<{
   selectedCount: number
+  queuePendingCount: number
+  queueErrorCount: number
+  viewMode?: 'list' | 'thumb'
 }>()
 
 const emit = defineEmits<{
@@ -18,6 +34,9 @@ const emit = defineEmits<{
   (event: 'toggle-queue'): void
   (event: 'delete-selected'): void
   (event: 'move-selected'): void
+  (event: 'compress-selected'): void
+  (event: 'extract-selected'): void
+  (event: 'change-view', mode: 'list' | 'thumb'): void
 }>()
 
 const { t } = useI18n({ useScope: 'global' })
@@ -36,10 +55,26 @@ const { t } = useI18n({ useScope: 'global' })
         </template>
         <template #content="{ close }">
           <div class="menu">
-            <button class="menu__item" type="button" v-permission="'disk:file:mkdir'" @click="emit('new-folder'); close()">
+            <button
+              class="menu__item"
+              type="button"
+              v-permission="'disk:file:mkdir'"
+              @click="
+                emit('new-folder');
+                close();
+              "
+            >
               {{ t('fileToolbar.folder') }}
             </button>
-            <button class="menu__item" type="button" v-permission="'disk:file:upload'" @click="emit('new-text'); close()">
+            <button
+              class="menu__item"
+              type="button"
+              v-permission="'disk:file:upload'"
+              @click="
+                emit('new-text');
+                close();
+              "
+            >
               {{ t('fileToolbar.textFile') }}
             </button>
           </div>
@@ -67,11 +102,29 @@ const { t } = useI18n({ useScope: 'global' })
       <Button
         v-if="selectedCount > 0"
         variant="secondary"
-        v-permission="'disk:file:rename'"
+        v-permission="'disk:file:move'"
         @click="emit('move-selected')"
       >
         <FolderInput :size="16" />
         {{ t('fileToolbar.moveSelected', { count: selectedCount }) }}
+      </Button>
+      <Button
+        v-if="selectedCount > 0"
+        variant="secondary"
+        v-permission="'disk:archive:compress'"
+        @click="emit('compress-selected')"
+      >
+        <FileArchive :size="16" />
+        {{ t('fileToolbar.compressSelected', { count: selectedCount }) }}
+      </Button>
+      <Button
+        v-if="selectedCount > 0"
+        variant="secondary"
+        v-permission="'disk:archive:extract'"
+        @click="emit('extract-selected')"
+      >
+        <Download :size="16" />
+        {{ t('fileToolbar.extractSelected', { count: selectedCount }) }}
       </Button>
       <Button
         v-if="selectedCount > 0"
@@ -84,10 +137,42 @@ const { t } = useI18n({ useScope: 'global' })
       </Button>
     </div>
     <div class="toolbar__right">
-      <IconButton :aria-label="t('fileToolbar.uploadQueue')" variant="secondary" @click="emit('toggle-queue')">
-        <ListChecks :size="18" />
-      </IconButton>
-      <IconButton :aria-label="t('fileToolbar.refresh')" variant="secondary" @click="emit('refresh')">
+      <div class="view-toggle">
+        <IconButton
+          :aria-label="t('fileToolbar.viewList')"
+          :variant="props.viewMode === 'list' ? 'secondary' : 'ghost'"
+          @click="emit('change-view', 'list')"
+        >
+          <List :size="18" />
+        </IconButton>
+        <IconButton
+          :aria-label="t('fileToolbar.viewThumb')"
+          :variant="props.viewMode === 'thumb' ? 'secondary' : 'ghost'"
+          @click="emit('change-view', 'thumb')"
+        >
+          <LayoutGrid :size="18" />
+        </IconButton>
+      </div>
+      <div class="queue-trigger">
+        <IconButton
+          :aria-label="t('fileToolbar.uploadQueue')"
+          variant="secondary"
+          @click="emit('toggle-queue')"
+        >
+          <ListChecks :size="18" />
+        </IconButton>
+        <span v-if="props.queuePendingCount > 0" class="queue-trigger__badge">
+          {{ props.queuePendingCount > 99 ? '99+' : props.queuePendingCount }}
+        </span>
+        <span v-else-if="props.queueErrorCount > 0" class="queue-trigger__badge queue-trigger__badge--error">
+          !
+        </span>
+      </div>
+      <IconButton
+        :aria-label="t('fileToolbar.refresh')"
+        variant="secondary"
+        @click="emit('refresh')"
+      >
         <RefreshCw :size="18" />
       </IconButton>
     </div>
@@ -111,6 +196,44 @@ const { t } = useI18n({ useScope: 'global' })
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.queue-trigger {
+  position: relative;
+  display: inline-flex;
+}
+
+.view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.queue-trigger__badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border: 1px solid var(--color-surface);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.queue-trigger__badge--error {
+  min-width: 16px;
+  width: 16px;
+  padding: 0;
+  background: var(--color-danger);
+  color: var(--color-on-danger);
 }
 
 .menu {
@@ -127,10 +250,18 @@ const { t } = useI18n({ useScope: 'global' })
   cursor: pointer;
   font-size: 13px;
   color: var(--color-text);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .menu__item:hover {
   background: var(--color-surface-2);
+}
+
+.menu__item:active {
+  transform: var(--interaction-press-scale);
 }
 
 @media (max-width: 768px) {
@@ -142,6 +273,10 @@ const { t } = useI18n({ useScope: 'global' })
   .toolbar__left,
   .toolbar__right {
     width: 100%;
+  }
+
+  .toolbar__left {
+    flex-wrap: wrap;
   }
 
   .toolbar__left > * {

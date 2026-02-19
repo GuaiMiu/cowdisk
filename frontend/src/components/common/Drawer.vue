@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import { X } from 'lucide-vue-next'
+import { useDismissibleLayer } from '@/composables/useDismissibleLayer'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 
 const props = withDefaults(
   defineProps<{
@@ -16,16 +19,37 @@ const props = withDefaults(
 const emit = defineEmits<{
   (event: 'close'): void
 }>()
+
+const panelRef = ref<HTMLElement | null>(null)
+const enabled = computed(() => props.open)
+
+useDismissibleLayer({
+  enabled,
+  rootRef: panelRef,
+  onEscape: () => emit('close'),
+  onPointerDownOutside: () => emit('close'),
+})
+
+useFocusTrap({
+  enabled,
+  panelRef,
+})
 </script>
 
 <template>
   <teleport to="body">
     <div class="drawer" :class="{ 'drawer--open': open }">
       <transition name="fade">
-        <div v-show="open" class="drawer__backdrop" @click="emit('close')"></div>
+        <div v-show="open" class="drawer__backdrop"></div>
       </transition>
       <transition name="slide">
-        <div v-show="open" class="drawer__panel" :style="{ width: `${width}px` }">
+        <div
+          v-show="open"
+          ref="panelRef"
+          class="drawer__panel"
+          :style="{ width: `${width}px` }"
+          tabindex="-1"
+        >
           <header class="drawer__header">
             <h3>{{ title }}</h3>
             <button class="drawer__close" type="button" aria-label="Close" @click="emit('close')">
@@ -96,7 +120,11 @@ const emit = defineEmits<{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: border-color var(--transition-base), color var(--transition-base), background var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    color var(--transition-base),
+    background var(--transition-base),
+    transform var(--transition-fast);
 }
 
 .drawer__close:hover {
@@ -121,17 +149,24 @@ const emit = defineEmits<{
 
 .slide-enter-active,
 .slide-leave-active {
-  transition: transform var(--transition-base);
+  transition:
+    transform var(--transition-slow),
+    opacity var(--transition-base);
+}
+
+.drawer__close:active {
+  transform: var(--interaction-press-scale);
 }
 
 .slide-enter-from,
 .slide-leave-to {
   transform: translateX(100%);
+  opacity: 0.98;
 }
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity var(--transition-fast);
+  transition: opacity var(--transition-base);
 }
 
 .fade-enter-from,
