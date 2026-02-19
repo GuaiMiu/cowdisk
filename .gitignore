@@ -19,3 +19,4 @@ frontend/dist/
 /backend/.install_state.json
 /backend/.installed
 /data.db
+/backend/.data.db

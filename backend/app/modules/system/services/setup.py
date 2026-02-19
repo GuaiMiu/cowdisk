@@ -399,11 +399,6 @@ class SetupService:
         redis_enable = cls._as_bool(payload.get("redis_enable"))
         updates = {
             "DATABASE_TYPE": database_type,
-            "DATABASE_HOST": "",
-            "DATABASE_PORT": "",
-            "DATABASE_USER": "",
-            "DATABASE_PASSWORD": "",
-            "DATABASE_NAME": "",
             "DATABASE_URL": database_url,
             "REDIS_ENABLE": "true" if redis_enable else "false",
             "REDIS_HOST": payload.get("redis_host") or "",
@@ -414,16 +409,6 @@ class SetupService:
             "JWT_SECRET_KEY": jwt_secret,
         }
         comment_out = set()
-        if database_type == "sqlite":
-            comment_out.update(
-                {
-                    "DATABASE_HOST",
-                    "DATABASE_PORT",
-                    "DATABASE_USER",
-                    "DATABASE_PASSWORD",
-                    "DATABASE_NAME",
-                }
-            )
         if not redis_enable:
             comment_out.update(
                 {
@@ -442,6 +427,11 @@ class SetupService:
             "APP_NAME",
             "APP_DESCRIPTION",
             "DISK_ROOT",
+            "DATABASE_HOST",
+            "DATABASE_PORT",
+            "DATABASE_USER",
+            "DATABASE_PASSWORD",
+            "DATABASE_NAME",
             "UPLOAD_MAX_SIZE",
             "PREVIEW_MAX_DURATION",
             "DOWNLOAD_TOKEN_TTL",

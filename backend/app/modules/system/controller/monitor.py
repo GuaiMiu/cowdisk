@@ -13,6 +13,7 @@ import os
 import platform
 import shutil
 import socket
+import subprocess
 import sys
 import time
 import ctypes
@@ -455,13 +456,65 @@ def _read_disk_status() -> DiskStatusOut:
         return DiskStatusOut(path=str(path), status="down")
 
 
+def _read_processor_name() -> str:
+    system = platform.system().lower()
+    # Windows: platform.processor() 往往是 Family/Model 字符串，优先读取 Win32_Processor.Name。
+    if system == "windows":
+        commands = [
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name)",
+            ],
+            [
+                "wmic",
+                "cpu",
+                "get",
+                "name",
+            ],
+        ]
+        for cmd in commands:
+            try:
+                completed = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                    check=False,
+                )
+                if completed.returncode != 0:
+                    continue
+                lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+                if not lines:
+                    continue
+                if len(lines) == 1:
+                    return lines[0]
+                # wmic 第一行通常是 "Name"，取第一条值。
+                return lines[1]
+            except Exception:
+                continue
+
+    candidates = [
+        platform.processor(),
+        platform.uname().processor,
+        os.environ.get("PROCESSOR_IDENTIFIER"),
+        platform.machine(),
+    ]
+    for item in candidates:
+        value = (item or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def _read_server_info() -> ServerInfoOut:
     return ServerInfoOut(
         hostname=socket.gethostname(),
         os=platform.system(),
         os_release=platform.release(),
         machine=platform.machine(),
-        processor=platform.processor(),
+        processor=_read_processor_name(),
         app_start_time=datetime.fromtimestamp(APP_START_TS),
     )
 
