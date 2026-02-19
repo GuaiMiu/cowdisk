@@ -27,6 +27,7 @@ from app.modules.disk.controller.wopi import wopi_router
 from app.modules.system.router.config import system_config_router
 from app.audit.router import audit_router
 from app.modules.system.controller.setup import setup_router
+from app.modules.system.controller.monitor import monitor_router
 
 api_router = APIRouter(prefix=settings.APP_API_PREFIX)
 
@@ -43,6 +44,7 @@ admin_router.include_router(admin_upload_router)
 system_router = APIRouter(prefix="/system")
 system_router.include_router(audit_router)
 system_router.include_router(setup_router)
+system_router.include_router(monitor_router)
 
 me_router = APIRouter(prefix="/me")
 me_router.include_router(files_router)

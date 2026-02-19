@@ -384,6 +384,9 @@ export default {
     nav: {
       config: '系统配置',
       configSystem: '基础配置',
+      monitor: '系统监控',
+      monitorService: '服务监控',
+      monitorOnline: '在线用户',
       system: '系统管理',
       access: '权限配置',
       audit: '审计中心',
@@ -391,6 +394,97 @@ export default {
       roles: '角色管理',
       menus: '菜单管理',
       disk: '网盘管理',
+    },
+    monitor: {
+      title: '系统监控',
+      subtitle: '在线用户与核心服务健康状态',
+      service: {
+        title: '服务监控',
+        subtitle: '核心服务运行状态与可用性',
+      },
+      online: {
+        title: '在线用户',
+        subtitle: '当前在线会话与设备信息',
+      },
+      cards: {
+        onlineUsers: '在线用户',
+        onlineSessions: '在线会话',
+        serviceHealth: '服务健康',
+        appUptime: '运行时长',
+        serviceDown: '异常服务',
+        serviceDegraded: '降级服务',
+        cpuUsage: 'CPU 使用率',
+        memoryUsage: '内存使用率',
+        diskUsage: '磁盘使用率',
+      },
+      status: {
+        up: '正常',
+        down: '异常',
+        degraded: '降级',
+      },
+      serviceName: {
+        database: '数据库',
+        redis: 'Redis',
+        storage: '存储',
+      },
+      tables: {
+        services: {
+          title: '服务监控',
+          columns: {
+            name: '服务',
+            status: '状态',
+            latency: '耗时',
+            detail: '详情',
+          },
+        },
+        online: {
+          title: '在线用户会话',
+          columns: {
+            user: '用户',
+            ip: '登录 IP',
+            ttl: '令牌剩余',
+            device: '设备信息',
+            actions: '操作',
+          },
+        },
+      },
+      sections: {
+        server: '服务器信息',
+        memoryDisk: '内存与磁盘',
+        python: 'Python 状态',
+      },
+      fields: {
+        hostname: '主机名',
+        os: '操作系统',
+        machine: '架构',
+        processor: '处理器',
+        startedAt: '启动时间',
+        memoryTotal: '内存总量',
+        memoryUsed: '内存已用',
+        diskPath: '磁盘路径',
+        diskFree: '磁盘剩余',
+        cpuCores: 'CPU 核心',
+        pythonStatus: '运行状态',
+        pythonVersion: '版本',
+        pythonImpl: '实现',
+        pythonPid: '进程 ID',
+        pythonCpu: '进程 CPU',
+      },
+      actions: {
+        forceLogout: '强退',
+      },
+      confirm: {
+        forceTitle: '确认强退会话',
+        forceMessage: '强退后该在线会话会立即失效，是否继续？',
+      },
+      lastUpdated: '最后更新时间',
+      toasts: {
+        loadFailTitle: '监控数据加载失败',
+        loadFailMessage: '请稍后重试',
+        forceSuccess: '会话已强制下线',
+        forceFailTitle: '强退失败',
+        forceFailMessage: '请稍后重试',
+      },
     },
     configShared: {
       rules: {

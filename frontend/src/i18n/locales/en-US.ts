@@ -384,6 +384,9 @@ export default {
     nav: {
       config: 'System Config',
       configSystem: 'Basic Config',
+      monitor: 'System Monitor',
+      monitorService: 'Service Monitor',
+      monitorOnline: 'Online Users',
       system: 'System',
       access: 'Access',
       audit: 'Audit',
@@ -391,6 +394,97 @@ export default {
       roles: 'Roles',
       menus: 'Menus',
       disk: 'Disk',
+    },
+    monitor: {
+      title: 'System Monitor',
+      subtitle: 'Online users and core service health',
+      service: {
+        title: 'Service Monitor',
+        subtitle: 'Status and availability of core services',
+      },
+      online: {
+        title: 'Online Users',
+        subtitle: 'Current sessions and device information',
+      },
+      cards: {
+        onlineUsers: 'Online Users',
+        onlineSessions: 'Online Sessions',
+        serviceHealth: 'Service Health',
+        appUptime: 'Uptime',
+        serviceDown: 'Down Services',
+        serviceDegraded: 'Degraded Services',
+        cpuUsage: 'CPU Usage',
+        memoryUsage: 'Memory Usage',
+        diskUsage: 'Disk Usage',
+      },
+      status: {
+        up: 'Up',
+        down: 'Down',
+        degraded: 'Degraded',
+      },
+      serviceName: {
+        database: 'Database',
+        redis: 'Redis',
+        storage: 'Storage',
+      },
+      tables: {
+        services: {
+          title: 'Service Status',
+          columns: {
+            name: 'Service',
+            status: 'Status',
+            latency: 'Latency',
+            detail: 'Detail',
+          },
+        },
+        online: {
+          title: 'Online Sessions',
+          columns: {
+            user: 'User',
+            ip: 'Login IP',
+            ttl: 'Token TTL',
+            device: 'Device',
+            actions: 'Actions',
+          },
+        },
+      },
+      sections: {
+        server: 'Server Info',
+        memoryDisk: 'Memory & Disk',
+        python: 'Python Status',
+      },
+      fields: {
+        hostname: 'Hostname',
+        os: 'OS',
+        machine: 'Architecture',
+        processor: 'Processor',
+        startedAt: 'Started At',
+        memoryTotal: 'Total Memory',
+        memoryUsed: 'Used Memory',
+        diskPath: 'Disk Path',
+        diskFree: 'Disk Free',
+        cpuCores: 'CPU Cores',
+        pythonStatus: 'Status',
+        pythonVersion: 'Version',
+        pythonImpl: 'Implementation',
+        pythonPid: 'Process ID',
+        pythonCpu: 'Process CPU',
+      },
+      actions: {
+        forceLogout: 'Force Logout',
+      },
+      confirm: {
+        forceTitle: 'Confirm Force Logout',
+        forceMessage: 'This session will be invalidated immediately. Continue?',
+      },
+      lastUpdated: 'Last Updated',
+      toasts: {
+        loadFailTitle: 'Failed to load monitor data',
+        loadFailMessage: 'Please try again later',
+        forceSuccess: 'Session has been logged out',
+        forceFailTitle: 'Force logout failed',
+        forceFailMessage: 'Please try again later',
+      },
     },
     configShared: {
       rules: {

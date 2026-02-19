@@ -448,22 +448,20 @@ class SetupService:
                 sql_script.replace("`backend`.", "")
                 .replace("INSERT INTO", "INSERT OR IGNORE INTO")
             )
-            for statement in sql_script.split(";"):
-                statement = statement.strip()
-                if not statement:
-                    continue
-                # Strip full-line comments before executing.
-                lines = [
-                    line
-                    for line in statement.splitlines()
-                    if line.strip() and not line.lstrip().startswith("--")
-                ]
-                cleaned = "\n".join(lines).strip()
-                if not cleaned:
-                    continue
-                await session.execute(text(cleaned))
-        else:
-            await session.execute(text(sql_script))
+        for statement in sql_script.split(";"):
+            statement = statement.strip()
+            if not statement:
+                continue
+            # Strip full-line comments before executing.
+            lines = [
+                line
+                for line in statement.splitlines()
+                if line.strip() and not line.lstrip().startswith("--")
+            ]
+            cleaned = "\n".join(lines).strip()
+            if not cleaned:
+                continue
+            await session.execute(text(cleaned))
         await session.commit()
 
     @classmethod

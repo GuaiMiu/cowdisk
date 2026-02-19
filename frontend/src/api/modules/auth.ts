@@ -52,6 +52,12 @@ export const logout = () =>
     method: 'POST',
   })
 
+export const refreshToken = () =>
+  request<TokenOut>({
+    url: '/api/v1/auth/refresh-token',
+    method: 'POST',
+  })
+
 export const getAvatar = () =>
   downloadBlob({
     url: '/api/v1/user/avatar',

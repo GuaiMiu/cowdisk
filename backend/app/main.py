@@ -33,6 +33,7 @@ openapi_tags = [
     {"name": "Disk - Archive", "description": "压缩与解压任务"},
     {"name": "System - Config", "description": "系统配置中心"},
     {"name": "System - Audit", "description": "审计日志"},
+    {"name": "System - Monitor", "description": "系统监控"},
     {"name": "System - Setup", "description": "安装引导"},
 ]
 

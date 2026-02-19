@@ -36,3 +36,6 @@ class RedisInitKeyEnum(Enum):
     CAPTCHA_CODES = {"key": "captcha_codes", "remark": "图片验证码"}
     ACCOUNT_LOCK = {"key": "account_lock", "remark": "用户锁定"}
     PASSWORD_ERROR_COUNT = {"key": "password_error_count", "remark": "密码错误次数"}
+    SESSION_META = {"key": "session_meta", "remark": "会话元数据(设备指纹等)"}
+    AUTH_RATE_LIMIT = {"key": "auth_rate_limit", "remark": "认证接口限流计数"}
+    REFRESH_ROTATE = {"key": "refresh_rotate", "remark": "刷新轮换计数"}

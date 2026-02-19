@@ -4,6 +4,7 @@ import type { RoleAddIn, RoleEditIn, RolesDeleteIn, RoleOut } from '@/types/role
 import type { UserAddIn, UserEditIn, UsersDeleteIn } from '@/types/user'
 import type { UserOut } from '@/types/auth'
 import type { CursorPageResult } from '@/types/pagination'
+import type { ForceLogoutResult, SystemMonitorOverview } from '@/types/system-monitor'
 
 export const getUserList = (params?: { cursor?: string | null; size?: number }) =>
   request<CursorPageResult<UserOut>>({
@@ -123,4 +124,16 @@ export const deleteMenus = (payload: MenusDeleteIn) =>
     url: '/api/v1/admin/menus',
     method: 'DELETE',
     data: payload,
+  })
+
+export const getSystemMonitorOverview = () =>
+  request<SystemMonitorOverview>({
+    url: '/api/v1/system/monitor/overview',
+    method: 'GET',
+  })
+
+export const forceLogoutOnlineSession = (sessionId: string) =>
+  request<ForceLogoutResult>({
+    url: `/api/v1/system/monitor/online-users/${encodeURIComponent(sessionId)}/force-logout`,
+    method: 'POST',
   })

@@ -2,7 +2,7 @@ import type { App } from 'vue'
 import { createPinia } from 'pinia'
 import router from '@/router'
 import { setupRouterGuards } from '@/router/guard'
-import { setTokenGetter, setUnauthorizedHandler } from '@/api/interceptors'
+import { setTokenGetter, setTokenRefresher, setUnauthorizedHandler } from '@/api/interceptors'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { registerPermissionDirective } from '@/directives/permission'
@@ -18,6 +18,7 @@ export async function setupApp(app: App) {
   const authStore = useAuthStore(pinia)
   await appStore.initRuntimeConfig()
   setTokenGetter(() => authStore.token)
+  setTokenRefresher(() => authStore.refreshToken())
   setUnauthorizedHandler(() => authStore.handleUnauthorized())
 
   setupRouterGuards(router)

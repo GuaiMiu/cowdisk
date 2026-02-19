@@ -7,11 +7,10 @@
 """
 
 import secrets
-from datetime import timedelta
+import json
 from typing import Annotated
 
-import jwt
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request
 from fastapi.params import Depends, Cookie
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import ValidationError
@@ -24,7 +23,6 @@ from app.core.config import settings
 from app.core.database import get_async_redis, get_async_session
 from app.core.exception import AuthException, LoginException, ServiceException
 from app.modules.admin.dao.user import user_crud
-from app.enum.redis import RedisInitKeyEnum
 from app.modules.admin.models.response import ResponseModel
 from app.modules.admin.models.user import User
 from app.modules.admin.schemas.auth import TokenOut, TokenPayload
@@ -69,13 +67,23 @@ async def register(
 async def login(
     request: Request,
     # user: UserLoginIn,
-    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
     db: AsyncSession = Depends(get_async_session),
     redis: aioredis.Redis = Depends(get_async_redis),
 ):
+    client_ip = request.client.host if request.client else ""
+    allowed = await AuthService.apply_rate_limit(
+        redis,
+        action="login",
+        identifier=client_ip or "unknown",
+        limit=settings.AUTH_LOGIN_RATE_LIMIT,
+        window_seconds=settings.AUTH_LOGIN_RATE_WINDOW,
+    )
+    if not allowed:
+        logger.warning("登录限流触发 ip=%s", client_ip)
+        raise LoginException(msg="登录过于频繁，请稍后重试")
 
-    if not form_data.username and not form_data.password:
+    if not form_data.username or not form_data.password:
         raise LoginException(msg=f"用户名或密码错误，请重新登录")
     try:
         user = UserLoginIn(
@@ -88,133 +96,144 @@ async def login(
         db=db,
         redis=redis,
         login_user=user,
-        client_ip=request.client.host if request.client else None,
+        client_ip=client_ip,
     )
     # 生成token
     session_id = secrets.token_urlsafe(32)
+    refresh_token = AuthService.create_refresh_token()
     token = await AuthService.create_access_token(
         TokenPayload(id=db_user.id, session_id=session_id, username=db_user.username)
     )
-    await redis.set(
-        f"{RedisInitKeyEnum.ACCESS_TOKEN.key}:{session_id}",
-        token,
-        ex=timedelta(minutes=settings.JWT_REDIS_EXPIRE_MINUTES),
+    await AuthService.bind_session(
+        redis,
+        user_id=db_user.id,
+        session_id=session_id,
+        access_token=token,
+        refresh_token=refresh_token,
+        user_agent=request.headers.get("user-agent"),
+        login_ip=client_ip,
     )
 
-    response.set_cookie(
+    result = Res.success(
+        msg="登录成功", data=TokenOut(access_token=token, token_type="bearer")
+    )
+    result.set_cookie(
         key="session_id",
         value=session_id,
         httponly=True,
-        # secure=True,
+        secure=request.url.scheme == "https",
         samesite="lax",
         max_age=7 * 24 * 60 * 60,
         path="/",
     )
-    # 设置refresh_token
-    await redis.set(
-        f"{RedisInitKeyEnum.REFRESH_TOKEN.key}:{session_id}",
-        f"{db_user.id}",
-        ex=7 * 24 * 60 * 60,
+    result.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,
+        path="/",
     )
-    # 设置用户登录设备信息
-    await redis.set(
-        f"{RedisInitKeyEnum.DEVICE_INFO.key}:{session_id}",
-        str(
-            {
-                "user_agent": request.headers.get("user-agent"),
-                "login_ip": request.client.host,
-                "user_id": db_user.id,
-            }
-        ),
-        ex=7 * 24 * 60 * 60,
-    )
-    # 设置用户sessions
-    await redis.sadd(f"{RedisInitKeyEnum.USER_SESSIONS.key}:{db_user.id}", session_id)
-    return Res.success(
-        msg="登录成功", data=TokenOut(access_token=token, token_type="bearer")
-    )
+    return result
 
 
 @auth_router.post("/refresh-token", summary="刷新token")
 async def refresh_token(
-    response: Response,
     request: Request,
-    old_token: Annotated[str, Depends(oauth2_scheme)],
     session_id: str = Cookie(None),
+    refresh_token: str = Cookie(None),
     redis: aioredis.Redis = Depends(get_async_redis),
     db: AsyncSession = Depends(get_async_session),
 ):
-    user_id = await redis.get(f"{RedisInitKeyEnum.REFRESH_TOKEN.key}:{session_id}")
-    redis_old_token = await redis.get(
-        f"{RedisInitKeyEnum.ACCESS_TOKEN.key}:{session_id}"
+    client_ip = request.client.host if request.client else ""
+    allowed = await AuthService.apply_rate_limit(
+        redis,
+        action="refresh",
+        identifier=client_ip or "unknown",
+        limit=settings.AUTH_REFRESH_RATE_LIMIT,
+        window_seconds=settings.AUTH_REFRESH_RATE_WINDOW,
     )
-    if not redis_old_token or redis_old_token != old_token:
-        logger.warning(f"IP:{request.client.host} 尝试使用无效的Token刷新")
-        # 这里可以拉黑IP
-        raise AuthException(msg="想干嘛？")
-    if not session_id or not user_id:
+    if not allowed:
+        logger.warning("刷新限流触发 ip=%s", client_ip)
+        raise AuthException(msg="刷新过于频繁，请稍后重试")
+
+    if not session_id or not refresh_token:
         raise AuthException(msg="请先登录")
+
+    user_id = await AuthService.get_refresh_user_id(
+        redis,
+        session_id=session_id,
+        refresh_token=refresh_token,
+    )
+    if not user_id:
+        raise AuthException(msg="请先登录")
+
+    fingerprint_ok = await AuthService.validate_session_fingerprint(
+        redis,
+        session_id=session_id,
+        user_agent=request.headers.get("user-agent"),
+        login_ip=client_ip,
+    )
+    if not fingerprint_ok:
+        logger.warning("refresh 指纹校验失败 user_id=%s ip=%s", user_id, client_ip)
+        raise AuthException(msg="检测到登录环境变更，请重新登录")
+
+    rotate_allowed = await AuthService.apply_refresh_rotate_limit(
+        redis,
+        user_id=int(user_id),
+    )
+    if not rotate_allowed:
+        logger.warning("refresh 轮换次数超限 user_id=%s ip=%s", user_id, client_ip)
+        raise AuthException(msg="刷新次数过多，请重新登录")
+
     new_session_id = secrets.token_urlsafe(32)
     db_user = await user_crud.get_by_id(db, user_id)
+    if not db_user:
+        raise AuthException(msg="用户不存在，请重新登录")
+    next_refresh_token = AuthService.create_refresh_token()
     token = await AuthService.create_access_token(
         TokenPayload(
             id=db_user.id, session_id=new_session_id, username=db_user.username
         )
     )
-    await redis.set(
-        f"{RedisInitKeyEnum.ACCESS_TOKEN.key}:{new_session_id}",
-        token,
-        ex=timedelta(minutes=settings.JWT_REDIS_EXPIRE_MINUTES),
+    await AuthService.bind_session(
+        redis,
+        user_id=db_user.id,
+        session_id=new_session_id,
+        access_token=token,
+        refresh_token=next_refresh_token,
+        user_agent=request.headers.get("user-agent"),
+        login_ip=client_ip,
     )
-    await redis.sadd(
-        f"{RedisInitKeyEnum.USER_SESSIONS.key}:{db_user.id}", new_session_id
+    await AuthService.purge_session(
+        redis,
+        session_id=session_id,
+        user_id=db_user.id,
     )
-    old_device_info = await redis.get(
-        f"{RedisInitKeyEnum.DEVICE_INFO.key}:{session_id}"
+    result = Res.success(
+        msg="刷新成功",
+        data=TokenOut(access_token=token, token_type="bearer"),
     )
-    new_device_info = str(
-        {
-            "user_agent": request.headers.get("user-agent"),
-            "login_ip": request.client.host,
-            "user_id": db_user.id,
-        }
-    )
-    if old_device_info != new_device_info:
-        # 如果设备信息不一致，删除旧的设备信息
-        # 这里可以提示用户 token 当前登录环境变了
-        pass
-    await redis.set(
-        f"{RedisInitKeyEnum.DEVICE_INFO.key}:{new_session_id}",
-        new_device_info,
-        ex=7 * 24 * 60 * 60,
-    )
-    # 删除旧的device_info
-    await redis.delete(f"{RedisInitKeyEnum.DEVICE_INFO.key}:{session_id}")
-    # 删除旧的access_token
-    await redis.delete(f"{RedisInitKeyEnum.ACCESS_TOKEN.key}:{session_id}")
-    # 删除旧的refresh_token
-    await redis.srem(f"{RedisInitKeyEnum.USER_SESSIONS.key}:{db_user.id}", session_id)
-    await redis.delete(f"{RedisInitKeyEnum.REFRESH_TOKEN.key}:{session_id}")
-    # 设置新的refresh_token
-    await redis.set(
-        f"{RedisInitKeyEnum.REFRESH_TOKEN.key}:{new_session_id}",
-        f"{db_user.id}",
-        ex=7 * 24 * 60 * 60,
-    )
-    response.set_cookie(
+    result.set_cookie(
         key="session_id",
         value=new_session_id,
         httponly=True,
-        # secure=True,
+        secure=request.url.scheme == "https",
         samesite="lax",
         max_age=7 * 24 * 60 * 60,
         path="/",
     )
-    return {
-        "code": 200,
-        "msg": "刷新成功",
-        "data": TokenOut(access_token=token, token_type="bearer"),
-    }
+    result.set_cookie(
+        key="refresh_token",
+        value=next_refresh_token,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,
+        path="/",
+    )
+    return result
 
 
 @auth_router.get(
@@ -316,16 +335,14 @@ async def logout(
     :param redis:
     :return:
     """
-    payload = jwt.decode(
-        token,
-        settings.JWT_SECRET_KEY,
-        algorithms=[settings.JWT_ALGORITHM],
-        options={"verify_exp": False},
-    )
+    payload = AuthService.decode_access_token(token, verify_exp=False)
     session_id = payload.get("session_id", "")
     await AuthService.logout(redis=redis, session_id=session_id, user_id=payload.get("id"))
+    result = Res.success(msg="退出成功")
+    result.delete_cookie(key="session_id", path="/")
+    result.delete_cookie(key="refresh_token", path="/")
     logger.info(f"用户 {payload.get('username', '')} 退出成功")
-    return Res.success(msg="退出成功")
+    return result
 
 
 @auth_router.get("/devices", summary="查看登录设备")
@@ -334,25 +351,33 @@ async def list_devices(
     redis: aioredis.Redis = Depends(get_async_redis),
 ):
     session_ids = await redis.smembers(
-        f"{RedisInitKeyEnum.USER_SESSIONS.key}:{user.id}"
+        AuthService._user_sessions_key(user.id)
     )
     devices = []
 
     for sid in session_ids:
-        device_key = f"{RedisInitKeyEnum.DEVICE_INFO.key}:{sid}"
+        session_id = sid.decode("utf-8") if isinstance(sid, bytes) else str(sid)
+        device_key = AuthService._device_info_key(session_id)
         device_info = await redis.get(device_key)
         if device_info:
-            info = eval(device_info) if isinstance(device_info, str) else device_info
+            try:
+                info = (
+                    json.loads(device_info) if isinstance(device_info, str) else device_info
+                )
+            except json.JSONDecodeError:
+                await redis.srem(AuthService._user_sessions_key(user.id), sid)
+                await redis.delete(device_key)
+                continue
             devices.append(
                 {
-                    "session_id": sid,
+                    "session_id": session_id,
                     "user_agent": info.get("user_agent"),
                     "login_ip": info.get("login_ip"),
                 }
             )
         else:
             # 如果 device_info 没了，就清理掉这条无效 session
-            await redis.srem(f"{RedisInitKeyEnum.USER_SESSIONS.key}:{user.id}", sid)
+            await redis.srem(AuthService._user_sessions_key(user.id), sid)
 
     return Res.success(data=devices, msg="设备列表获取成功")
 

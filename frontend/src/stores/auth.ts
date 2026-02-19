@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import {
   login as loginApi,
+  refreshToken as refreshTokenApi,
   getMe,
   getPermissions,
   getRouters,
@@ -73,6 +74,19 @@ export const useAuthStore = defineStore('auth', {
       } finally {
         this.loading = false
       }
+    },
+    async refreshToken() {
+      if (!this.token) {
+        return null
+      }
+      const result = await refreshTokenApi()
+      const nextToken = result?.access_token
+      if (!nextToken) {
+        throw new Error('Token 刷新失败')
+      }
+      this.token = nextToken
+      localStorage.setItem(TOKEN_KEY, nextToken)
+      return nextToken
     },
     async logout(options?: { redirect?: boolean; silent?: boolean }) {
       const message = useMessage()

@@ -41,6 +41,21 @@ WHERE NOT EXISTS (SELECT 1 FROM BN_SYSMENU WHERE id = 121);
 
 INSERT INTO BN_SYSMENU
 (id, name, route_name, pid, icon, type, permission_char, sort, redirect, router_path, keep_alive, component_path, status, is_frame, description, is_deleted, create_time, update_time)
+SELECT 130, '系统监控', 'admin-monitor', 100, 'activity', 1, NULL, 30, NULL, 'monitor', 1, NULL, 1, 0, '系统监控目录', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM BN_SYSMENU WHERE id = 130);
+
+INSERT INTO BN_SYSMENU
+(id, name, route_name, pid, icon, type, permission_char, sort, redirect, router_path, keep_alive, component_path, status, is_frame, description, is_deleted, create_time, update_time)
+SELECT 131, '服务监控', 'admin-monitor-service', 130, 'activity', 2, 'cfg:core:read', 10, NULL, 'service', 1, '/views/admin/system/ServiceMonitorView.vue', 1, 0, '服务健康状态监控', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM BN_SYSMENU WHERE id = 131);
+
+INSERT INTO BN_SYSMENU
+(id, name, route_name, pid, icon, type, permission_char, sort, redirect, router_path, keep_alive, component_path, status, is_frame, description, is_deleted, create_time, update_time)
+SELECT 132, '在线用户', 'admin-monitor-online', 130, 'users', 2, 'cfg:core:read', 20, NULL, 'online', 1, '/views/admin/system/OnlineUsersMonitorView.vue', 1, 0, '在线用户会话监控', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM BN_SYSMENU WHERE id = 132);
+
+INSERT INTO BN_SYSMENU
+(id, name, route_name, pid, icon, type, permission_char, sort, redirect, router_path, keep_alive, component_path, status, is_frame, description, is_deleted, create_time, update_time)
 SELECT 122, '审计中心', 'admin-config-audit', 120, 'shield-check', 2, 'cfg:audit:read', 20, NULL, 'audit', 1, '/views/admin/system/AuditView.vue', 1, 0, '审计配置与审计日志', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSMENU WHERE id = 122);
 
@@ -146,6 +161,8 @@ INSERT INTO BN_SYSMENU
 SELECT 1221, '审计操作', NULL, 122, NULL, 3, 'cfg:audit:operate', 10, NULL, NULL, 1, NULL, 1, 0, '审计导出与清理', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSMENU WHERE id = 1221);
 
+INSERT INTO BN_SYSMENU
+(id, name, route_name, pid, icon, type, permission_char, sort, redirect, router_path, keep_alive, component_path, status, is_frame, description, is_deleted, create_time, update_time)
 SELECT 2101, '文件列表', NULL, 201, NULL, 3, 'disk:file:list', 10, NULL, NULL, 1, NULL, 1, 0, '查看文件列表', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSMENU WHERE id = 2101);
 INSERT INTO BN_SYSMENU
@@ -172,6 +189,8 @@ INSERT INTO BN_SYSMENU
 (id, name, route_name, pid, icon, type, permission_char, sort, redirect, router_path, keep_alive, component_path, status, is_frame, description, is_deleted, create_time, update_time)
 SELECT 2107, '下载文件', NULL, 201, NULL, 3, 'disk:file:download', 70, NULL, NULL, 1, NULL, 1, 0, '下载文件', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSMENU WHERE id = 2107);
+INSERT INTO BN_SYSMENU
+(id, name, route_name, pid, icon, type, permission_char, sort, redirect, router_path, keep_alive, component_path, status, is_frame, description, is_deleted, create_time, update_time)
 SELECT 2108, '分享列表', NULL, 202, NULL, 3, 'disk:share:list', 80, NULL, NULL, 1, NULL, 1, 0, '查看分享', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSMENU WHERE id = 2108);
 INSERT INTO BN_SYSMENU
@@ -186,6 +205,8 @@ INSERT INTO BN_SYSMENU
 (id, name, route_name, pid, icon, type, permission_char, sort, redirect, router_path, keep_alive, component_path, status, is_frame, description, is_deleted, create_time, update_time)
 SELECT 2111, '删除分享', NULL, 202, NULL, 3, 'disk:share:delete', 110, NULL, NULL, 1, NULL, 1, 0, '删除分享', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSMENU WHERE id = 2111);
+INSERT INTO BN_SYSMENU
+(id, name, route_name, pid, icon, type, permission_char, sort, redirect, router_path, keep_alive, component_path, status, is_frame, description, is_deleted, create_time, update_time)
 SELECT 2112, '回收站查看', NULL, 203, NULL, 3, 'disk:trash:list', 120, NULL, NULL, 1, NULL, 1, 0, '查看回收站', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSMENU WHERE id = 2112);
 INSERT INTO BN_SYSMENU
@@ -254,6 +275,12 @@ SELECT 1, 120 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 1 
 INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
 SELECT 1, 121 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 1 AND menu_id = 121);
 INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
+SELECT 1, 130 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 1 AND menu_id = 130);
+INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
+SELECT 1, 131 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 1 AND menu_id = 131);
+INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
+SELECT 1, 132 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 1 AND menu_id = 132);
+INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
 SELECT 1, 122 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 1 AND menu_id = 122);
 INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
 SELECT 1, 1111 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 1 AND menu_id = 1111);
@@ -279,6 +306,12 @@ INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
 SELECT 1, 1212 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 1 AND menu_id = 1212);
 INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
 SELECT 1, 1221 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 1 AND menu_id = 1221);
+INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
+SELECT 2, 201 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 2 AND menu_id = 201);
+INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
+SELECT 2, 202 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 2 AND menu_id = 202);
+INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
+SELECT 2, 203 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 2 AND menu_id = 203);
 INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)
 SELECT 2, 2101 WHERE NOT EXISTS (SELECT 1 FROM BN_SYSROLE_MENU WHERE role_id = 2 AND menu_id = 2101);
 INSERT INTO BN_SYSROLE_MENU (role_id, menu_id)

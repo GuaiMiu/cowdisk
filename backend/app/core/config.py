@@ -43,8 +43,17 @@ class Config(CustomBaseSettings):
     # Auth / token
     JWT_SECRET_KEY: str | None = None
     JWT_ALGORITHM: str | None = None
-    JWT_EXPIRE_MINUTES: int | None = None
-    JWT_REDIS_EXPIRE_MINUTES: int | None = None
+    JWT_EXPIRE_MINUTES: int = 30
+    JWT_REDIS_EXPIRE_MINUTES: int = 30
+    JWT_ISSUER: str = "cowdisk"
+    JWT_AUDIENCE: str = "cowdisk-web"
+    JWT_REFRESH_ROTATE_LIMIT: int = 48
+    AUTH_LOGIN_RATE_LIMIT: int = 30
+    AUTH_LOGIN_RATE_WINDOW: int = 60
+    AUTH_REFRESH_RATE_LIMIT: int = 120
+    AUTH_REFRESH_RATE_WINDOW: int = 60
+    AUTH_FORCE_LOGOUT_RATE_LIMIT: int = 30
+    AUTH_FORCE_LOGOUT_RATE_WINDOW: int = 60
 
     # Database
     DATABASE_HOST: str | None = None
@@ -131,6 +140,13 @@ class Config(CustomBaseSettings):
         "DATABASE_PORT",
         "JWT_EXPIRE_MINUTES",
         "JWT_REDIS_EXPIRE_MINUTES",
+        "JWT_REFRESH_ROTATE_LIMIT",
+        "AUTH_LOGIN_RATE_LIMIT",
+        "AUTH_LOGIN_RATE_WINDOW",
+        "AUTH_REFRESH_RATE_LIMIT",
+        "AUTH_REFRESH_RATE_WINDOW",
+        "AUTH_FORCE_LOGOUT_RATE_LIMIT",
+        "AUTH_FORCE_LOGOUT_RATE_WINDOW",
         "UPLOAD_MAX_SIZE",
         "DISK_UPLOAD_BUFFER_SIZE",
         "DISK_UPLOAD_CONCURRENCY",
@@ -142,8 +158,11 @@ class Config(CustomBaseSettings):
         mode="before",
     )
     @classmethod
-    def _normalize_optional_int(cls, value):
-        return None if value == "" else value
+    def _normalize_optional_int(cls, value, info: ValidationInfo):
+        if value == "" or value is None:
+            default = cls.model_fields[info.field_name].default
+            return default if default is not None else None
+        return value
 
     @field_validator("REDIS_DB", "REDIS_PORT", mode="before")
     @classmethod
