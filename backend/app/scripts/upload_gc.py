@@ -6,13 +6,17 @@ python -m app.scripts.upload_gc --dry-run=1
 import argparse
 import asyncio
 
-from app.core.database import async_session
+from app.core.database import async_session, get_async_redis
 from app.modules.disk.services.file import FileService
 
 
 async def _run(dry_run: bool) -> int:
     async with async_session() as db:
-        result = await FileService.gc_uploads(db=db, dry_run=dry_run)
+        result = await FileService.gc_uploads(
+            db=db,
+            redis=get_async_redis(),
+            dry_run=dry_run,
+        )
     mode = "DRY-RUN" if dry_run else "EXECUTE"
     print(f"[UPLOAD GC] mode={mode}")
     print(f"scanned={result.get('scanned', 0)}")

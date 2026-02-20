@@ -11,7 +11,7 @@ from redis import asyncio as aioredis
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.database import get_async_redis, get_async_session
-from app.modules.admin.models.response import ResponseModel
+from app.core.response import ApiResponse, ok
 from app.modules.admin.models.user import User
 from app.modules.disk.services.file import FileService
 from app.modules.disk.services.office import OfficeService
@@ -23,7 +23,7 @@ access_router = APIRouter(prefix="/files", tags=["Disk - Access"])
 @access_router.post(
     "/{file_id}/download-url",
     summary="签发下载 URL",
-    response_model=ResponseModel[dict],
+    response_model=ApiResponse[dict],
     dependencies=[require_permissions(["disk:file:download"])],
 )
 async def issue_download_url(
@@ -40,13 +40,13 @@ async def issue_download_url(
         user_id=current_user.id,
         redis=redis,
     )
-    return ResponseModel.success(data=data)
+    return ok(data)
 
 
 @access_router.post(
     "/{file_id}/preview-url",
     summary="签发预览 URL",
-    response_model=ResponseModel[dict],
+    response_model=ApiResponse[dict],
     dependencies=[require_permissions(["disk:file:download"])],
 )
 async def issue_preview_url(
@@ -63,13 +63,13 @@ async def issue_preview_url(
         user_id=current_user.id,
         redis=redis,
     )
-    return ResponseModel.success(data=data)
+    return ok(data)
 
 
 @access_router.post(
     "/{file_id}/office-url",
     summary="签发 Office 打开 URL",
-    response_model=ResponseModel[dict],
+    response_model=ApiResponse[dict],
     dependencies=[require_permissions(["disk:file:download"])],
 )
 async def issue_office_url(
@@ -90,7 +90,7 @@ async def issue_office_url(
         lang=lang,
         mode=mode,
     )
-    return ResponseModel.success(data=data)
+    return ok(data)
 
 
 @access_router.get("/{file_id}/download", summary="下载文件(下载令牌)")

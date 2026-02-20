@@ -21,7 +21,7 @@ from redis import asyncio as aioredis
 
 from app.core.config import settings
 from app.core.database import reload_runtime
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import AppException, BadRequestException
 from app.modules.system.services.config import ConfigCenterService
 from app.modules.system.services.install_state import InstallStateService
 from app.modules.system.services.setup_fields import (
@@ -145,8 +145,8 @@ class SetupService:
 
     @staticmethod
     def _error_detail(exc: Exception) -> str:
-        if isinstance(exc, ServiceException):
-            return (exc.msg or "").strip() or repr(exc)
+        if isinstance(exc, AppException):
+            return (exc.message or "").strip() or repr(exc)
         return str(exc).strip() or repr(exc)
 
     @classmethod
@@ -165,7 +165,7 @@ class SetupService:
             except Exception:
                 # 回滚失败不应覆盖主错误语义。
                 pass
-        raise ServiceException(msg=message)
+        raise BadRequestException(message)
 
     @classmethod
     def _infer_redis_auth_mode(cls, payload: dict) -> str:
@@ -473,26 +473,26 @@ class SetupService:
             async with engine.begin() as conn:
                 await conn.run_sync(SQLModel.metadata.create_all)
         except Exception as exc:
-            raise ServiceException(msg=f"创建表失败: {exc}") from exc
+            raise BadRequestException(f"创建表失败: {exc}") from exc
         async with async_session_local() as session:
             try:
                 await cls._run_init_sql(session=session, database_url=database_url)
             except Exception as exc:
-                raise ServiceException(msg=f"初始化 SQL 失败: {exc}") from exc
+                raise BadRequestException(f"初始化 SQL 失败: {exc}") from exc
             try:
                 await cls._seed_config(session=session, payload=payload)
-            except ServiceException as exc:
-                detail = (exc.msg or "").strip() or repr(exc)
-                raise ServiceException(msg=f"初始化配置失败: {detail}") from exc
+            except AppException as exc:
+                detail = (exc.message or "").strip() or repr(exc)
+                raise BadRequestException(f"初始化配置失败: {detail}") from exc
             except Exception as exc:
                 detail = str(exc).strip() or repr(exc)
-                raise ServiceException(msg=f"初始化配置失败: {detail}") from exc
+                raise BadRequestException(f"初始化配置失败: {detail}") from exc
             try:
                 superuser_created = await cls._create_superuser(
                     session=session, payload=payload
                 )
             except Exception as exc:
-                raise ServiceException(msg=f"创建超级管理员失败: {exc}") from exc
+                raise BadRequestException(f"创建超级管理员失败: {exc}") from exc
         await engine.dispose()
         return superuser_created
 
@@ -580,7 +580,7 @@ class SetupService:
         password = (payload.get("superuser_password") or "").strip()
         mail = (payload.get("superuser_mail") or "").strip()
         if not username or not password or not mail:
-            raise ServiceException(msg="超级管理员信息不完整")
+            raise BadRequestException("超级管理员信息不完整")
         default_quota_gb = int(get_default(ConfigKey.AUTH_DEFAULT_USER_QUOTA_GB, 10))
         total_space = max(int(default_quota_gb), 0) * 1024 * 1024 * 1024
         user = User(

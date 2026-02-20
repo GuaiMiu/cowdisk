@@ -6,13 +6,14 @@
 @Description: Disk 领域错误
 """
 
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import BadRequestException
 
 
-class DiskError(ServiceException):
+class DiskError(BadRequestException):
     """
     统一的网盘领域异常
     """
 
     def __init__(self, msg: str, data: str | None = None):
-        super().__init__(data=data, msg=msg)
+        _ = data
+        super().__init__(msg)

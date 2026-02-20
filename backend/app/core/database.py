@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, async_sessi
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import ServiceUnavailableException
 from app.core.fake_redis import FakeRedis
 from app.utils.logger import logger
 
@@ -55,7 +55,7 @@ class AsyncEngineProxy:
 
     def __getattr__(self, name):
         if self._engine is None:
-            raise ServiceException(msg="数据库未配置，请先完成安装配置")
+            raise ServiceUnavailableException("数据库未配置，请先完成安装配置")
         return getattr(self._engine, name)
 
 
@@ -71,7 +71,7 @@ class AsyncSessionProxy:
 
     def __call__(self, *args, **kwargs):
         if self._maker is None:
-            raise ServiceException(msg="数据库未配置，请先完成安装配置")
+            raise ServiceUnavailableException("数据库未配置，请先完成安装配置")
         return self._maker(*args, **kwargs)
 
 
@@ -207,7 +207,7 @@ init_runtime()
 
 async def get_async_session():
     if not async_session.is_ready():
-        raise ServiceException(msg="数据库未配置，请先完成安装配置")
+        raise ServiceUnavailableException("数据库未配置，请先完成安装配置")
 
     async with async_session() as session:
         try:

@@ -13,6 +13,7 @@ import {
   mkdir,
 } from '@/api/modules/userDisk'
 import { useMessage } from '@/stores/message'
+import { i18n } from '@/i18n'
 import { AppError } from '@/api/errors'
 import type { DiskUploadPolicyOut } from '@/types/disk'
 
@@ -48,7 +49,7 @@ export const useUploader = () => {
       controller.abort()
     }
     clearSpeedMeter(id)
-    uploadsStore.update(id, { status: 'cancelled', error: '已取消', speed: 0 })
+    uploadsStore.update(id, { status: 'cancelled', error: t('uploadQueue.status.cancelled'), speed: 0 })
     const item = uploadsStore.items.find((entry) => entry.id === id)
     if (item?.uploadId) {
       void cancelChunkUpload(item.uploadId)
@@ -134,12 +135,12 @@ export const useUploader = () => {
         if (item.status === 'paused') {
           uploadsStore.update(item.id, { speed: 0 })
         } else {
-          uploadsStore.update(item.id, { status: 'cancelled', error: '已取消', speed: 0 })
+          uploadsStore.update(item.id, { status: 'cancelled', error: t('uploadQueue.status.cancelled'), speed: 0 })
         }
       } else {
         uploadsStore.update(item.id, {
           status: 'error',
-          error: error instanceof Error ? error.message : '上传失败',
+          error: error instanceof Error ? error.message : t('uploadQueue.status.error'),
           speed: 0,
         })
       }
@@ -192,7 +193,7 @@ export const useUploader = () => {
     policy: DiskUploadPolicyOut | null,
   ) => {
     if (signal.aborted) {
-      throw new Error('取消上传')
+      throw new Error(t('uploadQueue.status.cancelled'))
     }
     const totalChunks = Math.ceil(item.file.size / DEFAULT_CHUNK_SIZE)
     const filename = getRelativeFilename(item.file)
@@ -258,7 +259,7 @@ export const useUploader = () => {
     const uploadOnePart = async () => {
       while (cursor < pendingParts.length && !fatalError) {
         if (signal.aborted) {
-          throw new Error('取消上传')
+          throw new Error(t('uploadQueue.status.cancelled'))
         }
         const index = cursor
         cursor += 1
@@ -327,7 +328,7 @@ export const useUploader = () => {
         const list = await listDir(parentId ?? null)
         const found = list.items.find((item) => item.is_dir && item.name === name)
         if (!found) {
-          throw new Error(`无法创建目录: ${name}`)
+          throw new Error(t('uploadQueue.createFolderFailed', { name }))
         }
         folderIdCache.set(key, found.id)
         return found.id
@@ -517,7 +518,7 @@ const isRetriableUploadError = (error: unknown) => {
   if (!(error instanceof Error)) {
     return false
   }
-  return /network|timeout|timed out|连接中断|请求超时/i.test(error.message)
+  return /network|timeout|timed out/i.test(error.message)
 }
 
 const computeRetryDelay = (
@@ -544,7 +545,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
     }, ms)
     const onAbort = () => {
       cleanup()
-      reject(new Error('取消上传'))
+      reject(new Error(i18n.global.t('uploadQueue.status.cancelled')))
     }
     const cleanup = () => {
       clearTimeout(timer)
@@ -595,3 +596,4 @@ const yieldToMain = () =>
     }
     setTimeout(resolve, 0)
   })
+

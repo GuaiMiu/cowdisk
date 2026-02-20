@@ -2,6 +2,7 @@ import type { AxiosRequestConfig, AxiosResponse } from 'axios'
 import { http } from './http'
 import { AppError, normalizeError } from './errors'
 import type { ResponseModel } from '@/types/response'
+import { i18n } from '@/i18n'
 
 type RequestOptions = {
   signal?: AbortSignal
@@ -11,10 +12,10 @@ type RequestOptions = {
 const unwrapResponse = <T>(payload: unknown): T => {
   if (payload && typeof payload === 'object' && 'code' in payload) {
     const typed = payload as ResponseModel<T>
-    if (typed.code === 200) {
+    if (typed.code === 100000) {
       return typed.data as T
     }
-    throw new AppError(typed.msg || '请求失败', typed.code, typed.data)
+    throw new AppError(typed.message || i18n.global.t('apiErrors.requestFailed'), typed.code, typed.data)
   }
   return payload as T
 }
@@ -94,7 +95,7 @@ export const downloadBlob = async (config: AxiosRequestConfig) => {
       const text = await response.data.text()
       const payload = JSON.parse(text)
       unwrapResponse(payload)
-      throw new AppError('文件下载失败')
+      throw new AppError(i18n.global.t('apiErrors.downloadFailed'))
     }
     return {
       blob: response.data as Blob,

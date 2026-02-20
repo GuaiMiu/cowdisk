@@ -10,8 +10,6 @@ import re
 
 from pydantic import BaseModel, Field, EmailStr, model_validator
 
-from app.core.exception import ServiceException
-
 
 class TokenOut(BaseModel):
     """
@@ -57,11 +55,11 @@ class UserRegisterIn(BaseModel):
 
         pattern = r"""^[^<>"'|\\]+$"""
         if not username and not password:
-            raise ServiceException(msg="用户名或密码不能为空")
+            raise ValueError("用户名或密码不能为空")
         if not re.match(pattern, password):
-            raise ServiceException(msg="密码不能包含非法字符：< > \" ' \\ |")
+            raise ValueError("密码不能包含非法字符：< > \" ' \\ |")
         elif username == password:
-            raise ServiceException(msg="用户名和密码不能相同")
+            raise ValueError("用户名和密码不能相同")
 
         values["username"] = username
         values["password"] = password
@@ -91,16 +89,16 @@ class UserProfileUpdateIn(BaseModel):
         )
         has_password_change = values.get("new_password") is not None
         if not has_profile_change and not has_password_change:
-            raise ServiceException(msg="未提供可更新字段")
+            raise ValueError("未提供可更新字段")
 
         if has_password_change:
             new_password = str(values.get("new_password") or "").strip()
             current_password = str(values.get("current_password") or "").strip()
             if not current_password:
-                raise ServiceException(msg="请输入当前密码")
+                raise ValueError("请输入当前密码")
             pattern = r"""^[^<>"'|\\]+$"""
             if not re.match(pattern, new_password):
-                raise ServiceException(msg="密码不能包含非法字符：< > \" ' \\ |")
+                raise ValueError("密码不能包含非法字符：< > \" ' \\ |")
             values["new_password"] = new_password
             values["current_password"] = current_password
 

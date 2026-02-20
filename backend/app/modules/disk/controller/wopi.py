@@ -11,7 +11,7 @@ from redis import asyncio as aioredis
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.database import get_async_redis, get_async_session
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import BadRequestException
 from app.modules.disk.services.office import OfficeService
 
 wopi_router = APIRouter(prefix="/wopi", tags=["Disk - WOPI"])
@@ -77,7 +77,7 @@ async def wopi_put_file(
     token = _extract_access_token(access_token, authorization)
     override = (x_wopi_override or "").strip().upper()
     if override and override != "PUT":
-        raise ServiceException(msg=f"不支持的 WOPI 操作: {override}")
+        raise BadRequestException(f"不支持的 WOPI 操作: {override}")
     content = await request.body()
     result = await OfficeService.put_wopi_file_contents(
         db=db,

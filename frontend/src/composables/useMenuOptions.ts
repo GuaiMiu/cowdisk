@@ -31,7 +31,7 @@ export const useMenuOptions = () => {
       }
       const nodes = items.map((menu) => ({
         id: menu.id || 0,
-        label: menu.name || '未命名菜单',
+        label: menu.name || t('admin.menu.unnamedMenu'),
         description: menu.permission_char || '',
         pid: menu.pid ?? null,
         sort: menu.sort ?? 0,

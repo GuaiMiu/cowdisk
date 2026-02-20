@@ -8,7 +8,7 @@ from fastapi import UploadFile
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import BadRequestException, PayloadTooLarge
 from app.modules.system.services.config import ConfigCenterService
 from app.modules.system.typed.keys import ConfigKey
 
@@ -57,23 +57,23 @@ class BrandingService:
     ) -> dict[str, str]:
         spec = cls.ASSET_SPEC.get(asset_type)
         if not spec:
-            raise ServiceException(msg="不支持的站点资源类型")
+            raise BadRequestException("不支持的站点资源类型")
 
         mime = (upload.content_type or "").strip().lower()
         if mime not in spec["allowed_mime"]:
-            raise ServiceException(msg="文件格式不支持")
+            raise BadRequestException("文件格式不支持")
 
         original_name = (upload.filename or "asset").strip() or "asset"
         ext = Path(original_name).suffix.lower() or cls._ext_from_mime(mime)
         if not ext:
-            raise ServiceException(msg="文件后缀不合法")
+            raise BadRequestException("文件后缀不合法")
 
         file_bytes = await upload.read()
         await upload.close()
         if not file_bytes:
-            raise ServiceException(msg="上传文件为空")
+            raise BadRequestException("上传文件为空")
         if len(file_bytes) > int(spec["max_size"]):
-            raise ServiceException(msg="上传文件超过大小限制")
+            raise PayloadTooLarge("上传文件超过大小限制")
 
         digest = hashlib.sha1(file_bytes).hexdigest()
         asset_id = uuid4().hex
@@ -83,7 +83,7 @@ class BrandingService:
         file_name = f"{asset_id}{ext}"
         target_path = (static_dir / file_name).resolve()
         if not str(target_path).startswith(str(static_dir)):
-            raise ServiceException(msg="资源存储路径非法")
+            raise BadRequestException("资源存储路径非法")
         target_path.write_bytes(file_bytes)
 
         cls._prune_history(static_dir, keep=3)

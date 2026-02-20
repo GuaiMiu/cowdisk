@@ -18,7 +18,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.audit.usecase import AuditUsecase
 from app.core.database import get_async_session
-from app.modules.admin.models.response import ResponseModel
+from app.core.response import ApiResponse, ok
 from app.modules.system.deps import get_config
 from app.modules.system.schemas.audit import (
     AuditLogListOut,
@@ -49,7 +49,7 @@ def _normalize_range(
 @audit_router.get(
     "/logs",
     summary="获取审计日志",
-    response_model=ResponseModel[AuditLogListOut],
+    response_model=ApiResponse[AuditLogListOut],
     dependencies=[require_permissions(["cfg:audit:read"])],
 )
 async def list_audit_logs(
@@ -72,7 +72,7 @@ async def list_audit_logs(
         total=total,
         items=[AuditLogItem.model_validate(item, from_attributes=True) for item in items],
     )
-    return ResponseModel.success(data=data)
+    return ok(data.model_dump())
 
 
 @audit_router.get(
@@ -131,7 +131,7 @@ async def export_audit_logs(
 @audit_router.post(
     "/cleanup",
     summary="清理审计日志",
-    response_model=ResponseModel[dict],
+    response_model=ApiResponse[dict],
     dependencies=[require_permissions(["cfg:audit:operate"])],
 )
 async def cleanup_audit_logs(
@@ -143,4 +143,4 @@ async def cleanup_audit_logs(
         db=db,
         retention_days=retention,
     )
-    return ResponseModel.success(data={"deleted": deleted})
+    return ok({"deleted": deleted})

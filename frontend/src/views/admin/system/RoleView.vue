@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -14,6 +14,7 @@ import TreeCheckList from '@/components/common/TreeCheckList.vue'
 import Switch from '@/components/common/Switch.vue'
 import { useAdminRoles } from '@/composables/useAdminRoles'
 import { useMenuOptions } from '@/composables/useMenuOptions'
+import { useSelection } from '@/composables/useSelection'
 import { formatTime } from '@/utils/format'
 import type { RoleOut } from '@/types/role'
 import { getRoleDetail } from '@/api/modules/adminSystem'
@@ -23,6 +24,7 @@ const roleStore = useAdminRoles()
 const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 const columns = computed(() => [
+  { key: 'select', label: '', width: '44px', align: 'center' as const },
   { key: 'name', label: t('admin.role.columns.name') },
   { key: 'permission_char', label: t('admin.role.columns.permission') },
   { key: 'status', label: t('admin.role.columns.status') },
@@ -37,9 +39,11 @@ const statusOptions = computed(() => [
 
 const formOpen = ref(false)
 const deleteConfirm = ref(false)
+const deleteMode = ref<'single' | 'batch'>('single')
 const currentRole = ref<RoleOut | null>(null)
 const menuOptions = useMenuOptions()
 const toggling = ref(new Set<number>())
+const selectAllRef = ref<HTMLInputElement | null>(null)
 const searchKeyword = computed(() => getRouteSearchKeyword(route).toLowerCase())
 const filteredRoles = computed(() => {
   const keyword = searchKeyword.value
@@ -53,6 +57,12 @@ const filteredRoles = computed(() => {
     return name.includes(keyword) || permission.includes(keyword) || description.includes(keyword)
   })
 })
+const selection = useSelection(() => filteredRoles.value, (item) => String(item.id || ''))
+const selectedIds = computed(() =>
+  selection.selectedItems.value
+    .map((item) => item.id || 0)
+    .filter((id) => id > 0),
+)
 
 const form = reactive({
   id: 0,
@@ -115,17 +125,38 @@ const submitForm = async () => {
 }
 
 const requestDelete = (role: RoleOut) => {
+  deleteMode.value = 'single'
   currentRole.value = role
   deleteConfirm.value = true
 }
 
+const requestBatchDelete = () => {
+  if (!selectedIds.value.length) {
+    return
+  }
+  deleteMode.value = 'batch'
+  currentRole.value = null
+  deleteConfirm.value = true
+}
+
 const confirmDelete = async () => {
-  if (currentRole.value?.id) {
+  if (deleteMode.value === 'batch') {
+    const success = await roleStore.removeRoles(selectedIds.value)
+    if (success) {
+      selection.clear()
+    }
+  } else if (currentRole.value?.id) {
     await roleStore.removeRole(currentRole.value.id)
   }
   deleteConfirm.value = false
   currentRole.value = null
 }
+
+const deleteMessage = computed(() =>
+  deleteMode.value === 'batch'
+    ? t('admin.role.bulk.confirmDeleteMessage', { count: selectedIds.value.length })
+    : t('admin.role.confirmDeleteMessage'),
+)
 
 const isToggling = (id?: number) => (id ? toggling.value.has(id) : false)
 
@@ -158,6 +189,33 @@ onMounted(() => {
   void roleStore.fetchRoles()
   void menuOptions.load()
 })
+
+watch(
+  () => selection.indeterminate.value,
+  (value) => {
+    if (selectAllRef.value) {
+      selectAllRef.value.indeterminate = value
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => filteredRoles.value,
+  (items) => {
+    const valid = new Set(items.map((item) => String(item.id || '')))
+    const next = new Set<string>()
+    selection.selected.value.forEach((key) => {
+      if (valid.has(key)) {
+        next.add(key)
+      }
+    })
+    if (next.size !== selection.selected.value.size) {
+      selection.selected.value = next
+    }
+  },
+  { deep: true },
+)
 </script>
 
 <template>
@@ -166,6 +224,14 @@ onMounted(() => {
       <template #actions>
         <Button variant="secondary" @click="roleStore.fetchRoles()">
           {{ t('admin.role.refresh') }}
+        </Button>
+        <Button
+          v-permission="'system:role:delete'"
+          variant="ghost"
+          :disabled="!selectedIds.length"
+          @click="requestBatchDelete"
+        >
+          {{ t('admin.role.bulk.deleteSelected', { count: selectedIds.length }) }}
         </Button>
         <Button v-permission="'system:role:create'" @click="openCreate">{{
           t('admin.role.add')
@@ -181,6 +247,25 @@ onMounted(() => {
         scrollable
         fill
       >
+        <template #head-select>
+          <div class="select-cell">
+            <input
+              ref="selectAllRef"
+              type="checkbox"
+              :checked="selection.allSelected.value"
+              @change="selection.toggleAll()"
+            />
+          </div>
+        </template>
+        <template #cell-select="{ row }">
+          <div class="select-cell">
+            <input
+              type="checkbox"
+              :checked="selection.isSelected(row)"
+              @change="selection.toggle(row)"
+            />
+          </div>
+        </template>
         <template #cell-status="{ row }">
           <Switch
             :model-value="!!row.status"
@@ -286,7 +371,7 @@ onMounted(() => {
   <ConfirmDialog
     :open="deleteConfirm"
     :title="t('admin.role.confirmDeleteTitle')"
-    :message="t('admin.role.confirmDeleteMessage')"
+    :message="deleteMessage"
     @close="deleteConfirm = false"
     @confirm="confirmDelete"
   />
@@ -318,6 +403,12 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--space-2) var(--space-3);
+}
+
+.select-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .form__field {

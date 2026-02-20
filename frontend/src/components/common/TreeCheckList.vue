@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { i18n } from '@/i18n'
 
 type TreeCheckItem = {
   id: number | string
@@ -16,7 +17,7 @@ const props = withDefaults(
   }>(),
   {
     items: () => [],
-    emptyText: '暂无可选项',
+    emptyText: i18n.global.t('common.emptyOptions'),
   },
 )
 

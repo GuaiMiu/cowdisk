@@ -11,29 +11,26 @@ from typing import Literal
 from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.modules.admin.models.response import ResponseModel
 from app.core.config import settings
 from app.core.database import get_async_session
+from app.core.errors.exceptions import ConflictException
+from app.core.response import ApiResponse, ok
 from app.modules.admin.models.user import User
 from app.modules.system.deps import get_config
 from app.modules.system.services.branding import BrandingService
+from app.modules.system.services.install_state import InstallStateService
+from app.modules.system.services.setup import SetupService
 from app.modules.system.typed.config import Config
 from app.modules.system.typed.keys import ConfigKey
 from app.modules.system.typed.specs import get_default
-from app.modules.system.services.install_state import InstallStateService
-from app.modules.system.services.setup import SetupService
 from app.shared.deps import require_permissions, require_user
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 setup_router = APIRouter(prefix="/setup", tags=["System - Setup"])
 
 
 class SetupStatusOut(BaseModel):
-    """
-    安装状态输出模型。
-    """
-
     installed: bool = Field(..., description="是否已安装")
     phase: str = Field(..., description="安装阶段")
     message: str | None = Field(default=None, description="阶段消息")
@@ -41,10 +38,6 @@ class SetupStatusOut(BaseModel):
 
 
 class SetupPayload(BaseModel):
-    """
-    安装引导输入模型。
-    """
-
     database_url: str = Field(..., description="数据库连接 URL")
     app_name: str | None = Field(default=None, description="应用名称")
     superuser_name: str = Field(..., description="超级管理员账号")
@@ -118,68 +111,55 @@ class SiteLogoUploadOut(BaseModel):
 @setup_router.get(
     "/status",
     summary="获取安装状态",
-    response_model=ResponseModel[SetupStatusOut],
+    response_model=ApiResponse[SetupStatusOut],
 )
-async def get_setup_status(
-):
-    """
-    获取系统是否已完成安装。
-    """
+async def get_setup_status():
     state = InstallStateService.get_status()
-    return ResponseModel.success(
-        data=SetupStatusOut(
+    return ok(
+        SetupStatusOut(
             installed=state.installed,
             phase=state.phase,
             message=state.message,
             updated_at=state.updated_at,
-        )
+        ).model_dump()
     )
 
 
 @setup_router.post(
     "",
     summary="提交安装配置",
-    response_model=ResponseModel[SetupResultOut],
+    response_model=ApiResponse[SetupResultOut],
 )
 async def submit_setup(payload: SetupPayload):
-    """
-    提交首次安装配置。
-    写入 .env 并初始化数据库配置表。
-    """
     if InstallStateService.get_status().phase == "DONE":
-        return ResponseModel.error(msg="系统已完成安装，禁止重复初始化")
+        raise ConflictException("系统已完成安装，禁止重复初始化")
     result = await SetupService.run_setup(payload.model_dump())
-    return ResponseModel.success(data=result, msg="配置已保存并自动生效")
+    return ok(result, message="配置已保存并自动生效")
 
 
 @setup_router.get(
     "/progress",
     summary="获取安装进度",
-    response_model=ResponseModel[SetupProgressOut],
+    response_model=ApiResponse[SetupProgressOut],
 )
 async def get_setup_progress():
-    """
-    获取当前安装进度。
-    """
     steps = SetupService.get_progress()
-    return ResponseModel.success(data=SetupProgressOut(steps=steps))
+    return ok(SetupProgressOut(steps=steps).model_dump())
 
 
 @setup_router.get(
     "/defaults",
     summary="获取安装默认值",
-    response_model=ResponseModel[SetupFormDefaultsOut],
+    response_model=ApiResponse[SetupFormDefaultsOut],
 )
 async def get_setup_defaults():
-    return ResponseModel.success(
-        data=SetupFormDefaultsOut.model_validate(SetupService.get_form_defaults())
-    )
+    return ok(SetupFormDefaultsOut.model_validate(SetupService.get_form_defaults()).model_dump())
 
 
 @setup_router.get(
     "/public-config",
     summary="获取公开系统配置",
-    response_model=ResponseModel[PublicConfigOut],
+    response_model=ApiResponse[PublicConfigOut],
 )
 async def get_public_config(
     config: Config = Depends(get_config),
@@ -191,7 +171,6 @@ async def get_public_config(
     site_favicon_url = ""
     login_background_url = ""
     theme_image_url = ""
-    # 安装前或表结构未就绪时，不依赖动态配置表。
     if InstallStateService.get_status().phase == "DONE":
         try:
             dynamic_site_name = await config.system.site_name()
@@ -203,21 +182,21 @@ async def get_public_config(
             theme_image_url = (await config.system.theme_image_url() or "").strip()
         except (OperationalError, ProgrammingError):
             pass
-    return ResponseModel.success(
-        data=PublicConfigOut(
+    return ok(
+        PublicConfigOut(
             site_name=site_name,
             site_logo_url=site_logo_url,
             site_favicon_url=site_favicon_url,
             login_background_url=login_background_url,
             theme_image_url=theme_image_url,
-        )
+        ).model_dump()
     )
 
 
 @setup_router.post(
     "/site-asset/{asset_type}",
     summary="上传站点资源",
-    response_model=ResponseModel[SiteLogoUploadOut],
+    response_model=ApiResponse[SiteLogoUploadOut],
     dependencies=[require_permissions(["cfg:core:write"])],
 )
 async def upload_site_asset(
@@ -232,8 +211,4 @@ async def upload_site_asset(
         asset_type=asset_type,
         updated_by=current_user.id,
     )
-    return ResponseModel.success(data=SiteLogoUploadOut.model_validate(data))
-
-
-
-
+    return ok(SiteLogoUploadOut.model_validate(data).model_dump())

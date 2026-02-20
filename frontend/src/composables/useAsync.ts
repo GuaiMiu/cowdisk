@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useMessage } from '@/stores/message'
 import { mapToUiError, withErrorCode } from '@/utils/errorMessage'
 
@@ -13,6 +14,7 @@ type AsyncRunOptions = {
 }
 
 export const useAsync = () => {
+  const { t } = useI18n({ useScope: 'global' })
   const message = useMessage()
   const pending = ref(false)
   const error = ref<unknown>(null)
@@ -33,13 +35,13 @@ export const useAsync = () => {
       return result
     } catch (err) {
       error.value = err
-      const mapped = mapToUiError(err, options.errorTitle || '操作失败')
+      const mapped = mapToUiError(err, options.errorTitle || t('common.operationFailed'))
       if (options.showError !== false) {
         message.error(withErrorCode(mapped.title, mapped.code), mapped.message, {
           action:
             mapped.retryable && options.onRetry
               ? {
-                  label: options.retryActionLabel || '重试',
+                  label: options.retryActionLabel || t('common.retry'),
                   onClick: options.onRetry,
                 }
               : undefined,
@@ -58,4 +60,3 @@ export const useAsync = () => {
     run,
   }
 }
-

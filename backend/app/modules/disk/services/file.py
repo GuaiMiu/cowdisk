@@ -33,8 +33,43 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.modules.admin.dao.user import user_crud
 from app.core.config import settings
-from app.core.database import async_session
-from app.core.exception import ServiceException
+from app.core.database import async_session, get_async_redis
+from app.core.errors.exceptions import (
+    BadRequestException,
+    ChunkIncomplete,
+    FileNotFound,
+    FileTokenExpired,
+    FileTokenInvalid,
+    InvalidFileName,
+    InvalidPage,
+    InvalidPageSize,
+    InvalidPartNumber,
+    InvalidTargetType,
+    InvalidTotalParts,
+    InvalidUploadId,
+    MoveToDescendant,
+    MoveToSelf,
+    NameConflict,
+    NoPermission,
+    ParentNotDirectory,
+    PayloadTooLarge,
+    PreviewNotSupported,
+    QuotaExceeded,
+    RestoreParentDeleted,
+    RestoreParentMissing,
+    StorageConfigNotFound,
+    StorageMismatch,
+    TaskInvalid,
+    TaskNotReady,
+    ThumbnailBuildFailed,
+    ThumbnailNotSupported,
+    UploadFinalizing,
+    UploadSessionCompleted,
+    UploadSessionNotFound,
+    UserNotFound,
+    ZipTargetRequired,
+    ZipTooManyConflicts,
+)
 from app.utils.logger import logger
 from app.modules.disk.domain.paths import (
     build_storage_path,
@@ -54,6 +89,7 @@ from app.modules.disk.storage.streaming import (
 from app.modules.system.services.config import build_runtime_config
 from app.modules.system.typed.config import Config
 from app.audit.decorator import audited
+from app.modules.admin.models.user import User
 
 
 def _audit_resource_type_from_entry(entry: File | None) -> str:
@@ -187,7 +223,7 @@ class FileService:
         stmt = select(Storage).where(Storage.id == storage_id)
         storage = (await db.exec(stmt)).first()
         if not storage:
-            raise ServiceException(msg="存储配置不存在")
+            raise StorageConfigNotFound()
         return storage
 
     @staticmethod
@@ -202,6 +238,97 @@ class FileService:
     def _done_ttl() -> int:
         return int(settings.UPLOAD_DONE_TTL or 3600)
 
+    @staticmethod
+    def _upload_reservation_key(user_id: int, upload_id: str) -> str:
+        return f"disk:quota:reservation:{user_id}:{upload_id}"
+
+    @staticmethod
+    def _upload_reservation_index_key(user_id: int) -> str:
+        return f"disk:quota:reservation_index:{user_id}"
+
+    @staticmethod
+    def _parse_positive_int(value: object) -> int:
+        try:
+            parsed = int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+        return parsed if parsed > 0 else 0
+
+    @classmethod
+    async def _sum_upload_reservations(
+        cls,
+        redis,
+        user_id: int,
+        exclude_upload_id: str | None = None,
+    ) -> int:
+        index_key = cls._upload_reservation_index_key(user_id)
+        upload_ids = await redis.smembers(index_key)
+        if not upload_ids:
+            return 0
+        total = 0
+        stale_ids: list[str] = []
+        for raw_upload_id in upload_ids:
+            current_upload_id = str(raw_upload_id)
+            if exclude_upload_id and current_upload_id == exclude_upload_id:
+                continue
+            item_key = cls._upload_reservation_key(user_id, current_upload_id)
+            reserved_raw = await redis.get(item_key)
+            if reserved_raw is None:
+                stale_ids.append(current_upload_id)
+                continue
+            total += cls._parse_positive_int(reserved_raw)
+        if stale_ids:
+            await redis.srem(index_key, *stale_ids)
+        return total
+
+    @classmethod
+    async def _reserve_upload_quota(
+        cls,
+        db: AsyncSession,
+        redis,
+        user_id: int,
+        upload_id: str,
+        reserved_bytes: int,
+    ) -> None:
+        if reserved_bytes <= 0:
+            return
+        user = await cls._get_user_for_update(db, user_id)
+        total_space = int(user.total_space or 0)
+        if total_space > 0:
+            used_space = await cls._current_used_space(db, user_id)
+            reserved_total = await cls._sum_upload_reservations(redis, user_id)
+            remaining = total_space - used_space - reserved_total
+            if reserved_bytes > remaining:
+                raise QuotaExceeded()
+        item_key = cls._upload_reservation_key(user_id, upload_id)
+        index_key = cls._upload_reservation_index_key(user_id)
+        ttl = cls._session_ttl()
+        await redis.set(item_key, str(reserved_bytes), ex=ttl)
+        await redis.sadd(index_key, upload_id)
+        await redis.expire(index_key, ttl * 2)
+
+    @classmethod
+    async def _get_upload_reserved_bytes(cls, redis, user_id: int, upload_id: str) -> int:
+        item_key = cls._upload_reservation_key(user_id, upload_id)
+        value = await redis.get(item_key)
+        return cls._parse_positive_int(value)
+
+    @classmethod
+    async def _release_upload_reservation(cls, redis, user_id: int, upload_id: str) -> None:
+        item_key = cls._upload_reservation_key(user_id, upload_id)
+        index_key = cls._upload_reservation_index_key(user_id)
+        await redis.delete(item_key)
+        await redis.srem(index_key, upload_id)
+
+    @classmethod
+    async def _touch_upload_reservation(cls, redis, user_id: int, upload_id: str) -> None:
+        item_key = cls._upload_reservation_key(user_id, upload_id)
+        ttl = await redis.ttl(item_key)
+        if ttl == -2:
+            return
+        session_ttl = cls._session_ttl()
+        await redis.expire(item_key, session_ttl)
+        await redis.expire(cls._upload_reservation_index_key(user_id), session_ttl * 2)
 
     @classmethod
     async def _download_token_ttl(cls, db: AsyncSession) -> int:
@@ -216,6 +343,48 @@ class FileService:
         cfg = cls._cfg(db)
         ttl = await cfg.preview.max_duration_seconds()
         return int(ttl)
+
+    @classmethod
+    async def _get_user_for_update(cls, db: AsyncSession, user_id: int) -> User:
+        stmt = select(User).where(User.id == user_id).with_for_update()
+        user = (await db.exec(stmt)).first()
+        if not user:
+            raise UserNotFound()
+        return user
+
+    @classmethod
+    async def _current_used_space(cls, db: AsyncSession, user_id: int) -> int:
+        stmt = select(func.coalesce(func.sum(File.size), 0)).where(
+            File.user_id == user_id,
+            File.is_deleted == False,
+            File.is_dir == False,
+        )
+        return int((await db.exec(stmt)).one() or 0)
+
+    @classmethod
+    async def _ensure_quota_available(
+        cls,
+        db: AsyncSession,
+        user_id: int,
+        required_bytes: int,
+        exclude_upload_id: str | None = None,
+    ) -> None:
+        if required_bytes <= 0:
+            return
+        user = await cls._get_user_for_update(db, user_id)
+        total_space = int(user.total_space or 0)
+        if total_space <= 0:
+            return
+        used_space = await cls._current_used_space(db, user_id)
+        redis = get_async_redis()
+        reserved_total = await cls._sum_upload_reservations(
+            redis,
+            user_id,
+            exclude_upload_id=exclude_upload_id,
+        )
+        remaining = total_space - used_space - reserved_total
+        if required_bytes > remaining:
+            raise QuotaExceeded()
 
     @classmethod
     async def _upload_max_size_bytes(cls, db: AsyncSession) -> int | None:
@@ -261,7 +430,7 @@ class FileService:
         )
         file = (await db.exec(stmt)).first()
         if not file:
-            raise ServiceException(msg="文件或目录不存在")
+            raise FileNotFound("文件或目录不存在")
         return file
 
     @classmethod
@@ -270,7 +439,7 @@ class FileService:
     ) -> File:
         parent = await cls._get_active_file(db, user_id, parent_id)
         if not parent.is_dir:
-            raise ServiceException(msg="父节点不是目录")
+            raise ParentNotDirectory()
         return parent
 
     @classmethod
@@ -292,7 +461,7 @@ class FileService:
             stmt = stmt.where(File.id != exclude_id)
         exists = (await db.exec(stmt)).first()
         if exists:
-            raise ServiceException(msg="已存在同名文件或目录")
+            raise NameConflict("已存在同名文件或目录")
 
     @classmethod
     async def _find_active_by_name(
@@ -332,7 +501,7 @@ class FileService:
             if not exists:
                 return candidate
             candidate = f"{stem}{suffix}{index}{ext}"
-        raise ServiceException(msg="恢复失败：重名过多")
+        raise NameConflict("恢复失败：重名过多")
 
     @classmethod
     def _storage_path_for(cls, user_id: int, parent: File | None, name: str) -> str:
@@ -395,7 +564,7 @@ class FileService:
             # 先创建物理目录，确保路径有效且可写。
             backend.ensure_dir(storage_path)
         except Exception as exc:
-            raise ServiceException(msg=str(exc)) from exc
+            raise BadRequestException(str(exc)) from exc
 
         entry = File(
             user_id=user_id,
@@ -424,7 +593,7 @@ class FileService:
                 await backend.delete(storage_path, is_dir=True)
             except Exception:
                 pass
-            raise ServiceException(msg="目录已存在") from exc
+            raise NameConflict("目录已存在") from exc
         await db.refresh(entry)
         return entry
 
@@ -450,7 +619,7 @@ class FileService:
         返回：创建的 File 记录。
         """
         if not upload.filename and not name:
-            raise ServiceException(msg="文件名不能为空")
+            raise InvalidFileName("文件名不能为空")
         safe_name = ensure_name(name or upload.filename or "")
         await cls._prepare_upload_target(db, user_id, parent_id, safe_name, overwrite)
         storage = await cls.get_default_storage(db)
@@ -466,9 +635,10 @@ class FileService:
             max_size = await cls._upload_max_size_bytes(db)
             if max_size and size > max_size:
                 backend.delete_upload_session(user_id, upload_id)
-                raise ServiceException(msg="文件大小超过上传限制")
+                raise PayloadTooLarge("文件大小超过上传限制")
             entry = await cls.finalize_upload(
                 db=db,
+                redis=get_async_redis(),
                 user_id=user_id,
                 upload_id=upload_id,
                 parent_id=parent_id,
@@ -503,9 +673,9 @@ class FileService:
         返回：文件列表与总数。
         """
         if page <= 0:
-            raise ServiceException(msg="页码不合法")
+            raise InvalidPage()
         if page_size <= 0 or page_size > 500:
-            raise ServiceException(msg="分页大小不合法")
+            raise InvalidPageSize()
         stmt = select(File).where(
             File.user_id == user_id,
             File.parent_id == parent_id,
@@ -536,7 +706,7 @@ class FileService:
         order: str = "name",
     ) -> tuple[list[File], int, int | None]:
         if limit <= 0 or limit > 500:
-            raise ServiceException(msg="分页大小不合法")
+            raise InvalidPageSize()
         stmt = select(File).where(
             File.user_id == user_id,
             File.parent_id == parent_id,
@@ -568,7 +738,7 @@ class FileService:
         order: str = "name",
     ) -> tuple[list[File], int, int | None]:
         if limit <= 0 or limit > 500:
-            raise ServiceException(msg="分页大小不合法")
+            raise InvalidPageSize()
         term = (keyword or "").strip()
         if not term:
             return [], 0, None
@@ -689,7 +859,7 @@ class FileService:
         )
         target = (await db.exec(stmt)).first()
         if not target:
-            raise ServiceException(msg="文件或目录不存在")
+            raise FileNotFound("文件或目录不存在")
         parent = None
         if target.parent_id is not None:
             parent_stmt = select(File).where(
@@ -698,17 +868,17 @@ class FileService:
             )
             parent = (await db.exec(parent_stmt)).first()
             if not parent:
-                raise ServiceException(msg="上级目录不存在，无法恢复")
+                raise RestoreParentMissing()
             if parent.is_deleted:
-                raise ServiceException(msg="请先恢复上级目录")
+                raise RestoreParentDeleted()
             if not parent.is_dir:
-                raise ServiceException(msg="父节点不是目录")
+                raise ParentNotDirectory()
         try:
             await cls._ensure_unique_name(
                 db, user_id, target.parent_id, target.name, exclude_id=target.id
             )
             restore_name = target.name
-        except ServiceException:
+        except NameConflict:
             restore_name = await cls._generate_unique_name(
                 db, user_id, target.parent_id, target.name
             )
@@ -755,7 +925,7 @@ class FileService:
                     await backend.move(new_path, old_path)
                 except Exception:
                     pass
-            raise ServiceException(msg="同名文件或目录已存在") from exc
+            raise NameConflict("同名文件或目录已存在") from exc
         await db.refresh(target)
         return target
 
@@ -789,15 +959,15 @@ class FileService:
         """
         target = await cls._get_active_file(db, user_id, file_id)
         if target_parent_id == target.id:
-            raise ServiceException(msg="不允许移动到自身")
+            raise MoveToSelf()
         parent = None
         if target_parent_id is not None:
             parent = await cls._get_active_dir(db, user_id, target_parent_id)
         if parent and parent.storage_id != target.storage_id:
-            raise ServiceException(msg="目标目录存储不一致")
+            raise StorageMismatch()
         if target.is_dir and target_parent_id is not None:
             if await cls._is_descendant(db, user_id, target_parent_id, target.id):
-                raise ServiceException(msg="不允许移动到子目录")
+                raise MoveToDescendant()
         safe_name = ensure_name(new_name or target.name)
         await cls._ensure_unique_name(
             db, user_id, target_parent_id, safe_name, exclude_id=target.id
@@ -843,7 +1013,7 @@ class FileService:
                 await backend.move(new_path, old_path)
             except Exception:
                 pass
-            raise ServiceException(msg="目标名称冲突") from exc
+            raise NameConflict("目标名称冲突") from exc
         await db.refresh(target)
         return target
 
@@ -991,15 +1161,15 @@ class FileService:
         existing = await cls._find_active_by_name(db, user_id, parent_id, safe_name)
         if existing:
             if not overwrite:
-                raise ServiceException(msg="文件已存在")
+                raise NameConflict("文件已存在")
             if existing.is_dir:
-                raise ServiceException(msg="同名目录已存在")
+                raise NameConflict("同名目录已存在")
             await cls.soft_delete(db, user_id, existing.id)
         else:
             await cls._ensure_unique_name(db, user_id, parent_id, safe_name)
         storage = await cls.get_default_storage(db)
         if parent and parent.storage_id != storage.id:
-            raise ServiceException(msg="父目录存储不一致")
+            raise StorageMismatch("父目录存储不一致")
         storage_path = cls._storage_path_for(user_id, parent, safe_name)
         return parent, storage, storage_path
 
@@ -1007,6 +1177,7 @@ class FileService:
     async def init_upload_session(
         cls,
         db: AsyncSession,
+        redis,
         user_id: int,
         parent_id: int | None,
         name: str,
@@ -1025,18 +1196,29 @@ class FileService:
         返回：upload_id 与过期信息。
         """
         if size < 0:
-            raise ServiceException(msg="文件大小不合法")
+            raise BadRequestException("文件大小不合法")
         part_size = await cls._upload_chunk_size_bytes(db)
         max_size = await cls._upload_max_size_bytes(db)
         if max_size and size > max_size:
-            raise ServiceException(msg="文件大小超过上传限制")
+            raise PayloadTooLarge("文件大小超过上传限制")
         safe_name = ensure_name(name)
         await cls._prepare_upload_target(db, user_id, parent_id, safe_name, overwrite)
         total_parts = max(1, (size + part_size - 1) // part_size)
         upload_id = cls._make_upload_id(total_parts)
+        await cls._reserve_upload_quota(
+            db=db,
+            redis=redis,
+            user_id=user_id,
+            upload_id=upload_id,
+            reserved_bytes=size,
+        )
         storage = await cls.get_default_storage(db)
         backend = get_storage_backend(storage)
-        backend.ensure_upload_session(user_id, upload_id)
+        try:
+            backend.ensure_upload_session(user_id, upload_id)
+        except Exception:
+            await cls._release_upload_reservation(redis, user_id, upload_id)
+            raise
         return {
             "upload_id": upload_id,
             "part_size": part_size,
@@ -1064,27 +1246,28 @@ class FileService:
         返回：写入分片大小。
         """
         if part_number <= 0:
-            raise ServiceException(msg="分片编号不合法")
+            raise InvalidPartNumber()
         total_parts = cls._parse_upload_id(upload_id)
         if not total_parts:
-            raise ServiceException(msg="上传会话ID不合法")
+            raise InvalidUploadId()
         if part_number > total_parts:
-            raise ServiceException(msg="分片编号超出范围")
+            raise InvalidPartNumber("分片编号超出范围")
         storage = await cls.get_default_storage(db)
         backend = get_storage_backend(storage)
         state = backend.get_upload_session_state(user_id, upload_id)
         if not state.get("exists"):
-            raise ServiceException(msg="上传会话不存在")
+            raise UploadSessionNotFound()
         if state.get("done"):
-            raise ServiceException(msg="上传会话已完成")
+            raise UploadSessionCompleted()
         if state.get("locked"):
-            raise ServiceException(msg="上传正在合并")
+            raise UploadFinalizing()
         try:
             size = await cls._with_upload_limit(
                 user_id,
                 db,
                 backend.write_upload_part(user_id, upload_id, part_number, upload),
             )
+            await cls._touch_upload_reservation(redis=get_async_redis(), user_id=user_id, upload_id=upload_id)
             return size
         finally:
             await upload.close()
@@ -1108,12 +1291,13 @@ class FileService:
         """
         total_parts = cls._parse_upload_id(upload_id)
         if not total_parts:
-            raise ServiceException(msg="无法解析分片总数")
+            raise InvalidTotalParts("无法解析分片总数")
         storage = await cls.get_default_storage(db)
         backend = get_storage_backend(storage)
         state = backend.get_upload_session_state(user_id, upload_id)
         if not state.get("exists"):
-            raise ServiceException(msg="上传会话不存在")
+            raise UploadSessionNotFound()
+        await cls._touch_upload_reservation(redis=get_async_redis(), user_id=user_id, upload_id=upload_id)
         parts = state.get("parts") or []
         uploaded_set = set(parts)
         missing = [idx for idx in range(1, total_parts + 1) if idx not in uploaded_set]
@@ -1147,6 +1331,7 @@ class FileService:
     async def finalize_upload(
         cls,
         db: AsyncSession,
+        redis,
         user_id: int,
         upload_id: str,
         parent_id: int | None,
@@ -1169,32 +1354,51 @@ class FileService:
         safe_name = ensure_name(name)
         total = total_parts or cls._parse_upload_id(upload_id)
         if not total:
-            raise ServiceException(msg="分片总数缺失")
+            raise InvalidTotalParts("分片总数缺失")
         storage = await cls.get_default_storage(db)
         backend = get_storage_backend(storage)
         state = backend.get_upload_session_state(user_id, upload_id)
         if not state.get("exists"):
-            raise ServiceException(msg="上传会话不存在")
+            raise UploadSessionNotFound()
         if state.get("done"):
+            await cls._release_upload_reservation(redis, user_id, upload_id)
             return await cls._get_active_file_by_path(db, user_id, parent_id, safe_name)
         _, storage, storage_path = await cls._prepare_upload_target(
             db, user_id, parent_id, safe_name, overwrite
         )
         # 通过独占锁避免并发 finalize 造成重复合并。
         if not backend.acquire_upload_lock(user_id, upload_id):
-            raise ServiceException(msg="上传正在合并")
+            raise UploadFinalizing()
         try:
             parts = state.get("parts") or []
             uploaded = set(parts)
             missing = [idx for idx in range(1, total + 1) if idx not in uploaded]
             if missing:
-                raise ServiceException(msg="分片不完整")
+                raise ChunkIncomplete()
             # 合并分片时顺序读取，保持内存稳定。
             size, digest = await cls._with_upload_limit(
                 user_id,
                 db,
                 backend.merge_upload_parts(user_id, upload_id, total, storage_path),
             )
+            try:
+                reserved_bytes = await cls._get_upload_reserved_bytes(
+                    redis,
+                    user_id,
+                    upload_id,
+                )
+                await cls._ensure_quota_available(
+                    db,
+                    user_id,
+                    max(0, size - reserved_bytes),
+                    exclude_upload_id=upload_id,
+                )
+            except Exception:
+                try:
+                    await backend.delete(storage_path, is_dir=False)
+                except Exception:
+                    pass
+                raise
             entry = File(
                 user_id=user_id,
                 parent_id=parent_id,
@@ -1222,9 +1426,10 @@ class FileService:
                     await backend.delete(storage_path, is_dir=False)
                 except Exception:
                     pass
-                raise ServiceException(msg="文件已存在") from exc
+                raise NameConflict("文件已存在") from exc
             await db.refresh(entry)
             backend.mark_upload_done(user_id, upload_id)
+            await cls._release_upload_reservation(redis, user_id, upload_id)
             return entry
         finally:
             backend.release_upload_lock(user_id, upload_id)
@@ -1233,6 +1438,7 @@ class FileService:
     async def cancel_upload(
         cls,
         db: AsyncSession,
+        redis,
         user_id: int,
         upload_id: str,
     ) -> None:
@@ -1250,15 +1456,18 @@ class FileService:
         backend = get_storage_backend(storage)
         state = backend.get_upload_session_state(user_id, upload_id)
         if not state.get("exists"):
+            await cls._release_upload_reservation(redis, user_id, upload_id)
             return
         if state.get("locked"):
-            raise ServiceException(msg="上传正在合并")
+            raise UploadFinalizing()
         backend.delete_upload_session(user_id, upload_id)
+        await cls._release_upload_reservation(redis, user_id, upload_id)
 
     @classmethod
     async def gc_uploads(
         cls,
         db: AsyncSession,
+        redis,
         dry_run: bool = False,
     ) -> dict:
         """
@@ -1273,11 +1482,26 @@ class FileService:
         """
         storage = await cls.get_default_storage(db)
         backend = get_storage_backend(storage)
-        return backend.gc_upload_sessions(
+        result = backend.gc_upload_sessions(
             session_ttl=cls._session_ttl(),
             done_ttl=cls._done_ttl(),
             dry_run=dry_run,
         )
+        if not dry_run:
+            async for key in redis.scan_iter(match="disk:quota:reservation_index:*", count=100):
+                user_id = cls._parse_positive_int(str(key).rsplit(":", 1)[-1])
+                if user_id <= 0:
+                    continue
+                upload_ids = await redis.smembers(key)
+                if not upload_ids:
+                    continue
+                for raw_upload_id in upload_ids:
+                    upload_id = str(raw_upload_id)
+                    state = backend.get_upload_session_state(user_id, upload_id)
+                    if not state.get("exists"):
+                        await cls._release_upload_reservation(redis, user_id, upload_id)
+                await cls._sum_upload_reservations(redis, user_id)
+        return result
 
     @classmethod
     async def _get_active_file_by_path(
@@ -1291,7 +1515,7 @@ class FileService:
         )
         entry = (await db.exec(stmt)).first()
         if not entry:
-            raise ServiceException(msg="文件不存在")
+            raise FileNotFound()
         return entry
 
     @staticmethod
@@ -1319,7 +1543,7 @@ class FileService:
         """
         file = await cls._get_active_file(db, user_id, file_id)
         if file.is_dir:
-            raise ServiceException(msg="目标不是文件")
+            raise InvalidTargetType()
         storage = await cls._get_storage_by_id(db, file.storage_id)
         backend = get_storage_backend(storage)
         content, size, modified_time = await backend.read_text(file.storage_path)
@@ -1431,7 +1655,7 @@ class FileService:
         """
         entry = await cls._get_active_file(db, user_id, file_id)
         if entry.is_dir:
-            raise ServiceException(msg="目录不支持预览")
+            raise PreviewNotSupported()
         ttl = await cls._preview_token_ttl(db)
         now = int(time.time())
         token = secrets.token_urlsafe(32)
@@ -1470,29 +1694,29 @@ class FileService:
         返回：payload 字典。
         """
         if not token:
-            raise ServiceException(msg="下载令牌无效")
+            raise FileTokenInvalid("下载令牌无效")
         raw = await redis.get(f"dl:tok:{token}")
         if not raw:
-            raise ServiceException(msg="下载令牌不存在或已过期")
+            raise FileTokenExpired("下载令牌不存在或已过期")
         if isinstance(raw, (bytes, bytearray)):
             raw = raw.decode("utf-8")
         try:
             payload = json.loads(raw)
         except Exception as exc:
-            raise ServiceException(msg="下载令牌解析失败") from exc
+            raise FileTokenInvalid("下载令牌解析失败") from exc
         if payload.get("act") != action:
-            raise ServiceException(msg="下载令牌类型错误")
+            raise FileTokenInvalid("下载令牌类型错误")
         if int(payload.get("rid") or 0) != int(file_id):
-            raise ServiceException(msg="下载令牌与资源不匹配")
+            raise FileTokenInvalid("下载令牌与资源不匹配")
         expires_at = int(payload.get("expires_at") or 0)
         if expires_at and int(time.time()) > expires_at:
-            raise ServiceException(msg="下载令牌已过期")
+            raise FileTokenExpired("下载令牌已过期")
         if payload.get("ip") and payload.get("ip") != cls._extract_client_ip(request):
-            raise ServiceException(msg="下载令牌已失效")
+            raise FileTokenInvalid("下载令牌已失效")
         if payload.get("ua") and payload.get("ua") != request.headers.get(
             "user-agent", ""
         ):
-            raise ServiceException(msg="下载令牌已失效")
+            raise FileTokenInvalid("下载令牌已失效")
         return payload
 
     @classmethod
@@ -1570,7 +1794,7 @@ class FileService:
             )
             uid = int(payload.get("uid") or 0)
             if uid <= 0:
-                raise ServiceException(msg="下载令牌无效")
+                raise FileTokenInvalid("下载令牌无效")
             entry = await cls._get_active_file(db, uid, file_id)
             if entry.is_dir:
                 filename = f"{entry.name or 'root'}.zip"
@@ -1616,10 +1840,10 @@ class FileService:
         )
         uid = int(payload.get("uid") or 0)
         if uid <= 0:
-            raise ServiceException(msg="预览令牌无效")
+            raise FileTokenInvalid("预览令牌无效")
         entry = await cls._get_active_file(db, uid, file_id)
         if entry.is_dir:
-            raise ServiceException(msg="目录不支持预览")
+            raise PreviewNotSupported()
         file_path, filename, cleanup, _ = await cls.prepare_download(db, entry.id, uid)
         background = BackgroundTask(_cleanup_abs_path, file_path) if cleanup else None
         return cls.build_download_response(
@@ -1851,7 +2075,7 @@ class FileService:
     ) -> Response:
         entry = await cls._get_active_file(db, user_id, file_id)
         if entry.is_dir:
-            raise ServiceException(msg="目录不支持缩略图预览")
+            raise ThumbnailNotSupported("目录不支持缩略图预览")
         width = cls._normalize_thumbnail_size(width, 128)
         height = cls._normalize_thumbnail_size(height, 128)
         fit_mode = (fit or "cover").strip().lower()
@@ -1863,16 +2087,16 @@ class FileService:
         quality_value = max(30, min(95, int(quality or 82)))
         kind = cls._guess_preview_kind(entry)
         if kind == "pdf":
-            raise ServiceException(msg="PDF 缩略图暂未启用")
+            raise ThumbnailNotSupported("PDF 缩略图暂未启用")
         if kind == "video":
-            raise ServiceException(msg="视频封面预览暂未启用")
+            raise ThumbnailNotSupported("视频封面预览暂未启用")
         if kind != "image":
-            raise ServiceException(msg="当前文件类型不支持缩略图")
+            raise ThumbnailNotSupported()
         storage = await cls._get_storage_by_id(db, entry.storage_id)
         backend = get_storage_backend(storage)
         abs_path = backend.resolve_abs_path(entry.storage_path)
         if not backend.exists_abs_path(abs_path):
-            raise ServiceException(msg="文件不存在")
+            raise FileNotFound()
         if entry.updated_at:
             version = int(entry.updated_at.timestamp())
         else:
@@ -1916,9 +2140,9 @@ class FileService:
                 quality_value,
             )
         except UnidentifiedImageError as exc:
-            raise ServiceException(msg="无法解析图片内容") from exc
+            raise ThumbnailBuildFailed("无法解析图片内容") from exc
         except OSError as exc:
-            raise ServiceException(msg=f"缩略图生成失败: {exc}") from exc
+            raise ThumbnailBuildFailed(f"缩略图生成失败: {exc}") from exc
         try:
             await cls._write_cached_thumbnail(cache_path, blob)
         except Exception:
@@ -1958,9 +2182,12 @@ class FileService:
         """
         file = await cls._get_active_file(db, user_id, file_id)
         if file.is_dir:
-            raise ServiceException(msg="目标不是文件")
+            raise InvalidTargetType()
         storage = await cls._get_storage_by_id(db, file.storage_id)
         backend = get_storage_backend(storage)
+        expected_size = len(content.encode("utf-8"))
+        additional = max(0, expected_size - int(file.size or 0))
+        await cls._ensure_quota_available(db, user_id, additional)
         size, digest = await backend.write_text(file.storage_path, content)
         file.size = size
         file.etag = digest
@@ -1987,7 +2214,7 @@ class FileService:
         storage = await cls._get_storage_by_id(db, file.storage_id)
         backend = get_storage_backend(storage)
         if file.is_dir:
-            raise ServiceException(msg="目录下载需使用打包下载接口")
+            raise BadRequestException("目录下载需使用打包下载接口")
         target = backend.resolve_abs_path(file.storage_path)
         return target, file.name, False, storage.id
 
@@ -1997,7 +2224,7 @@ class FileService:
     ) -> str:
         file = await cls._get_active_file(db, user_id, file_id)
         if not file.is_dir:
-            raise ServiceException(msg="文件无需打包")
+            raise BadRequestException("文件无需打包")
         job_id = uuid4().hex
         key = f"disk:download:{job_id}"
         await redis.hset(
@@ -2050,7 +2277,7 @@ class FileService:
     ) -> str:
         ids = [int(file_id) for file_id in file_ids if int(file_id) > 0]
         if not ids:
-            raise ServiceException(msg="缺少压缩目标")
+            raise ZipTargetRequired()
         job_id = uuid4().hex
         key = f"disk:compress:{job_id}"
         await redis.hset(
@@ -2085,9 +2312,9 @@ class FileService:
         """
         file = await cls._get_active_file(db, user_id, file_id)
         if file.is_dir:
-            raise ServiceException(msg="目标不是文件")
+            raise InvalidTargetType()
         if not file.name.lower().endswith(".zip"):
-            raise ServiceException(msg="仅支持 ZIP 文件解压")
+            raise BadRequestException("仅支持 ZIP 文件解压")
         job_id = uuid4().hex
         key = f"disk:extract:{job_id}"
         await redis.hset(
@@ -2162,13 +2389,13 @@ class FileService:
         key = f"disk:download:{job_id}"
         decoded = await cls._get_job_data(key, user_id, redis, "下载任务不存在")
         if decoded.get("status") != "ready":
-            raise ServiceException(msg="任务尚未完成")
+            raise TaskNotReady()
         file_id = int(decoded.get("file_id", "0"))
         if file_id <= 0:
-            raise ServiceException(msg="任务数据缺失")
+            raise TaskInvalid("任务数据缺失")
         root = await cls._get_active_file(db, user_id, file_id)
         if not root.is_dir:
-            raise ServiceException(msg="目标不是目录")
+            raise BadRequestException("目标不是目录")
         filename = decoded.get("filename", f"{root.name or 'root'}.zip")
         return root, filename
 
@@ -2178,10 +2405,10 @@ class FileService:
     ) -> dict:
         data = await redis.hgetall(key)
         if not data:
-            raise ServiceException(msg=not_found_msg)
+            raise TaskInvalid(not_found_msg)
         decoded = cls._decode_redis_hash(data)
         if decoded.get("user_id") != str(user_id):
-            raise ServiceException(msg="无权访问该任务")
+            raise NoPermission("无权访问该任务")
         return decoded
 
     @classmethod
@@ -2398,7 +2625,7 @@ class FileService:
                     safe_name = candidate
                     break
             else:
-                raise ServiceException(msg="压缩失败：重名过多")
+                raise ZipTooManyConflicts()
         storage = await cls._get_storage_by_id(db, target.storage_id)
         backend = get_storage_backend(storage)
         storage_path = cls._storage_path_for(user_id, parent, safe_name)
@@ -2409,7 +2636,15 @@ class FileService:
             entries = [(target.storage_path, target.name or "file", False)]
             zip_path = await backend.create_zip(user_id, None, entries)
             await backend.move_abs_path(zip_path, storage_path)
-        size, digest = await backend.hash_file(storage_path)
+        try:
+            size, digest = await backend.hash_file(storage_path)
+            await cls._ensure_quota_available(db, user_id, size)
+        except Exception:
+            try:
+                await backend.delete(storage_path, is_dir=False)
+            except Exception:
+                pass
+            raise
         entry = File(
             user_id=user_id,
             parent_id=parent_id,
@@ -2442,13 +2677,13 @@ class FileService:
             seen.add(file_id)
             unique_ids.append(file_id)
         if not unique_ids:
-            raise ServiceException(msg="缺少压缩目标")
+            raise ZipTargetRequired()
 
         targets = [await cls._get_active_file(db, user_id, file_id) for file_id in unique_ids]
         first_parent_id = targets[0].parent_id
         for target in targets:
             if target.parent_id != first_parent_id:
-                raise ServiceException(msg="批量压缩仅支持同一目录下的文件")
+                raise BadRequestException("批量压缩仅支持同一目录下的文件")
 
         parent = None
         if first_parent_id is not None:
@@ -2469,12 +2704,12 @@ class FileService:
                     safe_name = candidate
                     break
             else:
-                raise ServiceException(msg="压缩失败：重名过多")
+                raise ZipTooManyConflicts()
 
         storage = await cls._get_storage_by_id(db, targets[0].storage_id)
         for target in targets:
             if target.storage_id != storage.id:
-                raise ServiceException(msg="批量压缩仅支持同一存储内的文件")
+                raise BadRequestException("批量压缩仅支持同一存储内的文件")
         backend = get_storage_backend(storage)
 
         def _unique_arc(base: str, used: set[str]) -> str:
@@ -2490,7 +2725,7 @@ class FileService:
                 if candidate not in used:
                     used.add(candidate)
                     return candidate
-            raise ServiceException(msg="压缩失败：重名过多")
+            raise ZipTooManyConflicts()
 
         entries: list[tuple[str, str, bool]] = []
         used_arcnames: set[str] = set()
@@ -2513,7 +2748,15 @@ class FileService:
         zip_path = await backend.create_zip(user_id, None, entries)
         storage_path = cls._storage_path_for(user_id, parent, safe_name)
         await backend.move_abs_path(zip_path, storage_path)
-        size, digest = await backend.hash_file(storage_path)
+        try:
+            size, digest = await backend.hash_file(storage_path)
+            await cls._ensure_quota_available(db, user_id, size)
+        except Exception:
+            try:
+                await backend.delete(storage_path, is_dir=False)
+            except Exception:
+                pass
+            raise
         entry = File(
             user_id=user_id,
             parent_id=first_parent_id,
@@ -2538,9 +2781,9 @@ class FileService:
     async def extract_by_id(cls, db: AsyncSession, user_id: int, file_id: int) -> File:
         source = await cls._get_active_file(db, user_id, file_id)
         if source.is_dir:
-            raise ServiceException(msg="目标不是文件")
+            raise InvalidTargetType()
         if not source.name.lower().endswith(".zip"):
-            raise ServiceException(msg="仅支持 ZIP 文件解压")
+            raise BadRequestException("仅支持 ZIP 文件解压")
         base_name = ensure_name(source.name.rsplit(".", 1)[0] or "extract")
         root_name = base_name
         if await cls._find_active_by_name(db, user_id, source.parent_id, root_name):
@@ -2552,7 +2795,7 @@ class FileService:
                     root_name = candidate
                     break
             else:
-                raise ServiceException(msg="解压失败：重名过多")
+                raise ZipTooManyConflicts("解压失败：重名过多")
         root_dir = await cls.create_dir(db, user_id, source.parent_id, root_name)
         storage = await cls._get_storage_by_id(db, source.storage_id)
         backend = get_storage_backend(storage)
@@ -2560,6 +2803,8 @@ class FileService:
             extracted = await backend.extract_zip(
                 source.storage_path, root_dir.storage_path
             )
+            extract_total = sum(int(item.size or 0) for item in extracted if not item.is_dir)
+            await cls._ensure_quota_available(db, user_id, extract_total)
 
             dir_map: dict[str, File] = {"": root_dir}
             dir_paths: set[str] = set()
@@ -2825,5 +3070,6 @@ class FileService:
                 pass
         await db.execute(File.__table__.delete().where(File.id.in_(all_ids)))
         await db.commit()
+
 
 

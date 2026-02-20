@@ -14,6 +14,7 @@ import { useResponsiveSidebar } from '@/composables/useResponsiveSidebar'
 import { useHeaderSearchQuery } from '@/composables/useHeaderSearch'
 import { useUserAvatar } from '@/composables/useUserAvatar'
 import { useTheme } from '@/composables/useTheme'
+import { formatBytes } from '@/utils/format'
 
 const authStore = useAuthStore()
 const appStore = useAppStore()
@@ -75,6 +76,24 @@ const { modelValue: searchValue, submit: submitSearch } = useHeaderSearchQuery({
   router,
   enabled: searchEnabled,
 })
+const totalSpace = computed(() => Math.max(Number(authStore.me?.total_space ?? 0), 0))
+const usedSpace = computed(() => Math.max(Number(authStore.me?.used_space ?? 0), 0))
+const hasQuota = computed(() => totalSpace.value > 0)
+const usageRatio = computed(() => {
+  if (!hasQuota.value) {
+    return 0
+  }
+  return Math.max(0, Math.min(usedSpace.value / totalSpace.value, 1))
+})
+const usagePercent = computed(() => Math.round(usageRatio.value * 100))
+const usageLabel = computed(() =>
+  hasQuota.value
+    ? `${formatBytes(usedSpace.value)} / ${formatBytes(totalSpace.value)}`
+    : formatBytes(usedSpace.value),
+)
+const usageRingStyle = computed(() => ({
+  '--usage': `${usagePercent.value}`,
+}))
 </script>
 
 <template>
@@ -102,6 +121,19 @@ const { modelValue: searchValue, submit: submitSearch } = useHeaderSearchQuery({
           <span>{{ t('layout.nav.trash') }}</span>
         </RouterLink>
       </nav>
+      <div class="sidebar-storage" :title="usageLabel">
+        <template v-if="sidebarOpen">
+          <div class="sidebar-storage__value">{{ usageLabel }}</div>
+          <div class="sidebar-storage__track">
+            <div class="sidebar-storage__fill" :style="{ width: `${usagePercent}%` }"></div>
+          </div>
+        </template>
+        <template v-else>
+          <div class="sidebar-storage__ring" :style="usageRingStyle">
+            <span>{{ usagePercent }}%</span>
+          </div>
+        </template>
+      </div>
     </aside>
 
     <header class="layout__toolbar">
@@ -236,6 +268,11 @@ const { modelValue: searchValue, submit: submitSearch } = useHeaderSearchQuery({
 </template>
 
 <style scoped>
+.layout__sidebar {
+  grid-template-rows: auto 1fr auto;
+  align-content: stretch;
+}
+
 .layout--collapsed .nav__item span {
   opacity: 0;
   transform: translateX(-4px);
@@ -284,6 +321,79 @@ const { modelValue: searchValue, submit: submitSearch } = useHeaderSearchQuery({
 
 .nav__item:hover {
   background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.nav {
+  align-content: start;
+}
+
+.sidebar-storage {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.sidebar-storage__value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.sidebar-storage__track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.sidebar-storage__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-primary);
+  min-width: 2px;
+}
+
+.layout--collapsed .sidebar-storage {
+  margin-top: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  justify-items: center;
+  justify-self: center;
+}
+
+.sidebar-storage__ring {
+  --ring-size: 40px;
+  width: var(--ring-size);
+  height: var(--ring-size);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  position: relative;
+  background: conic-gradient(
+    var(--color-primary) calc(var(--usage, 0) * 1%),
+    var(--color-border) 0
+  );
+}
+
+.sidebar-storage__ring::before {
+  content: '';
+  width: calc(var(--ring-size) - 10px);
+  height: calc(var(--ring-size) - 10px);
+  border-radius: 50%;
+  background: var(--color-surface-2);
+}
+
+.sidebar-storage__ring span {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 700;
   color: var(--color-text);
 }
 

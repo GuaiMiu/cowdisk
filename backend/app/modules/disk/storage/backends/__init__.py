@@ -6,7 +6,7 @@
 @Description:
 """
 
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import BadRequestException, ServiceUnavailableException
 from app.modules.disk.models.storage import Storage
 from app.modules.disk.storage.backends.base import StorageBackend
 from app.modules.disk.storage.backends.local import LocalStorageBackend
@@ -16,7 +16,7 @@ _BACKEND_CACHE: dict[int, StorageBackend] = {}
 
 def get_storage_backend(storage: Storage) -> StorageBackend:
     if storage.id is None:
-        raise ServiceException(msg="存储配置无效")
+        raise BadRequestException("存储配置无效")
     cached = _BACKEND_CACHE.get(storage.id)
     if cached:
         return cached
@@ -24,9 +24,9 @@ def get_storage_backend(storage: Storage) -> StorageBackend:
     if storage.type == "local":
         backend = LocalStorageBackend(storage.base_path_or_bucket)
     elif storage.type == "minio":
-        raise ServiceException(msg="MinIO 存储暂未实现")
+        raise ServiceUnavailableException("MinIO 存储暂未实现")
     else:
-        raise ServiceException(msg="未知存储类型")
+        raise BadRequestException("未知存储类型")
     _BACKEND_CACHE[storage.id] = backend
     return backend
 

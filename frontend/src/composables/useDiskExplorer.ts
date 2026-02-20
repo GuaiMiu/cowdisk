@@ -11,6 +11,7 @@ import {
   searchFiles,
 } from '@/api/modules/userDisk'
 import { useMessage } from '@/stores/message'
+import { useAuthStore } from '@/stores/auth'
 import type { DiskEntry } from '@/types/disk'
 import { triggerDownload } from '@/utils/download'
 import { normalizeDiskError } from '@/utils/diskError'
@@ -20,6 +21,7 @@ type SortKey = 'name' | 'size' | 'type' | 'updatedAt'
 export const useDiskExplorer = () => {
   const { t } = useI18n({ useScope: 'global' })
   const message = useMessage()
+  const authStore = useAuthStore()
   const loading = ref(false)
   const path = ref('/')
   const parentId = ref<number | null>(null)
@@ -279,6 +281,7 @@ export const useDiskExplorer = () => {
       }
       if (result.success.length > 0) {
         await refresh()
+        void authStore.refreshMe().catch(() => null)
       }
       return result.success.length > 0 && result.failed.length === 0
     } catch (error) {
@@ -385,6 +388,7 @@ export const useDiskExplorer = () => {
 
       if (hardDeleteResult.success > 0) {
         await refresh()
+        void authStore.refreshMe().catch(() => null)
       }
       return failedCount === 0
     } catch (error) {

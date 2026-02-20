@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -15,6 +15,7 @@ import Switch from '@/components/common/Switch.vue'
 import { useAdminUsers } from '@/composables/useAdminUsers'
 import { formatTime } from '@/utils/format'
 import { useRoleOptions } from '@/composables/useRoleOptions'
+import { useSelection } from '@/composables/useSelection'
 import type { UserOut } from '@/types/auth'
 import { useAuthStore } from '@/stores/auth'
 import { useMessage } from '@/stores/message'
@@ -26,6 +27,7 @@ const message = useMessage()
 const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 const columns = computed(() => [
+  { key: 'select', label: '', width: '44px', align: 'center' as const },
   { key: 'username', label: t('admin.user.columns.username') },
   { key: 'nickname', label: t('admin.user.columns.nickname') },
   { key: 'mail', label: t('admin.user.columns.mail') },
@@ -44,11 +46,23 @@ const superOptions = computed(() => [
   { label: t('admin.user.superOptions.yes'), value: 'true' },
 ])
 
+type SpaceUnit = 'B' | 'KB' | 'MB' | 'GB' | 'TB'
+const SPACE_UNIT_FACTORS: Record<SpaceUnit, number> = {
+  B: 1,
+  KB: 1024,
+  MB: 1024 * 1024,
+  GB: 1024 * 1024 * 1024,
+  TB: 1024 * 1024 * 1024 * 1024,
+}
+const SPACE_UNITS: readonly SpaceUnit[] = ['KB', 'MB', 'GB', 'TB'] as const
+
 const formOpen = ref(false)
 const deleteConfirm = ref(false)
+const deleteMode = ref<'single' | 'batch'>('single')
 const currentUser = ref<UserOut | null>(null)
 const roleOptions = useRoleOptions()
 const toggling = ref(new Set<number>())
+const selectAllRef = ref<HTMLInputElement | null>(null)
 const currentUserId = computed(() => authStore.me?.id)
 const searchKeyword = computed(() => getRouteSearchKeyword(route).toLowerCase())
 const filteredUsers = computed(() => {
@@ -63,6 +77,12 @@ const filteredUsers = computed(() => {
     return username.includes(keyword) || nickname.includes(keyword) || mail.includes(keyword)
   })
 })
+const selection = useSelection(() => filteredUsers.value, (item) => String(item.id || ''))
+const selectedIds = computed(() =>
+  selection.selectedItems.value
+    .map((item) => item.id || 0)
+    .filter((id) => id > 0),
+)
 
 const form = reactive({
   id: 0,
@@ -73,7 +93,9 @@ const form = reactive({
   status: 'true',
   is_superuser: 'false',
   total_space: '',
+  total_space_unit: 'GB' as SpaceUnit,
   used_space: '',
+  used_space_unit: 'GB' as SpaceUnit,
   roles: [] as Array<number>,
 })
 
@@ -93,12 +115,47 @@ const resetForm = () => {
   form.status = 'true'
   form.is_superuser = 'false'
   form.total_space = ''
+  form.total_space_unit = 'GB'
   form.used_space = ''
+  form.used_space_unit = 'GB'
   form.roles = []
   errors.username = ''
   errors.password = ''
   errors.total_space = ''
   errors.used_space = ''
+}
+
+const normalizeDisplayNumber = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return ''
+  }
+  return Number(value.toFixed(2)).toString()
+}
+
+const bytesToSpaceInput = (bytes?: number | null): { value: string; unit: SpaceUnit } => {
+  const value = Number(bytes ?? NaN)
+  if (!Number.isFinite(value) || value < 0) {
+    return { value: '', unit: 'GB' }
+  }
+  const unitsDesc = [...SPACE_UNITS].reverse()
+  for (const unit of unitsDesc) {
+    const factor = SPACE_UNIT_FACTORS[unit]
+    if (value >= factor) {
+      return { value: normalizeDisplayNumber(value / factor), unit }
+    }
+  }
+  return { value: normalizeDisplayNumber(value / SPACE_UNIT_FACTORS.KB), unit: 'KB' }
+}
+
+const parseSpaceToBytes = (value: string, unit: SpaceUnit) => {
+  if (!value.trim()) {
+    return { bytes: undefined, invalid: false as const }
+  }
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return { bytes: undefined, invalid: true as const }
+  }
+  return { bytes: Math.round(numeric * SPACE_UNIT_FACTORS[unit]), invalid: false as const }
 }
 
 const openCreate = () => {
@@ -114,8 +171,12 @@ const openEdit = (user: UserOut) => {
   form.password = ''
   form.status = user.status ? 'true' : 'false'
   form.is_superuser = user.is_superuser ? 'true' : 'false'
-  form.total_space = user.total_space !== undefined ? String(user.total_space) : ''
-  form.used_space = user.used_space !== undefined ? String(user.used_space) : ''
+  const totalSpaceInput = bytesToSpaceInput(user.total_space)
+  form.total_space = totalSpaceInput.value
+  form.total_space_unit = totalSpaceInput.unit
+  const usedSpaceInput = bytesToSpaceInput(user.used_space)
+  form.used_space = usedSpaceInput.value
+  form.used_space_unit = usedSpaceInput.unit
   form.roles = (user.roles || []).map((role) => role.id || 0).filter((id) => id > 0)
   errors.username = ''
   errors.password = ''
@@ -129,27 +190,27 @@ const submitForm = async () => {
   errors.password = ''
   errors.total_space = ''
   errors.used_space = ''
-  const totalSpaceValue = form.total_space ? Number(form.total_space) : undefined
-  const usedSpaceValue = form.used_space ? Number(form.used_space) : undefined
+  const totalSpaceParsed = parseSpaceToBytes(form.total_space, form.total_space_unit)
+  const usedSpaceParsed = parseSpaceToBytes(form.used_space, form.used_space_unit)
   const payload = {
     username: form.username,
     nickname: form.nickname || null,
     mail: form.mail || null,
     status: form.status === 'true',
     is_superuser: form.is_superuser === 'true',
-    total_space: totalSpaceValue,
-    used_space: usedSpaceValue,
+    total_space: totalSpaceParsed.bytes,
+    used_space: usedSpaceParsed.bytes,
     roles: form.roles.length ? form.roles : null,
   }
   if (!form.username) {
     errors.username = t('admin.user.errors.usernameRequired')
     return
   }
-  if (form.total_space && Number.isNaN(totalSpaceValue)) {
+  if (totalSpaceParsed.invalid) {
     errors.total_space = t('admin.user.errors.totalSpaceInvalid')
     return
   }
-  if (form.used_space && Number.isNaN(usedSpaceValue)) {
+  if (usedSpaceParsed.invalid) {
     errors.used_space = t('admin.user.errors.usedSpaceInvalid')
     return
   }
@@ -209,17 +270,65 @@ const toggleStatus = async (row: UserOut, next: boolean) => {
 }
 
 const requestDelete = (user: UserOut) => {
+  deleteMode.value = 'single'
   currentUser.value = user
   deleteConfirm.value = true
 }
 
+const requestBatchDelete = () => {
+  if (!selectedIds.value.length) {
+    return
+  }
+  deleteMode.value = 'batch'
+  currentUser.value = null
+  deleteConfirm.value = true
+}
+
 const confirmDelete = async () => {
-  if (currentUser.value?.id) {
+  if (deleteMode.value === 'batch') {
+    const success = await userStore.removeUsers(selectedIds.value)
+    if (success) {
+      selection.clear()
+    }
+  } else if (currentUser.value?.id) {
     await userStore.removeUser(currentUser.value.id)
   }
   deleteConfirm.value = false
   currentUser.value = null
 }
+
+const deleteMessage = computed(() =>
+  deleteMode.value === 'batch'
+    ? t('admin.user.bulk.confirmDeleteMessage', { count: selectedIds.value.length })
+    : t('admin.user.confirmDeleteMessage'),
+)
+
+watch(
+  () => selection.indeterminate.value,
+  (value) => {
+    if (selectAllRef.value) {
+      selectAllRef.value.indeterminate = value
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => filteredUsers.value,
+  (items) => {
+    const valid = new Set(items.map((item) => String(item.id || '')))
+    const next = new Set<string>()
+    selection.selected.value.forEach((key) => {
+      if (valid.has(key)) {
+        next.add(key)
+      }
+    })
+    if (next.size !== selection.selected.value.size) {
+      selection.selected.value = next
+    }
+  },
+  { deep: true },
+)
 
 onMounted(() => {
   void userStore.fetchUsers()
@@ -233,6 +342,14 @@ onMounted(() => {
       <template #actions>
         <Button variant="secondary" @click="userStore.fetchUsers()">
           {{ t('admin.user.refresh') }}
+        </Button>
+        <Button
+          v-permission="'system:user:delete'"
+          variant="ghost"
+          :disabled="!selectedIds.length"
+          @click="requestBatchDelete"
+        >
+          {{ t('admin.user.bulk.deleteSelected', { count: selectedIds.length }) }}
         </Button>
         <Button v-permission="'system:user:create'" @click="openCreate">{{
           t('admin.user.add')
@@ -248,6 +365,25 @@ onMounted(() => {
         scrollable
         fill
       >
+        <template #head-select>
+          <div class="select-cell">
+            <input
+              ref="selectAllRef"
+              type="checkbox"
+              :checked="selection.allSelected.value"
+              @change="selection.toggleAll()"
+            />
+          </div>
+        </template>
+        <template #cell-select="{ row }">
+          <div class="select-cell">
+            <input
+              type="checkbox"
+              :checked="selection.isSelected(row)"
+              @change="selection.toggle(row)"
+            />
+          </div>
+        </template>
         <template #cell-status="{ row }">
           <Switch
             :model-value="!!row.status"
@@ -336,7 +472,15 @@ onMounted(() => {
         type="number"
         :placeholder="t('admin.common.optional')"
         :error="errors.total_space"
-      />
+      >
+        <template #append>
+          <select v-model="form.total_space_unit" class="space-unit-select">
+            <option v-for="unit in SPACE_UNITS" :key="unit" :value="unit">
+              {{ t(`admin.user.spaceUnits.${unit}`) }}
+            </option>
+          </select>
+        </template>
+      </Input>
       <Input
         class="form__field"
         v-model="form.used_space"
@@ -345,7 +489,15 @@ onMounted(() => {
         type="number"
         :placeholder="t('admin.common.optional')"
         :error="errors.used_space"
-      />
+      >
+        <template #append>
+          <select v-model="form.used_space_unit" class="space-unit-select">
+            <option v-for="unit in SPACE_UNITS" :key="unit" :value="unit">
+              {{ t(`admin.user.spaceUnits.${unit}`) }}
+            </option>
+          </select>
+        </template>
+      </Input>
       <Input
         class="form__field"
         v-model="form.password"
@@ -387,7 +539,7 @@ onMounted(() => {
   <ConfirmDialog
     :open="deleteConfirm"
     :title="t('admin.user.confirmDeleteTitle')"
-    :message="t('admin.user.confirmDeleteMessage')"
+    :message="deleteMessage"
     @close="deleteConfirm = false"
     @confirm="confirmDelete"
   />
@@ -421,6 +573,12 @@ onMounted(() => {
   gap: var(--space-2) var(--space-3);
 }
 
+.select-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .form__field {
   min-width: 0;
 }
@@ -439,5 +597,17 @@ onMounted(() => {
   color: var(--color-muted);
 }
 
-</style>
+.space-unit-select {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 13px;
+  cursor: pointer;
+}
 
+</style>

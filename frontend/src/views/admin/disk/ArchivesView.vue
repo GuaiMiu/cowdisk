@@ -2,8 +2,10 @@
 import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
+const { t } = useI18n({ useScope: 'global' })
 
 const goFiles = () => {
   router.push('/app/files')
@@ -12,10 +14,10 @@ const goFiles = () => {
 
 <template>
   <section class="page">
-    <PageHeader title="归档管理" subtitle="压缩与解压请在网盘文件页操作" />
+    <PageHeader :title="t('admin.disk.archives.title')" :subtitle="t('admin.disk.archives.subtitle')" />
     <div class="panel">
-      <p class="panel__desc">归档任务从网盘文件页发起，任务状态会在文件列表中体现。</p>
-      <Button variant="primary" @click="goFiles">前往网盘文件</Button>
+      <p class="panel__desc">{{ t('admin.disk.archives.desc') }}</p>
+      <Button variant="primary" @click="goFiles">{{ t('admin.disk.archives.goFiles') }}</Button>
     </div>
   </section>
 </template>

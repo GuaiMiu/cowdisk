@@ -12,7 +12,19 @@ import mimetypes
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import (
+    BadRequestException,
+    FileNotFound,
+    ShareCodeInvalid,
+    ShareExpired,
+    ShareInvalidExpireAt,
+    ShareNotFolder,
+    ShareNotFound,
+    ShareOutOfScope,
+    ShareResourceNotFound,
+    ShareRevoked,
+    StorageMismatch,
+)
 from app.modules.disk.models.share import Share
 from app.modules.admin.dao.user import user_crud
 from app.modules.disk.models.file import File
@@ -113,14 +125,14 @@ class ShareService:
         )
         target = (await db.exec(stmt)).first()
         if not target:
-            raise ServiceException(msg="文件或目录不存在")
+            raise FileNotFound("文件或目录不存在")
         if code and not (code.isdigit() and len(code) == 4):
-            raise ServiceException(msg="提取码需为 4 位数字")
+            raise ShareCodeInvalid("提取码需为 4 位数字")
         now = ShareService._now()
         if expires_at:
             expires_dt = datetime.fromtimestamp(expires_at / 1000)
             if expires_dt <= now:
-                raise ServiceException(msg="有效期必须晚于当前时间")
+                raise ShareInvalidExpireAt()
             resolved_expires_at = expires_dt
         elif expires_in_days:
             resolved_expires_at = now + timedelta(days=expires_in_days)
@@ -223,7 +235,7 @@ class ShareService:
         )
         share = result.first()
         if not share:
-            raise ServiceException(msg="分享不存在")
+            raise ShareNotFound()
         share.status = 0
         db.add(share)
         await db.commit()
@@ -233,7 +245,7 @@ class ShareService:
         user_id: int, ids: list[str], status: int, db: AsyncSession
     ) -> dict:
         if status not in (0, 1):
-            raise ServiceException(msg="状态值不合法")
+            raise BadRequestException("状态值不合法")
         if not ids:
             return {"success": 0, "failed": []}
         result = await db.exec(
@@ -269,13 +281,13 @@ class ShareService:
         )
         share = result.first()
         if not share:
-            raise ServiceException(msg="分享不存在")
+            raise ShareNotFound()
         now = ShareService._now()
         if expires_at is not None or expires_in_days is not None:
             if expires_at:
                 expires_dt = datetime.fromtimestamp(expires_at / 1000)
                 if expires_dt <= now:
-                    raise ServiceException(msg="有效期必须晚于当前时间")
+                    raise ShareInvalidExpireAt()
                 share.expires_at = expires_dt
             elif expires_in_days is None or expires_in_days <= 0:
                 share.expires_at = None
@@ -285,7 +297,7 @@ class ShareService:
             cleaned = code.strip()
             if cleaned:
                 if not (cleaned.isdigit() and len(cleaned) == 4):
-                    raise ServiceException(msg="提取码需为 4 位数字")
+                    raise ShareCodeInvalid("提取码需为 4 位数字")
                 share.code = cleaned
             else:
                 share.code = None
@@ -310,15 +322,13 @@ class ShareService:
         result = await db.exec(select(Share).where(Share.token == token))
         share = result.first()
         if not share:
-            raise ServiceException(msg="该分享不存在")
+            raise ShareNotFound("该分享不存在")
         if share.is_deleted:
-            raise ServiceException(msg="该分享已删除")
+            raise ShareNotFound("该分享已删除")
         if share.status == 0:
-            raise ServiceException(msg="该分享已取消")
-        if share.is_deleted:
-            raise ServiceException(msg="该分享已删除")
+            raise ShareRevoked("该分享已取消")
         if not await ShareService._share_resource_exists(share, share.user_id, db):
-            raise ServiceException(msg="分享文件已被删除")
+            raise ShareResourceNotFound()
         now = ShareService._now()
         if share.expires_at and ShareService._as_local(share.expires_at) <= now:
             share.status = 0
@@ -327,7 +337,7 @@ class ShareService:
                 await db.commit()
             else:
                 await db.flush()
-            raise ServiceException(msg="该分享已过期")
+            raise ShareExpired("该分享已过期")
         data = ShareService._share_model_to_dict(share, include_code=True)
         owner = await user_crud.get_by_id(db, share.user_id)
         owner_name = None
@@ -365,7 +375,7 @@ class ShareService:
         )
         share = result.first()
         if not share:
-            raise ServiceException(msg="分享不存在")
+            raise ShareNotFound()
         share.is_deleted = True
         db.add(share)
         await db.commit()
@@ -379,7 +389,7 @@ class ShareService:
         )
         target = (await db.exec(stmt)).first()
         if not target:
-            raise ServiceException(msg="分享文件已被删除")
+            raise ShareResourceNotFound()
         return target
 
     @staticmethod
@@ -403,14 +413,14 @@ class ShareService:
         parent_id: int | None,
     ) -> list[dict]:
         if share.get("resourceType") != "FOLDER":
-            raise ServiceException(msg="分享不是目录")
+            raise ShareNotFolder()
         root = await cls._get_share_root_file(share, user_id, db)
         target_parent_id = parent_id if parent_id is not None else root.id
         if target_parent_id != root.id:
             if not await FileService._is_descendant(
                 db, user_id, target_parent_id, root.id
             ):
-                raise ServiceException(msg="目录不在分享范围内")
+                raise ShareOutOfScope("目录不在分享范围内")
         stmt = (
             select(File)
             .where(
@@ -448,9 +458,9 @@ class ShareService:
         target = root
         if share.get("resourceType") == "FOLDER":
             if not file_id:
-                raise ServiceException(msg="缺少文件ID")
+                raise BadRequestException("缺少文件ID")
             if not await FileService._is_descendant(db, user_id, file_id, root.id):
-                raise ServiceException(msg="文件不在分享范围内")
+                raise ShareOutOfScope("文件不在分享范围内")
             stmt = select(File).where(
                 File.id == file_id,
                 File.user_id == user_id,
@@ -458,9 +468,9 @@ class ShareService:
             )
             target = (await db.exec(stmt)).first()
             if not target or target.is_dir:
-                raise ServiceException(msg="文件不存在")
+                raise FileNotFound()
         if target.is_dir:
-            raise ServiceException(msg="不能下载目录")
+            raise BadRequestException("不能下载目录")
         storage = await FileService._get_storage_by_id(db, target.storage_id)
         backend = get_storage_backend(storage)
         return backend.resolve_abs_path(target.storage_path)
@@ -481,10 +491,15 @@ class ShareService:
             )
         storage = await FileService.get_default_storage(db)
         if parent and parent.storage_id != storage.id:
-            raise ServiceException(msg="目标目录存储不一致")
+            raise StorageMismatch()
         backend = get_storage_backend(storage)
 
         if not root.is_dir:
+            await FileService._ensure_quota_available(
+                db=db,
+                user_id=target_user_id,
+                required_bytes=int(root.size or 0),
+            )
             await FileService._ensure_unique_name(
                 db, target_user_id, target_parent_id, root.name
             )
@@ -512,6 +527,20 @@ class ShareService:
             await db.commit()
             return
 
+        descendants = await FileService._collect_descendant_entries(
+            db=db,
+            user_id=owner_id,
+            parent_ids=[root.id],
+            include_deleted=False,
+        )
+        required_bytes = sum(
+            int(item.size or 0) for item in descendants if not item.is_dir
+        )
+        await FileService._ensure_quota_available(
+            db=db,
+            user_id=target_user_id,
+            required_bytes=required_bytes,
+        )
         root_dir = await FileService.create_dir(
             db=db,
             user_id=target_user_id,

@@ -13,7 +13,7 @@ from app.modules.admin.dao.role import role_curd
 from app.modules.admin.models.role import Role
 from app.modules.admin.models.user import User
 from app.modules.admin.schemas.role import RoleAddIn, RoleEditIn, RolesDeleteIn
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import BadRequestException, ConflictException
 
 
 class RoleService:
@@ -61,9 +61,7 @@ class RoleService:
         """
         db_role = await role_curd.get_by_id(db=db, obj_id=role_data.id)
         if not db_role:
-            raise ServiceException(
-                msg=f"角色 {role_data.name} 不存在",
-            )
+            raise BadRequestException(f"角色 {role_data.name} 不存在")
         await cls.is_role_exist(db, role_data)
         menu_ids = role_data.menus or []
         db_role.menus = await menu_curd.get_all_by_ids(db=db, ids=menu_ids)
@@ -101,8 +99,6 @@ class RoleService:
         exist = await role_curd.get_by_or_fields(db, ["name"], role)
         if exist:
             if exist.name == role.name:
-                raise ServiceException(
-                    msg=f"角色名称 {role.name} 已被使用",
-                )
+                raise ConflictException(f"角色名称 {role.name} 已被使用")
         return False
 

@@ -1,23 +1,45 @@
-import { addRole, deleteRole, editRole, getRoleList } from '@/api/modules/adminSystem'
+import { addRole, deleteRole, deleteRoles, editRole, getRoleList } from '@/api/modules/adminSystem'
 import type { RoleAddIn, RoleEditIn, RoleOut } from '@/types/role'
 import { useCursorCrud } from './useCursorCrud'
+import { useMessage } from '@/stores/message'
+import { useI18n } from 'vue-i18n'
 
 export const useAdminRoles = () => {
+  const { t } = useI18n({ useScope: 'global' })
+  const message = useMessage()
   const crud = useCursorCrud<RoleOut, RoleAddIn, RoleEditIn, number>({
     list: getRoleList,
     create: addRole,
     update: editRole,
     remove: deleteRole,
     messages: {
-      listFail: '加载角色失败',
-      createSuccess: '角色已创建',
-      createFail: '创建角色失败',
-      updateSuccess: '角色已更新',
-      updateFail: '更新角色失败',
-      deleteSuccess: '角色已删除',
-      deleteFail: '删除角色失败',
+      listFail: t('admin.role.crud.listFail'),
+      createSuccess: t('admin.role.crud.createSuccess'),
+      createFail: t('admin.role.crud.createFail'),
+      updateSuccess: t('admin.role.crud.updateSuccess'),
+      updateFail: t('admin.role.crud.updateFail'),
+      deleteSuccess: t('admin.role.crud.deleteSuccess'),
+      deleteFail: t('admin.role.crud.deleteFail'),
     },
   })
+
+  const removeRoles = async (ids: number[]) => {
+    if (!ids.length) {
+      return false
+    }
+    try {
+      await deleteRoles({ ids })
+      message.success(t('admin.role.crud.deleteSuccess'))
+      await crud.fetchFirst()
+      return true
+    } catch (error) {
+      message.error(
+        t('admin.role.crud.deleteFail'),
+        error instanceof Error ? error.message : t('common.retryLater'),
+      )
+      return false
+    }
+  }
 
   return {
     loading: crud.loading,
@@ -33,5 +55,6 @@ export const useAdminRoles = () => {
     createRole: crud.createItem,
     updateRole: crud.updateItem,
     removeRole: crud.removeItem,
+    removeRoles,
   }
 }

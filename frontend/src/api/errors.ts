@@ -1,14 +1,24 @@
 import axios from 'axios'
+import { resolveCodeMessage } from '@/errors/codeMap'
+import { i18n } from '@/i18n'
 
 export class AppError extends Error {
   code?: number
+  httpStatus?: number
   details?: unknown
   transient?: boolean
 
-  constructor(message: string, code?: number, details?: unknown, transient = false) {
+  constructor(
+    message: string,
+    code?: number,
+    details?: unknown,
+    transient = false,
+    httpStatus?: number,
+  ) {
     super(message)
     this.name = 'AppError'
     this.code = code
+    this.httpStatus = httpStatus
     this.details = details
     this.transient = transient
   }
@@ -22,12 +32,12 @@ export type ValidationErrorItem = {
 
 const formatValidationErrors = (details: ValidationErrorItem[]) => {
   if (!details.length) {
-    return '请求参数校验失败'
+    return i18n.global.t('apiErrors.validationFailed')
   }
   return details
     .map((item) => {
       const loc = Array.isArray(item.loc) ? item.loc.join('.') : ''
-      const msg = item.msg || '参数错误'
+      const msg = item.msg || i18n.global.t('apiErrors.paramInvalid')
       return loc ? `${loc}: ${msg}` : msg
     })
     .join('；')
@@ -52,7 +62,7 @@ export function normalizeError(error: unknown): AppError {
     const data = error.response?.data as
       | {
           code?: number
-          msg?: string
+          message?: string
           detail?: ValidationErrorItem[]
           data?: string[]
         }
@@ -60,26 +70,41 @@ export function normalizeError(error: unknown): AppError {
 
     if (status === 422) {
       if (Array.isArray(data?.detail)) {
-        return new AppError(formatValidationErrors(data.detail), 422, data.detail, false)
+        return new AppError(formatValidationErrors(data.detail), 100002, data.detail, false, status)
       }
       if (Array.isArray(data?.data)) {
-        return new AppError(data.data.join('；') || '请求参数校验失败', 422, data.data, false)
+        return new AppError(
+          data.data.join('；') || i18n.global.t('apiErrors.validationFailed'),
+          100002,
+          data.data,
+          false,
+          status,
+        )
       }
     }
 
-    if (data && typeof data === 'object' && 'msg' in data) {
-      return new AppError(data.msg || '请求失败', data.code ?? status, data, transient)
+    if (data && typeof data === 'object' && 'message' in data) {
+      const base = (data.message || '').trim()
+      const localized = resolveCodeMessage(data.code)
+      const message = localized || base || i18n.global.t('apiErrors.requestFailed')
+      return new AppError(message, data.code, data, transient, status)
     }
 
     if (axiosCode === 'ECONNABORTED' || axiosCode === 'ETIMEDOUT') {
-      return new AppError('请求超时', status, data, true)
+      return new AppError(i18n.global.t('apiErrors.timeout'), undefined, data, true, status)
     }
     if (axiosCode === 'ERR_NETWORK' || !error.response) {
-      return new AppError('连接中断', status, data, true)
+      return new AppError(i18n.global.t('apiErrors.network'), undefined, data, true, status)
     }
 
-    return new AppError(error.message || '请求失败', status, data, transient)
+    return new AppError(
+      error.message || i18n.global.t('apiErrors.requestFailed'),
+      undefined,
+      data,
+      transient,
+      status,
+    )
   }
 
-  return new AppError('请求失败')
+  return new AppError(i18n.global.t('apiErrors.requestFailed'))
 }

@@ -2,8 +2,10 @@
 import PageHeader from '@/components/common/PageHeader.vue'
 import Button from '@/components/common/Button.vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
+const { t } = useI18n({ useScope: 'global' })
 
 const goFiles = () => {
   router.push('/app/files')
@@ -12,10 +14,10 @@ const goFiles = () => {
 
 <template>
   <section class="page">
-    <PageHeader title="上传管理" subtitle="上传入口在网盘文件页完成" />
+    <PageHeader :title="t('admin.disk.uploads.title')" :subtitle="t('admin.disk.uploads.subtitle')" />
     <div class="panel">
-      <p class="panel__desc">请前往网盘文件页进行上传与分片管理。</p>
-      <Button variant="primary" @click="goFiles">前往网盘文件</Button>
+      <p class="panel__desc">{{ t('admin.disk.uploads.desc') }}</p>
+      <Button variant="primary" @click="goFiles">{{ t('admin.disk.uploads.goFiles') }}</Button>
     </div>
   </section>
 </template>

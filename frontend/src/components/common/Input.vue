@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useSlots } from 'vue'
 
 let inputSeed = 1
 
@@ -41,7 +41,19 @@ const emit = defineEmits<{
   (event: 'enter', payload: KeyboardEvent): void
 }>()
 
-const classes = computed(() => ['input', `input--${props.size}`, props.error ? 'input--error' : ''])
+const slots = useSlots()
+const hasPrepend = computed(() => !!slots.prepend)
+const hasAppend = computed(() => !!slots.append)
+const shellClasses = computed(() => [
+  'input-shell',
+  `input-shell--${props.size}`,
+  props.error ? 'input-shell--error' : '',
+  props.disabled ? 'input-shell--disabled' : '',
+  props.readonly ? 'input-shell--readonly' : '',
+  hasPrepend.value ? 'input-shell--with-prepend' : '',
+  hasAppend.value ? 'input-shell--with-append' : '',
+])
+const controlClasses = computed(() => ['input-control', `input-control--${props.size}`])
 const inputId = computed(() => props.id || `input-${inputSeed++}`)
 const helpId = computed(() => `${inputId.value}-help`)
 const errorId = computed(() => `${inputId.value}-error`)
@@ -62,23 +74,31 @@ const describedBy = computed(() => {
     <span v-if="label" class="field__label">
       {{ label }}<span v-if="required" class="field__required">*</span>
     </span>
-    <input
-      :id="inputId"
-      :name="name || undefined"
-      :class="classes"
-      :value="modelValue"
-      :placeholder="placeholder"
-      :type="type"
-      :disabled="disabled"
-      :readonly="readonly"
-      :required="required"
-      :aria-invalid="!!error"
-      :aria-describedby="describedBy"
-      @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
-      @blur="emit('blur', $event)"
-      @focus="emit('focus', $event)"
-      @keydown.enter="emit('enter', $event)"
-    />
+    <span :class="shellClasses">
+      <span v-if="hasPrepend" class="input-addon input-addon--prepend">
+        <slot name="prepend" />
+      </span>
+      <input
+        :id="inputId"
+        :name="name || undefined"
+        :class="controlClasses"
+        :value="modelValue"
+        :placeholder="placeholder"
+        :type="type"
+        :disabled="disabled"
+        :readonly="readonly"
+        :required="required"
+        :aria-invalid="!!error"
+        :aria-describedby="describedBy"
+        @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+        @blur="emit('blur', $event)"
+        @focus="emit('focus', $event)"
+        @keydown.enter="emit('enter', $event)"
+      />
+      <span v-if="hasAppend" class="input-addon input-addon--append">
+        <slot name="append" />
+      </span>
+    </span>
     <span v-if="help" :id="helpId" class="field__help">{{ help }}</span>
     <span :id="errorId" class="field__error" :class="{ 'field__error--hidden': !error }">
       <slot name="error">{{ error || ' ' }}</slot>
@@ -104,16 +124,17 @@ const describedBy = computed(() => {
   color: var(--color-danger);
 }
 
-.input {
+.input-shell {
+  display: inline-flex;
+  align-items: stretch;
   width: 100%;
+  overflow: hidden;
   min-height: 36px;
   box-sizing: border-box;
-  padding: 10px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
-  line-height: 1.2;
   transition:
     background var(--transition-base),
     border var(--transition-fast),
@@ -121,36 +142,66 @@ const describedBy = computed(() => {
     color var(--transition-base);
 }
 
-.input--sm {
+.input-shell--sm {
   min-height: 32px;
+}
+
+.input-control {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  box-sizing: border-box;
+  background: transparent;
+  color: inherit;
+  line-height: 1.2;
+  padding: 10px 12px;
+}
+
+.input-control--sm {
   padding: 7px 10px;
   font-size: 13px;
 }
 
-.input::placeholder {
+.input-control::placeholder {
   color: var(--color-muted);
 }
 
-.input:focus-visible {
-  outline: none;
-  color: var(--color-text);
-  background: var(--color-surface);
+.input-shell:focus-within {
   border-color: var(--color-primary);
   box-shadow: inset 0 0 0 2px var(--color-primary-soft);
 }
 
-.input:disabled {
+.input-shell--disabled {
   background: var(--color-surface-2);
   color: var(--color-muted);
 }
 
-.input:read-only {
+.input-shell--readonly {
   background: var(--color-surface-2);
   color: var(--color-muted);
 }
 
-.input--error {
+.input-shell--error {
   border-color: var(--color-danger);
+}
+
+.input-addon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-2);
+  background: var(--color-surface-2);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.input-addon--prepend {
+  border-right: 1px solid var(--color-border);
+}
+
+.input-addon--append {
+  border-left: 1px solid var(--color-border);
 }
 
 .field__error {

@@ -30,6 +30,7 @@ import { useFilePreview } from '@/components/file/composables/useFilePreview'
 import { useShareDialog } from '@/components/file/composables/useShareDialog'
 import { useMessage } from '@/stores/message'
 import { useUploadsStore } from '@/stores/uploads'
+import { useAuthStore } from '@/stores/auth'
 import { formatBytes, formatTime } from '@/utils/format'
 import { getRouteSearchKeyword } from '@/composables/useHeaderSearch'
 import { toRelativePath } from '@/utils/path'
@@ -49,6 +50,7 @@ const uploader = useUploader()
 const shareActions = useShareActions()
 const message = useMessage()
 const uploadsStore = useUploadsStore()
+const authStore = useAuthStore()
 const queuePendingCount = computed(
   () =>
     uploadsStore.items.filter((item) =>
@@ -316,6 +318,7 @@ watch(
       refreshTimer.value = window.setTimeout(() => {
         refreshTimer.value = null
         void explorer.refresh()
+        void authStore.refreshMe().catch(() => null)
       }, 300)
     }
   },

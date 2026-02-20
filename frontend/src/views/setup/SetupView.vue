@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
@@ -29,6 +30,7 @@ type ParsedDatabase = {
 }
 
 const message = useMessage()
+const { t } = useI18n({ useScope: 'global' })
 const setupStore = useSetupStore()
 const authStore = useAuthStore()
 const appStore = useAppStore()
@@ -66,47 +68,47 @@ const form = reactive({
   redisDb: '',
   storagePath: '',
 })
-const defaultSiteName = computed(() => appStore.siteName || 'CowDisk')
+const defaultSiteName = computed(() => appStore.siteName || t('setup.brand'))
 const setupSteps = [
-  { index: 1, title: '超级管理员', desc: '创建初始管理员账号' },
-  { index: 2, title: '系统与服务', desc: '应用、存储、数据库与 Redis 配置' },
+  { index: 1, title: t('setup.steps.superuser.title'), desc: t('setup.steps.superuser.desc') },
+  { index: 2, title: t('setup.steps.system.title'), desc: t('setup.steps.system.desc') },
 ]
 const phaseLabelMap: Record<'form' | 'running' | 'done' | 'failed', string> = {
   form: '',
-  running: '安装执行中',
-  done: '安装完成',
-  failed: '安装失败',
+  running: t('setup.phase.running'),
+  done: t('setup.phase.done'),
+  failed: t('setup.phase.failed'),
 }
 const phaseDescriptionMap: Record<'running' | 'done' | 'failed', string> = {
-  running: '正在执行系统检查、数据库初始化与管理员创建。',
+  running: t('setup.phaseDesc.running'),
   done: '',
-  failed: '安装已中断，请根据失败步骤修正配置后重试。',
+  failed: t('setup.phaseDesc.failed'),
 }
 const progressMeta: Record<string, { title: string; detail: string }> = {
-  system: { title: '系统检查', detail: '检查环境与存储路径' },
-  database: { title: '数据库初始化', detail: '初始化数据库表结构' },
-  superuser: { title: '管理员创建', detail: '创建初始管理员账号' },
-  redis: { title: 'Redis 检查', detail: '验证缓存连接' },
+  system: { title: t('setup.progress.system.title'), detail: t('setup.progress.system.detail') },
+  database: { title: t('setup.progress.database.title'), detail: t('setup.progress.database.detail') },
+  superuser: { title: t('setup.progress.superuser.title'), detail: t('setup.progress.superuser.detail') },
+  redis: { title: t('setup.progress.redis.title'), detail: t('setup.progress.redis.detail') },
 }
 const activeStepMeta = computed(() => {
   const matched = setupSteps.find((item) => item.index === currentStep.value)
   return (
     matched || {
       index: 1,
-      title: '超级管理员',
-      desc: '创建初始管理员账号',
+      title: t('setup.steps.superuser.title'),
+      desc: t('setup.steps.superuser.desc'),
     }
   )
 })
 
 const dbOptions = [
-  { label: 'SQLite (轻量模式)', value: 'sqlite' },
-  { label: 'MySQL (生产推荐)', value: 'mysql' },
+  { label: t('setup.db.sqlite'), value: 'sqlite' },
+  { label: t('setup.db.mysql'), value: 'mysql' },
 ]
 const redisAuthModeOptions = [
-  { label: '无密码', value: 'none' },
-  { label: '仅密码', value: 'password' },
-  { label: '用户名 + 密码', value: 'username_password' },
+  { label: t('setup.redis.none'), value: 'none' },
+  { label: t('setup.redis.password'), value: 'password' },
+  { label: t('setup.redis.userpass'), value: 'username_password' },
 ]
 
 const isSqlite = computed(() => form.databaseType === 'sqlite')
@@ -180,72 +182,72 @@ const validate = () => {
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (currentStep.value === 1) {
     if (!form.superuserName.trim()) {
-      errors.superuserName = '请输入超级管理员账号'
+      errors.superuserName = t('setup.errors.superuserName')
       valid = false
     }
     if (!form.superuserPassword.trim()) {
-      errors.superuserPassword = '请输入超级管理员密码'
+      errors.superuserPassword = t('setup.errors.superuserPassword')
       valid = false
     }
     if (!form.superuserMail.trim()) {
-      errors.superuserMail = '请输入超级管理员邮箱'
+      errors.superuserMail = t('setup.errors.superuserMail')
       valid = false
     } else if (!emailPattern.test(form.superuserMail.trim())) {
-      errors.superuserMail = '邮箱格式不正确'
+      errors.superuserMail = t('setup.errors.mailFormat')
       valid = false
     }
   }
   if (currentStep.value === 2) {
     if (!form.storagePath.trim()) {
-      errors.storagePath = '请输入文件存储路径'
+      errors.storagePath = t('setup.errors.storagePath')
       valid = false
     }
     if (!isSqlite.value) {
       if (!form.databaseHost.trim()) {
-        errors.databaseHost = '请输入数据库主机'
+        errors.databaseHost = t('setup.errors.databaseHost')
         valid = false
       }
       if (!form.databaseUser.trim()) {
-        errors.databaseUser = '请输入数据库用户名'
+        errors.databaseUser = t('setup.errors.databaseUser')
         valid = false
       }
       if (!form.databaseName.trim()) {
-        errors.databaseName = '请输入数据库名称'
+        errors.databaseName = t('setup.errors.databaseName')
         valid = false
       }
     } else if (!form.sqliteDbPath.trim()) {
-      errors.sqliteDbPath = '请输入 SQLite 数据文件路径'
+      errors.sqliteDbPath = t('setup.errors.sqliteDbPath')
       valid = false
     }
     const databaseUrl = buildDatabaseUrl()
     if (!databaseUrl) {
       if (isSqlite.value) {
-        errors.sqliteDbPath = errors.sqliteDbPath || 'SQLite 数据文件路径不能为空'
+        errors.sqliteDbPath = errors.sqliteDbPath || t('setup.errors.sqliteRequired')
       } else {
-        errors.databaseName = errors.databaseName || '数据库连接信息不完整'
+        errors.databaseName = errors.databaseName || t('setup.errors.databaseIncomplete')
       }
       valid = false
     }
     if (form.redisEnable) {
       if (!form.redisHost.trim()) {
-        errors.redisHost = '请输入 Redis 主机'
+        errors.redisHost = t('setup.errors.redisHost')
         valid = false
       }
       if (!form.redisPort.trim()) {
-        errors.redisPort = '请输入 Redis 端口'
+        errors.redisPort = t('setup.errors.redisPort')
         valid = false
       }
       if (form.redisAuthMode === 'password' && !form.redisPassword.trim()) {
-        errors.redisPassword = '请输入 Redis 密码'
+        errors.redisPassword = t('setup.errors.redisPassword')
         valid = false
       }
       if (form.redisAuthMode === 'username_password') {
         if (!form.redisUsername.trim()) {
-          errors.redisUsername = '请输入 Redis 用户名'
+          errors.redisUsername = t('setup.errors.redisUsername')
           valid = false
         }
         if (!form.redisPassword.trim()) {
-          errors.redisPassword = '请输入 Redis 密码'
+          errors.redisPassword = t('setup.errors.redisPassword')
           valid = false
         }
       }
@@ -279,7 +281,7 @@ const toPayload = (): SetupPayload => ({
 
 const handleSubmit = async () => {
   if (!defaultsReady.value) {
-    message.error('默认值未加载', '请先等待安装默认值加载完成')
+    message.error(t('setup.toast.defaultsTitle'), t('setup.toast.defaultsMessage'))
     return
   }
   if (!validate()) {
@@ -300,12 +302,15 @@ const handleSubmit = async () => {
     stopProgressPolling()
     setupStore.phase = 'DONE'
     setupStore.checked = true
-    message.success('初始化完成', '配置已自动加载')
+    message.success(t('setup.toast.doneTitle'), t('setup.toast.doneMessage'))
   } catch (error) {
     setupPhase.value = 'failed'
     await fetchProgress()
     stopProgressPolling()
-    message.error('保存失败', error instanceof Error ? error.message : '请检查配置后重试')
+    message.error(
+      t('setup.toast.saveFailTitle'),
+      error instanceof Error ? error.message : t('setup.toast.saveFailMessage'),
+    )
   } finally {
     submitting.value = false
   }
@@ -410,7 +415,7 @@ onMounted(async () => {
     form.storagePath = defaults.storage_path || form.storagePath
     defaultsReady.value = true
   } catch {
-    message.error('加载失败', '安装默认值加载失败，请检查后端服务后刷新重试')
+    message.error(t('setup.toast.loadFailTitle'), t('setup.toast.loadFailMessage'))
   } finally {
     defaultsLoading.value = false
   }
@@ -448,7 +453,7 @@ const phaseDescription = computed(() => {
     return activeStepMeta.value.desc
   }
   if (setupPhase.value === 'done') {
-    return `配置文件已生成：${setupResult.value?.env_path || ''}`
+    return t('setup.generated', { path: setupResult.value?.env_path || '' })
   }
   return phaseDescriptionMap[setupPhase.value as 'running' | 'failed'] || ''
 })
@@ -485,9 +490,9 @@ const getStepState = (index: number) => {
     <div class="setup-shell">
       <aside class="setup-side">
         <div class="side-brand">
-          <span class="side-brand__tag">CowDisk Setup</span>
-          <h1>初始化向导</h1>
-          <p>仅需两步即可完成管理员、系统与数据服务配置。</p>
+          <span class="side-brand__tag">{{ t('setup.sideTag') }}</span>
+          <h1>{{ t('setup.title') }}</h1>
+          <p>{{ t('setup.subtitle') }}</p>
         </div>
 
         <ol class="side-steps">
@@ -506,17 +511,17 @@ const getStepState = (index: number) => {
         </ol>
 
         <div class="side-hint">
-          <h3>当前阶段</h3>
+          <h3>{{ t('setup.currentPhase') }}</h3>
           <p>{{ phaseLabel }}</p>
         </div>
       </aside>
 
       <section class="setup-main">
         <header class="main-head">
-          <h2>{{ setupPhase === 'form' ? activeStepMeta.title : '安装进度追踪' }}</h2>
+          <h2>{{ setupPhase === 'form' ? activeStepMeta.title : t('setup.progressTitle') }}</h2>
           <p v-if="setupPhase !== 'done'">{{ phaseDescription }}</p>
           <p v-else>
-            配置文件已生成：<code>{{ setupResult?.env_path }}</code>
+            {{ t('setup.generatedLabel') }}：<code>{{ setupResult?.env_path }}</code>
           </p>
         </header>
 
@@ -535,40 +540,40 @@ const getStepState = (index: number) => {
           </article>
 
           <footer v-if="setupPhase === 'done'" class="result-actions">
-            <Button size="sm" class="setup-action-btn" @click="goLogin">前往登录</Button>
+            <Button size="sm" class="setup-action-btn" @click="goLogin">{{ t('setup.goLogin') }}</Button>
           </footer>
           <footer v-else-if="setupPhase === 'failed'" class="result-actions">
-            <Button size="sm" class="setup-action-btn" variant="ghost" @click="backToForm">返回表单</Button>
+            <Button size="sm" class="setup-action-btn" variant="ghost" @click="backToForm">{{ t('setup.backForm') }}</Button>
           </footer>
         </div>
 
         <form v-else class="setup-form" @submit.prevent="handleSubmit">
-          <div v-if="defaultsLoading" class="form-loading">正在加载安装默认值...</div>
+          <div v-if="defaultsLoading" class="form-loading">{{ t('setup.loading') }}</div>
           <div v-else-if="!defaultsReady" class="form-loading form-loading--error">
-            安装默认值加载失败，请刷新页面重试
+            {{ t('setup.loadFailed') }}
           </div>
           <section v-if="defaultsReady && currentStep === 1" class="form-card">
             <div class="form-card__head">
-              <h3>超级管理员</h3>
-              <p>设置初始化后的首个高权限账号。</p>
+              <h3>{{ t('setup.steps.superuser.title') }}</h3>
+              <p>{{ t('setup.superuserDesc') }}</p>
             </div>
             <div class="form-grid">
               <Input
                 v-model="form.superuserName"
-                label="账号"
+                :label="t('setup.superuserName')"
                 placeholder="admin"
                 :error="errors.superuserName"
               />
               <Input
                 v-model="form.superuserPassword"
-                label="密码"
+                :label="t('setup.superuserPassword')"
                 type="password"
-                placeholder="请输入密码"
+                :placeholder="t('setup.enterPassword')"
                 :error="errors.superuserPassword"
               />
               <Input
                 v-model="form.superuserMail"
-                label="邮箱"
+                :label="t('setup.superuserMail')"
                 placeholder="admin@example.com"
                 :error="errors.superuserMail"
               />
@@ -577,21 +582,21 @@ const getStepState = (index: number) => {
 
         <section v-if="defaultsReady && currentStep === 2" class="form-card">
           <div class="form-card__head">
-            <h3>系统信息</h3>
-            <p>设置站点名称、存储目录和注册策略。</p>
+            <h3>{{ t('setup.systemInfoTitle') }}</h3>
+            <p>{{ t('setup.systemInfoDesc') }}</p>
           </div>
           <div class="form-stack">
-            <Input v-model="form.appName" label="应用名称" :placeholder="defaultSiteName" />
+            <Input v-model="form.appName" :label="t('setup.appName')" :placeholder="defaultSiteName" />
             <div class="toggle-row">
               <div>
-                <span>允许注册</span>
-                <small>关闭后仅管理员可创建账户</small>
+                <span>{{ t('setup.allowRegister') }}</span>
+                <small>{{ t('setup.allowRegisterDesc') }}</small>
               </div>
               <Switch v-model="form.allowRegister" />
             </div>
             <Input
               v-model="form.storagePath"
-              label="文件存储路径"
+              :label="t('setup.storagePath')"
               placeholder="/app/data"
               :error="errors.storagePath"
             />
@@ -600,83 +605,83 @@ const getStepState = (index: number) => {
 
         <section v-if="defaultsReady && currentStep === 2" class="form-card">
           <div class="form-card__head">
-            <h3>数据库与缓存</h3>
-            <p>配置持久化数据库以及可选 Redis 缓存服务。</p>
+            <h3>{{ t('setup.databaseCacheTitle') }}</h3>
+            <p>{{ t('setup.databaseCacheDesc') }}</p>
           </div>
           <div class="form-stack">
-            <Select v-model="form.databaseType" label="数据库类型" :options="dbOptions" />
+            <Select v-model="form.databaseType" :label="t('setup.databaseType')" :options="dbOptions" />
             <Input
               v-if="isSqlite"
               v-model="form.sqliteDbPath"
-              label="SQLite 数据文件路径"
+              :label="t('setup.sqlitePath')"
               placeholder="/app/config/data.db"
               :error="errors.sqliteDbPath"
             />
             <div v-if="!isSqlite" class="form-grid form-grid--wide">
               <Input
                 v-model="form.databaseHost"
-                label="数据库主机"
+                :label="t('setup.databaseHost')"
                 placeholder="127.0.0.1"
                 :error="errors.databaseHost"
               />
-              <Input v-model="form.databasePort" label="端口" placeholder="3306" />
+              <Input v-model="form.databasePort" :label="t('setup.port')" placeholder="3306" />
               <Input
                 v-model="form.databaseUser"
-                label="用户名"
+                :label="t('setup.username')"
                 placeholder="backend"
                 :error="errors.databaseUser"
               />
               <Input
                 v-model="form.databasePassword"
-                label="密码"
+                :label="t('setup.password')"
                 type="password"
                 placeholder="••••••••"
               />
               <Input
                 v-model="form.databaseName"
-                label="数据库名称"
+                :label="t('setup.databaseName')"
                 placeholder="backend"
                 :error="errors.databaseName"
               />
             </div>
             <div class="toggle-row">
               <div>
-                <span>启用 Redis</span>
-                <small>用于提升读写性能和任务调度体验</small>
+                <span>{{ t('setup.redisEnable') }}</span>
+                <small>{{ t('setup.redisEnableDesc') }}</small>
               </div>
               <Switch v-model="form.redisEnable" />
             </div>
             <div v-if="form.redisEnable" class="form-grid">
               <Input
                 v-model="form.redisHost"
-                label="Redis 主机"
+                :label="t('setup.redisHost')"
                 placeholder="127.0.0.1"
                 :error="errors.redisHost"
               />
               <Input
                 v-model="form.redisPort"
-                label="端口"
+                :label="t('setup.port')"
                 placeholder="6379"
                 :error="errors.redisPort"
               />
               <Select
                 v-model="form.redisAuthMode"
-                label="认证方式"
+                :label="t('setup.redisAuthMode')"
                 :options="redisAuthModeOptions"
               />
               <Input
                 v-if="form.redisAuthMode === 'username_password'"
                 v-model="form.redisUsername"
-                label="用户名"
+                :label="t('setup.username')"
                 placeholder="default"
                 :error="errors.redisUsername"
               />
               <Input
                 v-if="form.redisAuthMode !== 'none'"
                 v-model="form.redisPassword"
-                label="密码"
+                :label="t('setup.password')"
                 type="password"
-                placeholder="请输入 Redis 密码"
+                :placeholder="t('setup.enterRedisPassword')"
                 :error="errors.redisPassword"
               />
               <Input v-model="form.redisDb" label="DB" placeholder="0" />
@@ -685,7 +690,7 @@ const getStepState = (index: number) => {
         </section>
 
         <footer class="form-actions">
-          <p>提交后系统将自动执行初始化，无需手动重启服务。</p>
+          <p>{{ t('setup.submitHint') }}</p>
           <div class="form-actions__buttons">
             <Button
               v-if="currentStep > 1"
@@ -695,7 +700,7 @@ const getStepState = (index: number) => {
               variant="ghost"
               @click="handlePrev"
             >
-              上一步
+              {{ t('setup.prevStep') }}
             </Button>
             <Button
               v-if="currentStep < 2"
@@ -706,7 +711,7 @@ const getStepState = (index: number) => {
               :loading="submitting"
               @click="handleNext"
             >
-              下一步
+              {{ t('setup.nextStep') }}
             </Button>
             <Button
               v-else
@@ -716,7 +721,7 @@ const getStepState = (index: number) => {
               :disabled="!defaultsReady || submitting"
               :loading="submitting"
             >
-              {{ saved ? '已保存配置' : '生成配置并初始化' }}
+              {{ saved ? t('setup.saved') : t('setup.submit') }}
             </Button>
           </div>
           </footer>

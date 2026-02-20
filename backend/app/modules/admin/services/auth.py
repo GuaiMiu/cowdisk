@@ -26,11 +26,14 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.audit.decorator import audited
 from app.core.config import settings
 from app.core.database import get_async_redis, get_async_session
-from app.core.exception import (
-    AuthException,
-    LoginException,
-    PermissionException,
-    ServiceException,
+from app.core.errors.exceptions import (
+    AccountDisabled,
+    BadRequestException,
+    InvalidCredentials,
+    LoginRateLimited,
+    NoPermission,
+    Unauthorized,
+    UserConflict,
 )
 from app.enum.redis import RedisInitKeyEnum
 from app.modules.admin.dao.menu import menu_curd
@@ -346,14 +349,14 @@ class AuthService:
             f"{RedisInitKeyEnum.ACCOUNT_LOCK.key}:{login_user.username}"
         )
         if login_user.username == account_lock:
-            raise LoginException(data="", msg="账号已锁定，请10分钟后再试")
+            raise LoginRateLimited("账号已锁定，请10分钟后再试")
         db_user = await user_crud.get_by_field(db, "username", login_user.username)
         if not db_user:
-            raise LoginException(msg="用户名或密码错误，请重新登录")
+            raise InvalidCredentials()
         if not db_user.status:
-            raise LoginException(msg=f'用户 "{db_user.username}" 已被禁用，请联系管理员')
+            raise AccountDisabled(f'用户 "{db_user.username}" 已被禁用，请联系管理员')
         if db_user.is_deleted:
-            raise LoginException(msg=f'用户 "{db_user.username}" 已删号跑路，请联系管理员')
+            raise AccountDisabled(f'用户 "{db_user.username}" 已被删除，请联系管理员')
         if not db_user.verify_password(login_user.password):
             db_user.login_error_count += 1
             await user_crud.update(db, db_user, commit=True)
@@ -378,8 +381,8 @@ class AuthService:
                     login_user.username,
                     ex=timedelta(minutes=10),
                 )
-                raise LoginException(data="", msg="10分钟内密码错误超过5次，账号已锁定，请10分钟后再试")
-            raise LoginException(msg="用户名或密码错误，请重新登录")
+                raise LoginRateLimited("10分钟内密码错误超过5次，账号已锁定，请10分钟后再试")
+            raise InvalidCredentials()
         db_user.last_login_time = datetime.now()
         db_user.last_login_ip = client_ip or ""
         await user_crud.update(db, db_user, commit=commit)
@@ -394,13 +397,13 @@ class AuthService:
     ) -> User:
         allow_register = await config.auth.allow_register()
         if not allow_register:
-            raise ServiceException(msg="当前已关闭注册，请联系管理员")
+            raise BadRequestException("当前已关闭注册，请联系管理员")
         repeat_username = await user_crud.get_by_field(db, "username", user.username)
         repeat_mail = await user_crud.get_by_field(db, "mail", user.mail)
         if repeat_username:
-            raise ServiceException(msg=f"用户名 {user.username} 已被注册")
+            raise UserConflict(f"用户名 {user.username} 已被注册")
         if repeat_mail:
-            raise ServiceException(msg=f"邮箱 {user.mail} 已被注册")
+            raise UserConflict(f"邮箱 {user.mail} 已被注册")
         user_model = User.model_validate(user)
         quota_gb = await config.auth.default_user_quota_gb()
         if quota_gb is not None and str(quota_gb) != "":
@@ -476,27 +479,27 @@ class AuthService:
         redis: aioredis.Redis,
     ) -> User:
         if not token:
-            raise AuthException(msg="请先登录")
+            raise Unauthorized("请先登录")
         try:
             payload = cls.decode_access_token(token, verify_exp=True)
             redis_token = await redis.get(cls._access_token_key(payload.get("session_id", "")))
             redis_token = cls._normalize_token(redis_token)
             if not redis_token or redis_token != token:
                 logger.warning("用户 %s Token已失效", payload.get("username", "unknown"))
-                raise AuthException(msg="Token已失效，请重新登录")
+                raise Unauthorized("Token已失效，请重新登录")
         except InvalidTokenError:
             logger.warning("Token异常，请重新登录")
-            raise AuthException(msg="Token异常，请重新登录")
+            raise Unauthorized("Token异常，请重新登录")
         user = await db.get(User, payload["id"])
         if not user:
             logger.warning("用户不存在，请重新登录")
-            raise AuthException(msg="用户不存在，请重新登录")
+            raise Unauthorized("用户不存在，请重新登录")
         if user.is_deleted:
             logger.warning("用户已删除，请重新登录")
-            raise AuthException(msg="用户已被删除，请重新登录")
+            raise Unauthorized("用户已被删除，请重新登录")
         if not user.status:
             logger.warning("用户已被禁用，请重新登录")
-            raise AuthException(msg="用户已被禁用，请重新登录")
+            raise AccountDisabled("用户已被禁用，请重新登录")
         return user
 
     @classmethod
@@ -575,4 +578,5 @@ async def check_user_permission(
         return
     for scope in permissions.scopes:
         if not has_permission(user_permissions, scope):
-            raise PermissionException(msg="您无权访问此接口")
+            raise NoPermission("您无权访问此接口")
+

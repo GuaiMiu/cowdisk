@@ -17,7 +17,7 @@ from app.core.config import settings
 from app.core.init import app_init
 from app.core.logging import build_uvicorn_log_config, normalized_uvicorn_log_level
 from app.core.middleware import handle_middleware
-from app.handle import handle_exception
+from app.core.errors.handlers import register_exception_handlers
 
 openapi_tags = [
     {"name": "Admin - Auth", "description": "管理端认证与会话"},
@@ -53,7 +53,7 @@ app.mount(f"{settings.APP_API_PREFIX}/static", StaticFiles(directory=static_dir)
 app.include_router(api_router)
 app.include_router(index_router)
 # 加载全局异常处理方法
-handle_exception(app)
+register_exception_handlers(app)
 # 注册中间件
 handle_middleware(app)
 

@@ -1,8 +1,10 @@
 import { addMenu, deleteMenu, editMenu, getMenuList } from '@/api/modules/adminSystem'
 import type { MenuAddIn, MenuEditIn, MenuOut } from '@/types/menu'
 import { useCursorCrud } from './useCursorCrud'
+import { useI18n } from 'vue-i18n'
 
 export const useAdminMenus = () => {
+  const { t } = useI18n({ useScope: 'global' })
   const crud = useCursorCrud<MenuOut, MenuAddIn, MenuEditIn, number>({
     list: getMenuList,
     create: addMenu,
@@ -10,13 +12,13 @@ export const useAdminMenus = () => {
     remove: deleteMenu,
     initialSize: 100,
     messages: {
-      listFail: '加载菜单失败',
-      createSuccess: '菜单已创建',
-      createFail: '创建菜单失败',
-      updateSuccess: '菜单已更新',
-      updateFail: '更新菜单失败',
-      deleteSuccess: '菜单已删除',
-      deleteFail: '删除菜单失败',
+      listFail: t('admin.menu.crud.listFail'),
+      createSuccess: t('admin.menu.crud.createSuccess'),
+      createFail: t('admin.menu.crud.createFail'),
+      updateSuccess: t('admin.menu.crud.updateSuccess'),
+      updateFail: t('admin.menu.crud.updateFail'),
+      deleteSuccess: t('admin.menu.crud.deleteSuccess'),
+      deleteFail: t('admin.menu.crud.deleteFail'),
     },
   })
 

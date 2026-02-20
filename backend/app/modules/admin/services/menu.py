@@ -12,7 +12,7 @@ from app.modules.admin.dao.menu import menu_curd
 from app.modules.admin.models.menu import Menu
 from app.modules.admin.models.user import User
 from app.modules.admin.schemas.menu import MenuAddIn, MenuEditIn, MenusDeleteIn
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import BadRequestException, ConflictException
 
 
 class MenuService:
@@ -57,9 +57,7 @@ class MenuService:
         """
         db_menu = await menu_curd.get_by_id(db=db, obj_id=menu.id)
         if not db_menu:
-            raise ServiceException(
-                msg=f"权限菜单 {menu.name} 不存在",
-            )
+            raise BadRequestException(f"权限菜单 {menu.name} 不存在")
         await cls.is_menu_exist(db, menu)
         menu = menu.model_dump(exclude_unset=True)
         db_menu = db_menu.sqlmodel_update(menu)
@@ -93,8 +91,6 @@ class MenuService:
         exist = await menu_curd.get_by_or_fields(db, ["name"], menu)
         if exist:
             if exist.name == menu.name:
-                raise ServiceException(
-                    msg=f"菜单名称 {menu.name} 已被使用",
-                )
+                raise ConflictException(f"菜单名称 {menu.name} 已被使用")
         return False
 

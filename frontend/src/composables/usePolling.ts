@@ -1,4 +1,5 @@
 import { onBeforeUnmount, ref } from 'vue'
+import { i18n } from '@/i18n'
 
 type PollOptions<T> = {
   interval?: number
@@ -22,7 +23,7 @@ export const usePolling = () => {
 
   const poll = async <T>(task: () => Promise<T>, options: PollOptions<T>) => {
     if (isPolling.value) {
-      throw new Error('轮询任务进行中')
+      throw new Error(i18n.global.t('polling.inProgress'))
     }
     const interval = options.interval ?? 1200
     const timeout = options.timeout ?? 10 * 60 * 1000
@@ -33,12 +34,12 @@ export const usePolling = () => {
     return new Promise<T>((resolve, reject) => {
       const run = async () => {
         if (stopped.value) {
-          reject(new Error('轮询已停止'))
+          reject(new Error(i18n.global.t('polling.stopped')))
           return
         }
         if (Date.now() - startedAt > timeout) {
           isPolling.value = false
-          reject(new Error('任务超时'))
+          reject(new Error(i18n.global.t('polling.timeout')))
           return
         }
         try {

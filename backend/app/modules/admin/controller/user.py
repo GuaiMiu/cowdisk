@@ -14,12 +14,12 @@ from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.modules.admin.models.response import ResponseModel
+from app.core.database import get_async_session
+from app.core.response import ApiResponse, ok
 from app.modules.admin.models.user import User
 from app.modules.admin.schemas.user import UserAddIn, UserEditIn, UserOut, UsersDeleteIn
-from app.shared.deps import require_permissions, require_user
 from app.modules.admin.services.user import UserService
-from app.core.database import get_async_session
+from app.shared.deps import require_permissions, require_user
 
 user_router = APIRouter(
     prefix="/users",
@@ -31,7 +31,7 @@ user_router = APIRouter(
 @user_router.get(
     "",
     summary="获取用户列表",
-    response_model=ResponseModel[CursorPage[UserOut]],
+    response_model=ApiResponse[CursorPage[UserOut]],
     dependencies=[require_permissions(["system:user:list"])],
 )
 async def get_user_list(
@@ -43,33 +43,27 @@ async def get_user_list(
         lambda items: [UserOut.model_validate(item) for item in items]
     ):
         page = await paginate(db, query)
-    return ResponseModel.success(data=page)
+    return ok(page)
 
 
 @user_router.get(
     "/{user_id}",
     summary="获取用户信息",
-    response_model=ResponseModel[UserOut],
+    response_model=ApiResponse[UserOut],
     dependencies=[require_permissions(["system:user:list"])],
 )
 async def get_user(
     user_id: int,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    获取用户信息
-    :param user_id:
-    :param db:
-    :return:
-    """
     user = await UserService.get_user(db=db, user_id=user_id)
-    return ResponseModel.success(data=user)
+    return ok(user)
 
 
 @user_router.post(
     "",
     summary="添加用户",
-    response_model=ResponseModel[UserOut],
+    response_model=ApiResponse[UserOut],
     dependencies=[require_permissions(["system:user:create"])],
 )
 async def add_user(
@@ -77,17 +71,14 @@ async def add_user(
     db: AsyncSession = Depends(get_async_session),
     current_user: User = Depends(require_user),
 ):
-    """
-    添加用户
-    """
-    role = await UserService.add_user(db=db, user=user, current_user=current_user)
-    return ResponseModel.success(data=role)
+    result = await UserService.add_user(db=db, user=user, current_user=current_user)
+    return ok(result, message="创建成功")
 
 
 @user_router.patch(
     "/{user_id}",
     summary="编辑用户",
-    response_model=ResponseModel[UserOut],
+    response_model=ApiResponse[UserOut],
     dependencies=[require_permissions(["system:user:update"])],
 )
 async def edit_user(
@@ -96,18 +87,15 @@ async def edit_user(
     db: AsyncSession = Depends(get_async_session),
     current_user: User = Depends(require_user),
 ):
-    """
-    编辑用户
-    """
     user.id = user_id
-    user = await UserService.edit_user(db=db, user=user, current_user=current_user)
-    return ResponseModel.success(data=user)
+    result = await UserService.edit_user(db=db, user=user, current_user=current_user)
+    return ok(result, message="更新成功")
 
 
 @user_router.delete(
     "/{user_id}",
     summary="删除用户",
-    response_model=ResponseModel[UsersDeleteIn],
+    response_model=ApiResponse[UsersDeleteIn],
     dependencies=[require_permissions(["system:user:delete"])],
 )
 async def delete_user(
@@ -115,23 +103,16 @@ async def delete_user(
     db: AsyncSession = Depends(get_async_session),
     current_user: User = Depends(require_user),
 ):
-    """
-    删除用户
-    :param current_user:
-    :param user_id:
-    :param db:
-    :return:
-    """
     users = await UserService.delete_users(
         db=db, users=UsersDeleteIn(ids=[user_id]), current_user=current_user
     )
-    return ResponseModel.success(data=users)
+    return ok(users, message="删除成功")
 
 
 @user_router.delete(
     "",
     summary="批量删除用户",
-    response_model=ResponseModel[UsersDeleteIn],
+    response_model=ApiResponse[UsersDeleteIn],
     dependencies=[require_permissions(["system:user:delete"])],
 )
 async def delete_users(
@@ -139,14 +120,7 @@ async def delete_users(
     db: AsyncSession = Depends(get_async_session),
     current_user: User = Depends(require_user),
 ):
-    """
-    批量删除用户
-    """
-    users = await UserService.delete_users(
+    result = await UserService.delete_users(
         db=db, users=users, current_user=current_user
     )
-    return ResponseModel.success(data=users)
-
-
-
-
+    return ok(result, message="删除成功")

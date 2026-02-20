@@ -22,7 +22,7 @@ export const useRoleOptions = () => {
       }
       options.value = items.map((role) => ({
         id: role.id || 0,
-        label: role.name || '未命名角色',
+        label: role.name || t('admin.role.unnamedRole'),
         description: role.permission_char || '',
       }))
     } catch (error) {

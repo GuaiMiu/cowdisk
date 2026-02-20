@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n({ useScope: 'global' })
 </script>
 
 <template>
   <div class="status">
     <div class="status__card">
       <div class="status__code">404</div>
-      <h1 class="status__title">页面不存在</h1>
-      <p class="status__desc">您访问的页面已迁移或暂时不可用。</p>
-      <Button variant="secondary" @click="$router.push('/app/files')">返回首页</Button>
+      <h1 class="status__title">{{ t('statusPage.notFoundTitle') }}</h1>
+      <p class="status__desc">{{ t('statusPage.notFoundDesc') }}</p>
+      <Button variant="secondary" @click="$router.push('/app/files')">
+        {{ t('statusPage.backHome') }}
+      </Button>
     </div>
   </div>
 </template>

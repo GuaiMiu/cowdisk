@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n({ useScope: 'global' })
 </script>
 
 <template>
   <div class="status">
     <div class="status__card">
       <div class="status__code">403</div>
-      <h1 class="status__title">没有权限</h1>
-      <p class="status__desc">当前账号无法访问该页面，请联系管理员。</p>
-      <Button variant="secondary" @click="$router.push('/login')">返回登录</Button>
+      <h1 class="status__title">{{ t('statusPage.forbiddenTitle') }}</h1>
+      <p class="status__desc">{{ t('statusPage.forbiddenDesc') }}</p>
+      <Button variant="secondary" @click="$router.push('/login')">
+        {{ t('statusPage.backLogin') }}
+      </Button>
     </div>
   </div>
 </template>

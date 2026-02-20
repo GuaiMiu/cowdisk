@@ -1,6 +1,5 @@
 export type ResponseModel<T> = {
   code: number
-  msg: string
+  message: string
   data: T | T[] | null
-  time: string
 }

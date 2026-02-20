@@ -75,6 +75,14 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false
       }
     },
+    async refreshMe() {
+      if (!this.token) {
+        return null
+      }
+      const me = await getMe()
+      this.me = me
+      return me
+    },
     async refreshToken() {
       if (!this.token) {
         return null
@@ -82,7 +90,7 @@ export const useAuthStore = defineStore('auth', {
       const result = await refreshTokenApi()
       const nextToken = result?.access_token
       if (!nextToken) {
-        throw new Error('Token 刷新失败')
+        throw new Error(i18n.global.t('auth.toasts.refreshFailedMessage'))
       }
       this.token = nextToken
       localStorage.setItem(TOKEN_KEY, nextToken)

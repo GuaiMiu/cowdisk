@@ -1,12 +1,14 @@
 <script setup lang="ts">
+import { i18n } from '@/i18n'
+
 const props = withDefaults(
   defineProps<{
     title?: string
     description?: string
   }>(),
   {
-    title: '暂无内容',
-    description: '当前没有可展示的信息',
+    title: i18n.global.t('common.emptyTitle'),
+    description: i18n.global.t('common.emptyDescription'),
   },
 )
 </script>

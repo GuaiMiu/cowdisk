@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Modal from './Modal.vue'
 import Button from './Button.vue'
+import { i18n } from '@/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -16,10 +17,10 @@ const props = withDefaults(
     cancelDisabled?: boolean
   }>(),
   {
-    title: '确认操作',
+    title: i18n.global.t('common.confirmAction'),
     message: '',
-    confirmText: '确认',
-    cancelText: '取消',
+    confirmText: i18n.global.t('common.confirm'),
+    cancelText: i18n.global.t('common.cancel'),
     extraText: '',
     extraVariant: 'danger',
     confirmLoading: false,

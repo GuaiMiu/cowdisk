@@ -25,7 +25,15 @@ from starlette.responses import FileResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import (
+    BadRequestException,
+    OfficeForbidden,
+    OfficeTokenExpired,
+    OfficeTokenInvalid,
+    OfficeUnavailable,
+    PreviewNotSupported,
+    ThumbnailNotSupported,
+)
 from app.modules.admin.models.user import User
 from app.modules.admin.services.profile import ProfileService
 from app.modules.disk.models.file import File
@@ -185,7 +193,7 @@ class OfficeService:
     ) -> dict:
         entry = await FileService._get_active_file(db, user_id, file_id)
         if not cls._is_office_file(entry):
-            raise ServiceException(msg="当前文件类型不支持 Office 在线预览")
+            raise ThumbnailNotSupported("当前文件类型不支持 Office 在线预览")
         cfg = FileService._cfg(db)
         ttl = int(await cfg.office.access_token_ttl_seconds() or 300)
         now = int(time.time())
@@ -214,23 +222,23 @@ class OfficeService:
         request: Request | None = None,
     ) -> dict:
         if not token:
-            raise ServiceException(msg="WOPI 访问令牌无效")
+            raise OfficeTokenInvalid("WOPI 访问令牌无效")
         raw = await redis.get(f"wopi:tok:{token}")
         if not raw:
-            raise ServiceException(msg="WOPI 访问令牌不存在或已过期")
+            raise OfficeTokenExpired("WOPI 访问令牌不存在或已过期")
         if isinstance(raw, (bytes, bytearray)):
             raw = raw.decode("utf-8")
         try:
             payload = json.loads(raw)
         except Exception as exc:
-            raise ServiceException(msg="WOPI 访问令牌解析失败") from exc
+            raise OfficeTokenInvalid("WOPI 访问令牌解析失败") from exc
         if payload.get("act") != "wopi":
-            raise ServiceException(msg="WOPI 访问令牌类型错误")
+            raise OfficeTokenInvalid("WOPI 访问令牌类型错误")
         if int(payload.get("rid") or 0) != int(file_id):
-            raise ServiceException(msg="WOPI 访问令牌与资源不匹配")
+            raise OfficeTokenInvalid("WOPI 访问令牌与资源不匹配")
         expires_at = int(payload.get("expires_at") or 0)
         if expires_at and int(time.time()) > expires_at:
-            raise ServiceException(msg="WOPI 访问令牌已过期")
+            raise OfficeTokenExpired("WOPI 访问令牌已过期")
         if request is not None:
             expected_origin = str(payload.get("collabora_origin") or "").strip().lower()
             if expected_origin:
@@ -241,7 +249,7 @@ class OfficeService:
                     parsed = urlparse(raw)
                     got_origin = f"{parsed.scheme}://{parsed.netloc}".lower()
                     if got_origin and got_origin != expected_origin:
-                        raise ServiceException(msg="WOPI 请求来源不被允许")
+                        raise OfficeForbidden()
         return payload
 
     @classmethod
@@ -262,7 +270,7 @@ class OfficeService:
         )
         uid = int(payload.get("uid") or 0)
         if uid <= 0:
-            raise ServiceException(msg="WOPI 访问令牌无效")
+            raise OfficeTokenInvalid("WOPI 访问令牌无效")
         entry = await FileService._get_active_file(db, uid, file_id)
         can_write = bool(payload.get("can_write"))
         user = await db.get(User, uid)
@@ -320,10 +328,10 @@ class OfficeService:
         )
         uid = int(payload.get("uid") or 0)
         if uid <= 0:
-            raise ServiceException(msg="WOPI 访问令牌无效")
+            raise OfficeTokenInvalid("WOPI 访问令牌无效")
         entry = await FileService._get_active_file(db, uid, file_id)
         if entry.is_dir:
-            raise ServiceException(msg="目录不支持 Office 在线编辑")
+            raise PreviewNotSupported("目录不支持 Office 在线编辑")
         storage = await FileService._get_storage_by_id(db, entry.storage_id)
         backend = get_storage_backend(storage)
         abs_path = backend.resolve_abs_path(entry.storage_path)
@@ -351,15 +359,18 @@ class OfficeService:
         )
         uid = int(payload.get("uid") or 0)
         if uid <= 0:
-            raise ServiceException(msg="WOPI 访问令牌无效")
+            raise OfficeTokenInvalid("WOPI 访问令牌无效")
         if not bool(payload.get("can_write")):
-            raise ServiceException(msg="当前令牌不允许写入")
+            raise OfficeForbidden("当前令牌不允许写入")
         entry = await FileService._get_active_file(db, uid, file_id)
         if entry.is_dir:
-            raise ServiceException(msg="目录不支持 Office 在线编辑")
+            raise PreviewNotSupported("目录不支持 Office 在线编辑")
         storage = await FileService._get_storage_by_id(db, entry.storage_id)
         backend = get_storage_backend(storage)
         abs_path = backend.resolve_abs_path(entry.storage_path)
+        expected_size = len(content)
+        additional = max(0, expected_size - int(entry.size or 0))
+        await FileService._ensure_quota_available(db, uid, additional)
 
         def _sync_write() -> None:
             abs_path.parent.mkdir(parents=True, exist_ok=True)
@@ -390,20 +401,20 @@ class OfficeService:
     ) -> dict:
         entry = await FileService._get_active_file(db, user_id, file_id)
         if not cls._is_office_file(entry):
-            raise ServiceException(msg="当前文件类型不支持 Office 在线预览")
+            raise ThumbnailNotSupported("当前文件类型不支持 Office 在线预览")
 
         cfg = FileService._cfg(db)
         if not await cfg.office.enabled():
-            raise ServiceException(msg="Office 在线预览未启用")
+            raise OfficeUnavailable("Office 在线预览未启用")
         provider = (await cfg.office.provider() or "").strip().lower()
         if provider != "collabora":
-            raise ServiceException(msg="当前 Office 服务提供方不受支持")
+            raise OfficeUnavailable("当前 Office 服务提供方不受支持")
 
         collabora_public_url = (await cfg.office.collabora_public_url() or "").strip()
         collabora_inner_url = (await cfg.office.collabora_url() or "").strip()
         collabora_url = collabora_public_url or collabora_inner_url
         if not collabora_url:
-            raise ServiceException(msg="请先配置 Collabora 服务地址")
+            raise OfficeUnavailable("请先配置 Collabora 服务地址")
         verify_tls = await cfg.office.verify_tls()
         timeout_seconds = int(await cfg.office.request_timeout_seconds() or 15)
         normalized_mode = (mode or "view").strip().lower()
@@ -425,7 +436,7 @@ class OfficeService:
         )
         urlsrc = (urlsrc_map.get(ext) or "").strip()
         if not urlsrc:
-            raise ServiceException(msg=f"Collabora 不支持该扩展名: .{ext}")
+            raise BadRequestException(f"Collabora 不支持该扩展名: .{ext}")
 
         backend_public_url = (await cfg.office.backend_public_url() or "").strip()
         api_prefix = settings.APP_API_PREFIX or "/api/v1"
@@ -450,3 +461,4 @@ class OfficeService:
             "url": launch_url,
             "expires_in": int(token_data.get("expires_in") or 0),
         }
+

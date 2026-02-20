@@ -540,8 +540,9 @@ onBeforeUnmount(() => {
 }
 
 .card__input {
-  width: 64px;
-  justify-self: center;
+  width: 100%;
+  justify-self: stretch;
+  box-sizing: border-box;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   padding: 4px 6px;

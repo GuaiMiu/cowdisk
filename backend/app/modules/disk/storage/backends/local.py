@@ -20,7 +20,7 @@ from fastapi import UploadFile
 
 from app.core.config import settings
 from app.core.database import async_session
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import BadRequestException, ChunkIncomplete, NameConflict
 from app.utils.logger import logger
 from app.modules.disk.storage.backends.base import ExtractedItem, StoredFileMeta, StorageBackend
 from app.modules.disk.utils.io_pool import run_io
@@ -51,10 +51,10 @@ class LocalStorageBackend(StorageBackend):
     def _abs_path(self, storage_path: str) -> Path:
         rel = PurePosixPath(storage_path or "")
         if rel.is_absolute() or ".." in rel.parts:
-            raise ServiceException(msg="非法存储路径")
+            raise BadRequestException("非法存储路径")
         abs_path = (self._base_path / Path(*rel.parts)).resolve()
         if not abs_path.is_relative_to(self._base_path):
-            raise ServiceException(msg="非法存储路径")
+            raise BadRequestException("非法存储路径")
         return abs_path
 
     def resolve_abs_path(self, storage_path: str) -> Path:
@@ -123,7 +123,7 @@ class LocalStorageBackend(StorageBackend):
                 temp_path.unlink(missing_ok=True)
             except OSError:
                 pass
-            raise ServiceException(msg=str(exc)) from exc
+            raise BadRequestException(str(exc)) from exc
         finally:
             await upload.close()
 
@@ -406,7 +406,7 @@ class LocalStorageBackend(StorageBackend):
                 existing = part_path.stat().st_size
                 if existing != size:
                     temp_path.unlink(missing_ok=True)
-                    raise ServiceException(msg="分片已存在且大小不一致")
+                    raise NameConflict("分片已存在且大小不一致")
                 temp_path.unlink(missing_ok=True)
                 return size
             # 原子替换，避免出现半写入的分片文件。
@@ -453,7 +453,7 @@ class LocalStorageBackend(StorageBackend):
                 for idx in range(1, total_parts + 1):
                     part = parts_dir / f"{idx:08d}"
                     if not part.exists():
-                        raise ServiceException(msg=f"缺少分片 {idx}")
+                        raise ChunkIncomplete(f"缺少分片 {idx}")
                     with part.open("rb") as src:
                         while True:
                             data = src.read(1024 * 1024)
@@ -671,11 +671,11 @@ class LocalStorageBackend(StorageBackend):
                 for info in zf.infolist():
                     rel = PurePosixPath(info.filename)
                     if not _is_safe(rel):
-                        raise ServiceException(msg="压缩包包含非法路径")
+                        raise BadRequestException("压缩包包含非法路径")
                     if info.is_dir():
                         target = (dest_root / Path(*rel.parts)).resolve()
                         if target.exists() and not target.is_dir():
-                            raise ServiceException(msg="解压目标已存在")
+                            raise NameConflict("解压目标已存在")
                         target.mkdir(parents=True, exist_ok=True)
                         rel_path = rel.as_posix().rstrip("/")
                         if rel_path:
@@ -691,7 +691,7 @@ class LocalStorageBackend(StorageBackend):
                         continue
                     target = (dest_root / Path(*rel.parts)).resolve()
                     if target.exists():
-                        raise ServiceException(msg="解压目标已存在")
+                        raise NameConflict("解压目标已存在")
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with zf.open(info) as src, target.open("wb") as dst:
                         shutil.copyfileobj(src, dst)
@@ -761,5 +761,6 @@ class LocalStorageBackend(StorageBackend):
             if current == stop_abs:
                 break
             current = current.parent
+
 
 

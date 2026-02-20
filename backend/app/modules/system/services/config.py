@@ -16,7 +16,7 @@ from app.audit.constants import AUDIT_OUTBOX_EVENT_TYPE, AuditOutboxStatus
 from app.audit.models import AuditOutbox
 from app.core.audit_context import get_audit_context
 from app.core.config import settings
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import BadRequestException
 from app.modules.system.repo.config import ConfigRepository
 from app.modules.system.services.providers import (
     DefaultConfigProvider,
@@ -294,7 +294,7 @@ class ConfigCenterService:
     async def get(self, key: str) -> ConfigReadResult:
         spec = REGISTRY.get(key)
         if not spec:
-            raise ServiceException(msg=f"未知配置项: {key}")
+            raise BadRequestException(f"未知配置项: {key}")
         return await self._read_registry_value(spec)
 
     async def get_value(self, key: str) -> Any:
@@ -317,7 +317,7 @@ class ConfigCenterService:
             try:
                 normalized = self._validate_value(spec, value)
             except ValueError as exc:
-                raise ServiceException(msg=f"{spec.key} 校验失败: {exc}") from exc
+                raise BadRequestException(f"{spec.key} 校验失败: {exc}") from exc
             await ConfigRepository.ensure_default_entry(
                 self._db,
                 key=spec.key,
@@ -335,7 +335,7 @@ class ConfigCenterService:
     async def list_group_specs_with_values(self, group: str) -> list[dict[str, Any]]:
         specs = [spec for spec in REGISTRY.values() if spec.group == group]
         if not specs:
-            raise ServiceException(msg=f"未知配置分组: {group}")
+            raise BadRequestException(f"未知配置分组: {group}")
 
         output: list[dict[str, Any]] = []
         for spec in specs:
@@ -415,10 +415,7 @@ class ConfigCenterService:
             normalized_items.append((spec, old_value, normalized, key))
 
         if errors:
-            raise ServiceException(
-                msg="配置校验失败",
-                data=json.dumps(errors, ensure_ascii=False),
-            )
+            raise BadRequestException(f"配置校验失败: {json.dumps(errors, ensure_ascii=False)}")
 
         updated_keys: list[str] = []
         changed_groups: set[str] = set()

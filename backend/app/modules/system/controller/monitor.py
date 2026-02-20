@@ -14,8 +14,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_async_redis, get_async_session
-from app.core.exception import AuthException
-from app.modules.admin.models.response import ResponseModel
+from app.core.errors.codes import CommonCode
+from app.core.errors.exceptions import AppException
+from app.core.response import ApiResponse, ok
 from app.modules.admin.services.auth import AuthService
 from app.modules.system.schemas.monitor import ForceLogoutOut, SystemMonitorOut
 from app.modules.system.services.monitor import MonitorService
@@ -31,7 +32,7 @@ monitor_router = APIRouter(
 @monitor_router.get(
     "/overview",
     summary="系统监控总览",
-    response_model=ResponseModel[SystemMonitorOut],
+    response_model=ApiResponse[SystemMonitorOut],
     dependencies=[require_permissions(["cfg:core:read"])],
 )
 async def get_monitor_overview(
@@ -39,13 +40,13 @@ async def get_monitor_overview(
     redis: aioredis.Redis = Depends(get_async_redis),
 ):
     data = await MonitorService.get_overview(db=db, redis=redis)
-    return ResponseModel.success(data=data)
+    return ok(data)
 
 
 @monitor_router.post(
     "/online-users/{session_id}/force-logout",
     summary="强制下线在线会话",
-    response_model=ResponseModel[ForceLogoutOut],
+    response_model=ApiResponse[ForceLogoutOut],
     dependencies=[require_permissions(["cfg:core:write"])],
 )
 async def force_logout_online_user(
@@ -62,7 +63,6 @@ async def force_logout_online_user(
         window_seconds=settings.AUTH_FORCE_LOGOUT_RATE_WINDOW,
     )
     if not allowed:
-        raise AuthException(msg="操作过于频繁，请稍后重试")
+        raise AppException(http_status=429, code=int(CommonCode.RATE_LIMITED), message="操作过于频繁，请稍后重试")
     data = await MonitorService.force_logout_session(redis=redis, session_id=session_id)
-    return ResponseModel.success(data=data, msg="会话已强制下线")
-
+    return ok(data, message="会话已强制下线")

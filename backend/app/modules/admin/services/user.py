@@ -12,7 +12,7 @@ from app.modules.admin.dao.role import role_curd
 from app.modules.admin.dao.user import user_crud
 from app.modules.admin.models.user import User
 from app.modules.admin.schemas.user import UserAddIn, UserEditIn, UsersDeleteIn
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import BadRequestException, UserConflict
 
 
 class UserService:
@@ -52,9 +52,7 @@ class UserService:
         """
         db_user = await user_crud.get_by_id(db=db, obj_id=user.id)
         if not db_user:
-            raise ServiceException(
-                msg=f"角色 {user.username} 不存在",
-            )
+            raise BadRequestException(f"用户 {user.username} 不存在")
 
         await cls.is_user_exist(db, user)
         if user.roles is None:
@@ -98,12 +96,8 @@ class UserService:
         exist = await user_crud.get_by_or_fields(db, ["username", "mail"], user)
         if exist:
             if exist.username == user.username and exist.mail == user.mail:
-                raise ServiceException(
-                    msg=f"用户名 {user.username} 邮箱 {user.mail} 已被使用",
-                )
+                raise UserConflict(f"用户名 {user.username} 邮箱 {user.mail} 已被使用")
             elif exist.mail == user.mail:
-                raise ServiceException(
-                    msg=f"邮箱 {user.mail} 已被使用",
-                )
+                raise UserConflict(f"邮箱 {user.mail} 已被使用")
         return False
 

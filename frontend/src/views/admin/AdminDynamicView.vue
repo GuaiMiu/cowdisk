@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { findAdminMenuByPath, resolveAdminViewLoader } from '@/router/adminDynamic'
 import Empty from '@/components/common/Empty.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
+const { t } = useI18n({ useScope: 'global' })
 
 const resolvedMenu = computed(() => findAdminMenuByPath(route.path, authStore.routers))
 
@@ -27,8 +29,8 @@ const resolvedComponent = computed(() => {
   <component :is="resolvedComponent" v-if="resolvedComponent" />
   <Empty
     v-else
-    title="页面未配置"
-    description="当前菜单未配置 component_path 或组件路径无效，请在菜单管理中修正。"
+    :title="t('admin.dynamic.notConfiguredTitle')"
+    :description="t('admin.dynamic.notConfiguredDesc')"
   />
 </template>
 

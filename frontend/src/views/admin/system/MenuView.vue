@@ -174,17 +174,6 @@ const treeRows = computed(() => {
   return rows
 })
 
-const treeMap = computed(() => {
-  const map = new Map<number, TreeNode>()
-  const source = menuStore.items.value
-  source.forEach((item) => {
-    if (item.id) {
-      map.set(item.id, { ...item })
-    }
-  })
-  return map
-})
-
 const hasChildren = (row: MenuOut) => {
   if (!row.id) {
     return false

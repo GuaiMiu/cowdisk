@@ -28,6 +28,7 @@ from app.modules.system.controller.config import system_config_router
 from app.audit.router import audit_router
 from app.modules.system.controller.setup import setup_router
 from app.modules.system.controller.monitor import monitor_router
+from app.modules.examples.controller.refactor_demo import refactor_demo_router
 
 api_router = APIRouter(prefix=settings.APP_API_PREFIX)
 
@@ -62,4 +63,5 @@ api_router.include_router(me_router)
 api_router.include_router(public_router)
 api_router.include_router(access_router)
 api_router.include_router(wopi_router)
+api_router.include_router(refactor_demo_router)
 

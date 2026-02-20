@@ -9,7 +9,7 @@ from uuid import uuid4
 from fastapi import UploadFile
 
 from app.core.config import settings
-from app.core.exception import ServiceException
+from app.core.errors.exceptions import BadRequestException, PayloadTooLarge
 from app.modules.admin.models.user import User
 
 
@@ -22,14 +22,14 @@ class ProfileService:
     async def save_avatar(cls, *, user: User, upload: UploadFile) -> dict[str, str]:
         mime = (upload.content_type or "").strip().lower()
         if mime not in cls.ALLOWED_MIME:
-            raise ServiceException(msg="头像仅支持 PNG/JPEG/WEBP")
+            raise BadRequestException("头像仅支持 PNG/JPEG/WEBP")
 
         payload = await upload.read()
         await upload.close()
         if not payload:
-            raise ServiceException(msg="上传文件为空")
+            raise BadRequestException("上传文件为空")
         if len(payload) > cls.MAX_AVATAR_SIZE:
-            raise ServiceException(msg="头像文件不能超过 2MB")
+            raise PayloadTooLarge("头像文件不能超过 2MB")
 
         suffix = cls._suffix_from_mime(mime)
         digest = hashlib.sha1(payload).hexdigest()
@@ -100,7 +100,7 @@ class ProfileService:
     @staticmethod
     def _ensure_under_root(target: Path, root: Path) -> None:
         if not str(target).startswith(str(root)):
-            raise ServiceException(msg="头像路径非法")
+            raise BadRequestException("头像路径非法")
 
     @staticmethod
     def avatar_url(avatar_path: str, digest: str | None = None) -> str:

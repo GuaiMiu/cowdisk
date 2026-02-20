@@ -1,4 +1,6 @@
 import { AppError, normalizeError } from '@/api/errors'
+import { resolveCodeMessage } from '@/errors/codeMap'
+import { i18n } from '@/i18n'
 
 export type UiErrorInfo = {
   title: string
@@ -7,32 +9,35 @@ export type UiErrorInfo = {
   code?: number | string
 }
 
-const codeTitleMap: Record<number, string> = {
-  400: '请求参数错误',
-  401: '登录状态失效',
-  403: '权限不足',
-  404: '资源不存在',
-  408: '请求超时',
-  409: '数据冲突',
-  422: '参数校验失败',
-  429: '请求过于频繁',
-  500: '服务暂时不可用',
-  502: '网关异常',
-  503: '服务维护中',
-  504: '网关超时',
+const isRetryableError = (error: AppError) => {
+  if (error.transient) {
+    return true
+  }
+  if (error.code === 100004 || error.code === 200013 || error.code === 200023) {
+    return true
+  }
+  if (error.httpStatus === 408 || error.httpStatus === 429) {
+    return true
+  }
+  if (typeof error.httpStatus === 'number' && error.httpStatus >= 500) {
+    return true
+  }
+  return false
 }
 
-export const mapToUiError = (error: unknown, fallbackTitle = '操作失败'): UiErrorInfo => {
+export const mapToUiError = (
+  error: unknown,
+  fallbackTitle = i18n.global.t('common.operationFailed'),
+): UiErrorInfo => {
   const normalized = normalizeError(error)
-  const code = normalized.code
-  const title =
-    (typeof code === 'number' ? codeTitleMap[code] : '') ||
-    (normalized.transient ? '网络波动' : fallbackTitle)
-  const message = normalized.message || '请稍后重试'
+  const code = normalized.code ?? normalized.httpStatus
+  const title = resolveCodeMessage(normalized.code) ||
+    (normalized.transient ? i18n.global.t('common.networkIssue') : fallbackTitle)
+  const message = normalized.message || i18n.global.t('common.retryLater')
   return {
     title,
     message,
-    retryable: !!normalized.transient || code === 408 || code === 429,
+    retryable: isRetryableError(normalized),
     code,
   }
 }
