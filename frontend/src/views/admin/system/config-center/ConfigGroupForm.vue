@@ -19,6 +19,7 @@ const props = defineProps<{
   panelTitle?: string
   panelSubtitle?: string
   buildRulesHint: (item: ConfigSpec) => string
+  flat?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -42,7 +43,7 @@ const isReadonly = (item: ConfigSpec) => item.editable === false
 </script>
 
 <template>
-  <div class="config-panel">
+  <div class="config-panel" :class="{ 'config-panel--flat': flat }">
     <div class="panel-actions">
       <div class="panel-meta">
         <div class="panel-title">{{ panelTitle || t('admin.configShared.form.itemsTitle') }}</div>
@@ -147,6 +148,13 @@ const isReadonly = (item: ConfigSpec) => item.editable === false
   border: 1px solid var(--color-border);
   display: grid;
   gap: var(--space-6);
+}
+
+.config-panel--flat {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 
 .panel-actions {

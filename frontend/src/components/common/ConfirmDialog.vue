@@ -11,6 +11,9 @@ const props = withDefaults(
     cancelText?: string
     extraText?: string
     extraVariant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+    confirmLoading?: boolean
+    confirmDisabled?: boolean
+    cancelDisabled?: boolean
   }>(),
   {
     title: '确认操作',
@@ -19,6 +22,9 @@ const props = withDefaults(
     cancelText: '取消',
     extraText: '',
     extraVariant: 'danger',
+    confirmLoading: false,
+    confirmDisabled: false,
+    cancelDisabled: false,
   },
 )
 
@@ -41,8 +47,15 @@ const emit = defineEmits<{
       >
         {{ extraText }}
       </Button>
-      <Button variant="secondary" @click="emit('close')">{{ cancelText }}</Button>
-      <Button variant="primary" @click="emit('confirm')">{{ confirmText }}</Button>
+      <Button variant="secondary" :disabled="cancelDisabled || confirmLoading" @click="emit('close')">{{ cancelText }}</Button>
+      <Button
+        variant="primary"
+        :loading="confirmLoading"
+        :disabled="confirmDisabled"
+        @click="emit('confirm')"
+      >
+        {{ confirmText }}
+      </Button>
     </template>
   </Modal>
 </template>

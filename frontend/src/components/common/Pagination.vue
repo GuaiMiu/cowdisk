@@ -127,7 +127,9 @@ const sizeOptions = () =>
 .pagination__left {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .pagination__info {
@@ -151,6 +153,12 @@ const sizeOptions = () =>
   display: flex;
   align-items: center;
   gap: 0;
+  width: auto;
+}
+
+.pagination__size :deep(.select) {
+  width: auto;
+  min-width: 96px;
 }
 
 .pagination__size :deep(.field__error) {
@@ -160,7 +168,9 @@ const sizeOptions = () =>
 .pagination__actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
+  justify-content: flex-end;
 }
 
 .pagination__page {
@@ -171,10 +181,16 @@ const sizeOptions = () =>
   .pagination {
     flex-direction: column;
     align-items: flex-start;
+    padding: var(--space-3);
   }
 
   .pagination__left {
     width: 100%;
+  }
+
+  .pagination__actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 </style>

@@ -72,6 +72,11 @@
   --duration-base: 220ms;
   --duration-slow: 340ms;
 
+  --motion-fast: 140ms var(--ease-standard);
+  --motion-normal: 220ms var(--ease-standard);
+  --motion-slow: 340ms var(--ease-standard);
+  --motion-emphasized: 340ms var(--ease-emphasized);
+
   --transition-fast: var(--duration-fast) var(--ease-standard);
   --transition-base: var(--duration-base) var(--ease-standard);
   --transition-slow: var(--duration-slow) var(--ease-standard);
@@ -79,4 +84,43 @@
   --interaction-hover-lift: translateY(-1px);
   --interaction-press-scale: scale(0.985);
   --interaction-focus-ring: 0 0 0 3px var(--color-primary-soft);
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #0f0f0f;
+  --color-surface: #181818;
+  --color-surface-2: #212121;
+  --color-panel: #181818;
+  --color-text: #f1f1f1;
+  --color-muted: #aaaaaa;
+  --color-border: #303030;
+  --color-primary: #b6bcc4;
+  --color-primary-strong: #9ea5ae;
+  --color-primary-contrast: #f5f7fa;
+  --color-danger: #ff6b63;
+  --color-warning: #ffb74d;
+  --color-success: #66bb6a;
+  --color-info: #90caf9;
+  --color-on-primary: #111317;
+  --color-on-danger: #2f0707;
+  --color-on-primary-weak: rgba(182, 188, 196, 0.34);
+  --color-text-weak: rgba(241, 241, 241, 0.28);
+  --color-overlay: rgba(0, 0, 0, 0.55);
+  --color-overlay-strong: rgba(0, 0, 0, 0.86);
+  --color-overlay-soft: rgba(24, 24, 24, 0.78);
+  --color-overlay-line: rgba(241, 241, 241, 0.24);
+  --color-overlay-text: rgba(241, 241, 241, 0.96);
+  --color-primary-soft: rgba(182, 188, 196, 0.2);
+  --color-primary-soft-strong: rgba(182, 188, 196, 0.32);
+  --color-danger-soft: rgba(255, 107, 99, 0.2);
+  --color-warning-soft: rgba(255, 183, 77, 0.2);
+  --color-success-soft: rgba(102, 187, 106, 0.2);
+  --color-info-soft: rgba(144, 202, 249, 0.2);
+  --color-skeleton: rgba(241, 241, 241, 0.1);
+  --color-skeleton-strong: rgba(241, 241, 241, 0.18);
+  --color-bg-accent-1: rgba(182, 188, 196, 0.1);
+  --color-bg-accent-2: rgba(241, 241, 241, 0.08);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.42);
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.62);
 }

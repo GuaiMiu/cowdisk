@@ -1,4 +1,5 @@
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useBodyScrollLock } from './useBodyScrollLock'
 
 type ResponsiveSidebarOptions = {
   mobileQuery?: string
@@ -7,12 +8,13 @@ type ResponsiveSidebarOptions = {
 
 export const useResponsiveSidebar = (options: ResponsiveSidebarOptions = {}) => {
   const sidebarOpen = ref(true)
+  const isMobile = ref(false)
   let mobileQuery: MediaQueryList | null = null
   let compactQuery: MediaQueryList | null = null
   let viewportMode: 'mobile' | 'compact' | 'desktop' | null = null
 
   const getViewportMode = () => {
-    if (mobileQuery?.matches) {
+    if (isMobile.value) {
       return 'mobile' as const
     }
     if (compactQuery?.matches) {
@@ -35,18 +37,23 @@ export const useResponsiveSidebar = (options: ResponsiveSidebarOptions = {}) => 
   }
 
   const handleViewportChange = () => {
+    isMobile.value = !!mobileQuery?.matches
     syncSidebarWithViewport()
   }
 
   const handleNavItemClick = () => {
-    if (mobileQuery?.matches) {
+    if (isMobile.value) {
       sidebarOpen.value = false
     }
   }
 
+  const shouldLockBody = computed(() => isMobile.value && sidebarOpen.value)
+  useBodyScrollLock(shouldLockBody)
+
   onMounted(() => {
     mobileQuery = window.matchMedia(options.mobileQuery ?? '(max-width: 768px)')
     compactQuery = window.matchMedia(options.compactQuery ?? '(max-width: 1440px)')
+    isMobile.value = mobileQuery.matches
     syncSidebarWithViewport()
     mobileQuery.addEventListener('change', handleViewportChange)
     compactQuery.addEventListener('change', handleViewportChange)

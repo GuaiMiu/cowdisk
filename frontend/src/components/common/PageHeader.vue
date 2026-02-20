@@ -47,12 +47,19 @@ const props = withDefaults(
 
 .page-header__actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
   gap: var(--space-2);
 }
 
 @media (max-width: 768px) {
   .page-header {
     grid-template-columns: 1fr;
+  }
+
+  .page-header__actions {
+    justify-content: flex-start;
   }
 }
 </style>

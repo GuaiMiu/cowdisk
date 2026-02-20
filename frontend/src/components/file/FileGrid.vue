@@ -376,7 +376,7 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   overflow: hidden;
-  background: #fff;
+  background: var(--color-surface);
 }
 
 .grid__body {
@@ -410,7 +410,7 @@ onBeforeUnmount(() => {
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--color-border);
-  background: #fff;
+  background: var(--color-surface);
 }
 
 .grid__bulk-check {

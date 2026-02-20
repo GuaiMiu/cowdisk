@@ -166,8 +166,8 @@ useDismissibleLayer({
 .fade-slide-enter-active,
 .fade-slide-leave-active {
   transition:
-    opacity var(--transition-fast),
-    transform var(--transition-base);
+    opacity var(--motion-fast),
+    transform var(--motion-normal);
 }
 
 .fade-slide-enter-from,

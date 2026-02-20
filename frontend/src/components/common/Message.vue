@@ -17,8 +17,16 @@ const toneClass = (type: string) => `message__item message__item--${type}`
         <div class="message__content">
           <div class="message__title">{{ item.title }}</div>
           <div v-if="item.message" class="message__desc">{{ item.message }}</div>
+          <button
+            v-if="item.action?.label"
+            class="message__action"
+            type="button"
+            @click="messageStore.triggerAction(item.id)"
+          >
+            {{ item.action.label }}
+          </button>
         </div>
-        <button class="message__close" type="button" @click="messageStore.remove(item.id)">
+        <button class="message__close" type="button" aria-label="Close" @click="messageStore.remove(item.id)">
           ×
         </button>
       </div>
@@ -71,9 +79,23 @@ const toneClass = (type: string) => `message__item message__item--${type}`
   color: var(--color-muted);
 }
 
+.message__action {
+  margin-top: 2px;
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
 .message__close {
   font-size: 14px;
   color: var(--color-muted);
+  border: 0;
+  background: transparent;
   cursor: pointer;
 }
 
@@ -105,6 +127,10 @@ const toneClass = (type: string) => `message__item message__item--${type}`
   background: var(--color-warning);
 }
 
+.message__item--warn .message__icon {
+  background: var(--color-warning);
+}
+
 .message__item--info .message__icon {
   background: var(--color-info);
 }
@@ -112,8 +138,8 @@ const toneClass = (type: string) => `message__item message__item--${type}`
 .message-fade-enter-active,
 .message-fade-leave-active {
   transition:
-    opacity var(--transition-base),
-    transform var(--transition-base);
+    opacity var(--motion-normal),
+    transform var(--motion-normal);
 }
 
 .message-fade-enter-from,

@@ -17,6 +17,7 @@ const props = withDefaults(
     disabled?: boolean
     error?: string
     size?: SelectSize
+    autoWidth?: boolean
   }>(),
   {
     modelValue: '',
@@ -26,6 +27,7 @@ const props = withDefaults(
     disabled: false,
     error: '',
     size: 'md',
+    autoWidth: false,
   },
 )
 
@@ -36,12 +38,15 @@ const emit = defineEmits<{
 const classes = computed(() => [
   'select',
   `select--${props.size}`,
+  props.autoWidth ? 'select--auto' : '',
   props.error ? 'select--error' : '',
 ])
+
+const fieldClasses = computed(() => ['field', props.autoWidth ? 'field--auto' : ''])
 </script>
 
 <template>
-  <label class="field">
+  <label :class="fieldClasses">
     <span v-if="label" class="field__label">{{ label }}</span>
     <select
       :class="classes"
@@ -66,6 +71,10 @@ const classes = computed(() => [
   gap: var(--space-1);
   width: 100%;
   min-width: 0;
+}
+
+.field--auto {
+  width: fit-content;
 }
 
 .field__label {
@@ -111,6 +120,11 @@ const classes = computed(() => [
   min-height: 32px;
   padding: 7px 10px;
   font-size: 13px;
+}
+
+.select--auto {
+  width: fit-content;
+  min-width: 0;
 }
 
 .field__error {

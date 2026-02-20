@@ -13,10 +13,12 @@ import { getLocale, setLocale } from '@/i18n'
 import { useResponsiveSidebar } from '@/composables/useResponsiveSidebar'
 import { useHeaderSearchQuery } from '@/composables/useHeaderSearch'
 import { useUserAvatar } from '@/composables/useUserAvatar'
+import { useTheme } from '@/composables/useTheme'
 
 const authStore = useAuthStore()
 const appStore = useAppStore()
 const { sidebarOpen, handleNavItemClick } = useResponsiveSidebar()
+const { themeMode, setThemeMode } = useTheme()
 const userLabel = computed(() => authStore.me?.nickname || authStore.me?.username || '')
 const siteName = computed(() => appStore.siteName || 'CowDisk')
 const siteLogoUrl = computed(() => appStore.siteLogoUrl || '')
@@ -158,6 +160,34 @@ const { modelValue: searchValue, submit: submitSearch } = useHeaderSearchQuery({
                   @click="switchLocale('en-US'); close();"
                 >
                   {{ t('layout.userMenu.langEn') }}
+                </button>
+              </div>
+              <div class="user-menu__divider"></div>
+              <div class="user-menu__group">
+                <div class="user-menu__label">{{ t('layout.userMenu.theme') }}</div>
+                <button
+                  type="button"
+                  class="user-menu__item"
+                  :class="{ 'is-active': themeMode === 'system' }"
+                  @click="setThemeMode('system'); close();"
+                >
+                  {{ t('layout.userMenu.themeSystem') }}
+                </button>
+                <button
+                  type="button"
+                  class="user-menu__item"
+                  :class="{ 'is-active': themeMode === 'light' }"
+                  @click="setThemeMode('light'); close();"
+                >
+                  {{ t('layout.userMenu.themeLight') }}
+                </button>
+                <button
+                  type="button"
+                  class="user-menu__item"
+                  :class="{ 'is-active': themeMode === 'dark' }"
+                  @click="setThemeMode('dark'); close();"
+                >
+                  {{ t('layout.userMenu.themeDark') }}
                 </button>
               </div>
               <div class="user-menu__divider"></div>

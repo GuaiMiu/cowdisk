@@ -1,5 +1,6 @@
 <script setup lang="ts" generic="TRow extends Record<string, unknown>">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Empty from './Empty.vue'
 import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
 
@@ -93,6 +94,7 @@ defineSlots<{
 }>()
 
 const slots = useSlots()
+const { t } = useI18n({ useScope: 'global' })
 const hasHeadSlot = (key: string) => Boolean(slots[`head-${key}` as `head-${string}`])
 const headSlotName = (key: string) => `head-${key}` as `head-${string}`
 
@@ -183,7 +185,7 @@ onBeforeUnmount(() => {
         ></div>
       </div>
     </div>
-    <Empty v-else title="暂无数据" description="目前没有可展示的记录" />
+    <Empty v-else :title="t('common.emptyTitle')" :description="t('common.emptyDescription')" />
   </div>
 </template>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type ButtonSize = 'sm' | 'md' | 'lg'
@@ -12,6 +12,7 @@ const props = withDefaults(
     block?: boolean
     type?: 'button' | 'submit' | 'reset'
     disabled?: boolean
+    debounceMs?: number
   }>(),
   {
     variant: 'primary',
@@ -20,8 +21,15 @@ const props = withDefaults(
     block: false,
     type: 'button',
     disabled: false,
+    debounceMs: 0,
   },
 )
+
+const emit = defineEmits<{
+  (event: 'click', payload: MouseEvent): void
+}>()
+
+const lastClickAt = ref(0)
 
 const classes = computed(() => [
   'btn',
@@ -30,10 +38,31 @@ const classes = computed(() => [
   props.block ? 'btn--block' : '',
   props.loading ? 'btn--loading' : '',
 ])
+
+const onClick = (event: MouseEvent) => {
+  if (props.disabled || props.loading) {
+    event.preventDefault()
+    return
+  }
+  const now = Date.now()
+  if (props.debounceMs > 0 && now - lastClickAt.value < props.debounceMs) {
+    event.preventDefault()
+    return
+  }
+  lastClickAt.value = now
+  emit('click', event)
+}
 </script>
 
 <template>
-  <button :type="type" :class="classes" :disabled="disabled || loading" :aria-busy="loading">
+  <button
+    :type="type"
+    :class="classes"
+    :disabled="disabled || loading"
+    :aria-busy="loading"
+    :aria-disabled="disabled || loading"
+    @click="onClick"
+  >
     <span v-if="loading" class="btn__spinner" aria-hidden="true"></span>
     <span class="btn__content"><slot /></span>
   </button>
@@ -51,12 +80,12 @@ const classes = computed(() => [
   line-height: 1.1;
   white-space: nowrap;
   transition:
-    transform var(--transition-fast),
-    box-shadow var(--transition-base),
-    background var(--transition-base),
-    color var(--transition-base),
-    border-color var(--transition-base),
-    opacity var(--transition-fast);
+    transform var(--motion-fast),
+    box-shadow var(--motion-normal),
+    background var(--motion-normal),
+    color var(--motion-normal),
+    border-color var(--motion-normal),
+    opacity var(--motion-fast);
   cursor: pointer;
   border: 1px solid transparent;
   background: var(--color-primary);

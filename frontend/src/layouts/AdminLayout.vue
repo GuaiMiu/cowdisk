@@ -15,6 +15,7 @@ import type { MenuRoutersOut } from '@/types/menu'
 import { useHeaderSearchQuery } from '@/composables/useHeaderSearch'
 import { useResponsiveSidebar } from '@/composables/useResponsiveSidebar'
 import { useUserAvatar } from '@/composables/useUserAvatar'
+import { useTheme } from '@/composables/useTheme'
 
 const authStore = useAuthStore()
 const appStore = useAppStore()
@@ -44,6 +45,7 @@ const siteName = computed(() => appStore.siteName || 'CowDisk')
 const siteLogoUrl = computed(() => appStore.siteLogoUrl || '')
 const { t } = useI18n({ useScope: 'global' })
 const { sidebarOpen, handleNavItemClick } = useResponsiveSidebar()
+const { themeMode, setThemeMode } = useTheme()
 
 const userLabel = computed(() => authStore.me?.nickname || authStore.me?.username || '')
 const currentLocale = computed(() => getLocale())
@@ -90,6 +92,10 @@ const { modelValue: searchValue, submit: submitSearch } = useHeaderSearchQuery({
   router,
   enabled: searchEnabled,
 })
+
+const closeMobileSidebar = () => {
+  sidebarOpen.value = false
+}
 </script>
 
 <template>
@@ -97,6 +103,13 @@ const { modelValue: searchValue, submit: submitSearch } = useHeaderSearchQuery({
     class="layout"
     :class="{ 'layout--collapsed': !sidebarOpen, 'layout--mobile-open': sidebarOpen }"
   >
+    <button
+      v-if="sidebarOpen"
+      type="button"
+      class="layout__backdrop"
+      :aria-label="t('layout.sidebar.close')"
+      @click="closeMobileSidebar"
+    ></button>
     <aside class="layout__sidebar">
       <div class="brand">
         <img v-if="siteLogoUrl" :src="siteLogoUrl" alt="logo" class="brand__logo" />
@@ -164,6 +177,34 @@ const { modelValue: searchValue, submit: submitSearch } = useHeaderSearchQuery({
                   @click="switchLocale('en-US'); close()"
                 >
                   {{ t('layout.userMenu.langEn') }}
+                </button>
+              </div>
+              <div class="user-menu__divider"></div>
+              <div class="user-menu__group">
+                <div class="user-menu__label">{{ t('layout.userMenu.theme') }}</div>
+                <button
+                  type="button"
+                  class="user-menu__item"
+                  :class="{ 'is-active': themeMode === 'system' }"
+                  @click="setThemeMode('system'); close()"
+                >
+                  {{ t('layout.userMenu.themeSystem') }}
+                </button>
+                <button
+                  type="button"
+                  class="user-menu__item"
+                  :class="{ 'is-active': themeMode === 'light' }"
+                  @click="setThemeMode('light'); close()"
+                >
+                  {{ t('layout.userMenu.themeLight') }}
+                </button>
+                <button
+                  type="button"
+                  class="user-menu__item"
+                  :class="{ 'is-active': themeMode === 'dark' }"
+                  @click="setThemeMode('dark'); close()"
+                >
+                  {{ t('layout.userMenu.themeDark') }}
                 </button>
               </div>
               <div class="user-menu__divider"></div>

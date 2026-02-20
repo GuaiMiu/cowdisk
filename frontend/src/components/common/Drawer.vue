@@ -3,16 +3,23 @@ import { computed, ref } from 'vue'
 import { X } from 'lucide-vue-next'
 import { useDismissibleLayer } from '@/composables/useDismissibleLayer'
 import { useFocusTrap } from '@/composables/useFocusTrap'
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock'
+
+let drawerSeed = 1
 
 const props = withDefaults(
   defineProps<{
     open: boolean
     title?: string
     width?: number
+    closeOnBackdrop?: boolean
+    closeOnEsc?: boolean
   }>(),
   {
     title: '',
     width: 360,
+    closeOnBackdrop: true,
+    closeOnEsc: true,
   },
 )
 
@@ -22,18 +29,29 @@ const emit = defineEmits<{
 
 const panelRef = ref<HTMLElement | null>(null)
 const enabled = computed(() => props.open)
+const titleId = `drawer-title-${drawerSeed++}`
 
 useDismissibleLayer({
   enabled,
   rootRef: panelRef,
-  onEscape: () => emit('close'),
-  onPointerDownOutside: () => emit('close'),
+  onEscape: () => {
+    if (props.closeOnEsc) {
+      emit('close')
+    }
+  },
+  onPointerDownOutside: () => {
+    if (props.closeOnBackdrop) {
+      emit('close')
+    }
+  },
 })
 
 useFocusTrap({
   enabled,
   panelRef,
 })
+
+useBodyScrollLock(enabled)
 </script>
 
 <template>
@@ -48,10 +66,13 @@ useFocusTrap({
           ref="panelRef"
           class="drawer__panel"
           :style="{ width: `${width}px` }"
+          role="dialog"
+          aria-modal="true"
+          :aria-labelledby="title ? titleId : undefined"
           tabindex="-1"
         >
           <header class="drawer__header">
-            <h3>{{ title }}</h3>
+            <h3 :id="title ? titleId : undefined">{{ title }}</h3>
             <button class="drawer__close" type="button" aria-label="Close" @click="emit('close')">
               <X :size="16" />
             </button>
@@ -150,8 +171,8 @@ useFocusTrap({
 .slide-enter-active,
 .slide-leave-active {
   transition:
-    transform var(--transition-slow),
-    opacity var(--transition-base);
+    transform var(--motion-slow),
+    opacity var(--motion-normal);
 }
 
 .drawer__close:active {
@@ -166,7 +187,7 @@ useFocusTrap({
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity var(--transition-base);
+  transition: opacity var(--motion-normal);
 }
 
 .fade-enter-from,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/common/PageHeader.vue'
 import Modal from '@/components/common/Modal.vue'
@@ -9,6 +9,8 @@ import AuditLogPanel from '@/views/admin/system/config-center/AuditLogPanel.vue'
 import { useConfigGroupForm } from '@/views/admin/system/config-center/useConfigGroupForm'
 import { useMessage } from '@/stores/message'
 import { cleanupAuditLogs, exportAuditLogs, getAuditLogs } from '@/api/modules/audit'
+import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
+import { useAsync } from '@/composables/useAsync'
 import type { AuditLogItem } from '@/types/config-center'
 
 const { state, load, save, updateValue, enableSecretEdit, buildRulesHint, dirtyCount } =
@@ -16,6 +18,19 @@ const { state, load, save, updateValue, enableSecretEdit, buildRulesHint, dirtyC
 
 const { t } = useI18n({ useScope: 'global' })
 const message = useMessage()
+const { pending: auditLoading, run: runAuditTask } = useAsync()
+const {
+  scrollRef,
+  onScroll,
+  onMouseEnter,
+  onMouseLeave,
+  thumbHeight,
+  thumbTop,
+  visible,
+  isScrollable,
+  updateMetrics,
+  onThumbMouseDown,
+} = useOverlayScrollbar()
 type AuditTabKey = 'logs' | 'config'
 
 const activeTab = ref<AuditTabKey>('logs')
@@ -35,7 +50,6 @@ const auditFilters = reactive({
   page_size: 20,
 })
 
-const auditLoading = ref(false)
 const auditTotal = ref(0)
 const auditRows = ref<AuditLogItem[]>([])
 const auditDetailOpen = ref(false)
@@ -88,18 +102,19 @@ const updateAuditFilter = (payload: { key: keyof typeof auditFilters; value: str
 }
 
 const fetchAuditLogs = async () => {
-  auditLoading.value = true
-  try {
-    const data = await getAuditLogs(buildAuditParams())
-    auditRows.value = data.items || []
-    auditTotal.value = data.total || 0
-  } catch (error) {
-    message.error(
-      t('admin.audit.toasts.loadFailTitle'),
-      error instanceof Error ? error.message : t('admin.audit.toasts.loadFailMessage'),
-    )
-  } finally {
-    auditLoading.value = false
+  const result = await runAuditTask(
+    () => getAuditLogs(buildAuditParams()),
+    {
+      errorTitle: t('admin.audit.toasts.loadFailTitle'),
+      retryActionLabel: t('common.retry'),
+      onRetry: () => {
+        void fetchAuditLogs()
+      },
+    },
+  )
+  if (result) {
+    auditRows.value = result.items || []
+    auditTotal.value = result.total || 0
   }
 }
 
@@ -147,16 +162,20 @@ const confirmCleanup = () => {
 
 const handleCleanup = async () => {
   cleanupConfirm.value = false
-  try {
-    await cleanupAuditLogs()
+  const result = await runAuditTask(
+    () => cleanupAuditLogs(),
+    {
+      errorTitle: t('admin.audit.toasts.cleanupFailTitle'),
+      retryActionLabel: t('common.retry'),
+      onRetry: () => {
+        void handleCleanup()
+      },
+    },
+  )
+  if (result !== undefined) {
     message.success(t('admin.audit.toasts.cleanupSuccess'))
     auditFilters.page = 1
     await fetchAuditLogs()
-  } catch (error) {
-    message.error(
-      t('admin.audit.toasts.cleanupFailTitle'),
-      error instanceof Error ? error.message : t('admin.audit.toasts.cleanupFailMessage'),
-    )
   }
 }
 
@@ -179,7 +198,24 @@ const handleAuditSizeChange = (value: number) => {
 onMounted(() => {
   void load()
   resetAuditFilters()
+  void nextTick(() => {
+    updateMetrics()
+  })
 })
+
+watch(
+  [
+    () => activeTab.value,
+    () => auditRows.value.length,
+    () => auditLoading.value,
+    () => state.items.length,
+    () => state.loading,
+  ],
+  async () => {
+    await nextTick()
+    updateMetrics()
+  },
+)
 </script>
 
 <template>
@@ -203,43 +239,57 @@ onMounted(() => {
       </template>
     </PageHeader>
 
-    <div class="page-body">
-      <AuditLogPanel
-        v-if="activeTab === 'logs'"
-        :filters="auditFilters"
-        :loading="auditLoading"
-        :rows="auditRows"
-        :total="auditTotal"
-        :columns="auditColumns"
-        :page="auditFilters.page"
-        :page-size="auditFilters.page_size"
-        :action-options="actionOptions"
-        :status-options="statusOptions"
-        @update-filter="updateAuditFilter"
-        @search="handleAuditSearch"
-        @reset="resetAuditFilters"
-        @export="handleExport"
-        @cleanup="confirmCleanup"
-        @open-detail="openDetail"
-        @page-change="handleAuditPageChange"
-        @size-change="handleAuditSizeChange"
-      />
+    <div
+      class="page-body"
+      @mouseenter="onMouseEnter"
+      @mouseleave="onMouseLeave"
+    >
+      <div ref="scrollRef" class="page-body__scroll overlay-scroll" @scroll="onScroll">
+        <AuditLogPanel
+          v-if="activeTab === 'logs'"
+          :filters="auditFilters"
+          :loading="auditLoading"
+          :rows="auditRows"
+          :total="auditTotal"
+          :columns="auditColumns"
+          :page="auditFilters.page"
+          :page-size="auditFilters.page_size"
+          :action-options="actionOptions"
+          :status-options="statusOptions"
+          @update-filter="updateAuditFilter"
+          @search="handleAuditSearch"
+          @reset="resetAuditFilters"
+          @export="handleExport"
+          @cleanup="confirmCleanup"
+          @open-detail="openDetail"
+          @page-change="handleAuditPageChange"
+          @size-change="handleAuditSizeChange"
+        />
 
-      <ConfigGroupForm
-        v-else
-        :items="state.items"
-        :form="state.form"
-        :errors="state.errors"
-        :editing-secrets="state.editingSecrets"
-        :loading="state.loading"
-        :saving="state.saving"
-        :dirty-count="dirtyCount()"
-        :build-rules-hint="buildRulesHint"
-        :save-label="t('admin.audit.configSaveLabel')"
-        @save="save"
-        @edit-secret="enableSecretEdit"
-        @update="updateValue"
-      />
+        <ConfigGroupForm
+          v-else
+          flat
+          :items="state.items"
+          :form="state.form"
+          :errors="state.errors"
+          :editing-secrets="state.editingSecrets"
+          :loading="state.loading"
+          :saving="state.saving"
+          :dirty-count="dirtyCount()"
+          :build-rules-hint="buildRulesHint"
+          :save-label="t('admin.audit.configSaveLabel')"
+          @save="save"
+          @edit-secret="enableSecretEdit"
+          @update="updateValue"
+        />
+      </div>
+      <div v-if="isScrollable" class="overlay-scrollbar" :class="{ 'is-visible': visible }">
+        <div
+          class="overlay-scrollbar__thumb"
+          :style="{ height: `${thumbHeight}px`, transform: `translateY(${thumbTop}px)` }"
+          @mousedown="onThumbMouseDown"
+        ></div>
+      </div>
     </div>
 
     <Modal :open="auditDetailOpen" :title="t('admin.audit.detail.title')" @close="auditDetailOpen = false">
@@ -260,14 +310,16 @@ onMounted(() => {
 <style scoped>
 .config-page {
   display: grid;
-  gap: var(--space-6);
+  gap: var(--space-4);
   height: 100%;
   min-height: 0;
   grid-template-rows: auto 1fr;
+  overflow: hidden;
 }
 
 .tabs {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   padding: 6px;
@@ -294,8 +346,21 @@ onMounted(() => {
 }
 
 .page-body {
+  position: relative;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface-2) 28%, var(--color-surface));
+  padding: var(--space-3);
+}
+
+.page-body__scroll {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 6px;
 }
 
 .audit-detail {

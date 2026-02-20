@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
@@ -45,6 +46,9 @@ const { t } = useI18n({ useScope: 'global' })
 const updateFilter = (key: keyof typeof props.filters, value: string | number) => {
   emit('update-filter', { key, value })
 }
+
+const hasPrev = computed(() => props.page > 1)
+const hasNext = computed(() => props.page * props.pageSize < props.total)
 </script>
 
 <template>
@@ -125,11 +129,14 @@ const updateFilter = (key: keyof typeof props.filters, value: string | number) =
       </Table>
     </div>
     <Pagination
+      cursor-mode
       :total="total"
+      :has-prev="hasPrev"
+      :has-next="hasNext"
       :current-page="page"
       :page-size="pageSize"
-      :page-size-options="[10, 20, 50, 100]"
-      @update:currentPage="(value) => emit('page-change', value)"
+      @prev="emit('page-change', Math.max(1, page - 1))"
+      @next="emit('page-change', page + 1)"
       @update:pageSize="(value) => emit('size-change', value)"
     />
   </div>
@@ -138,11 +145,7 @@ const updateFilter = (key: keyof typeof props.filters, value: string | number) =
 <style scoped>
 .audit-panel {
   display: grid;
-  gap: var(--space-6);
-  padding: var(--space-4);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
+  gap: var(--space-4);
 }
 
 .audit-toolbar {
@@ -155,10 +158,10 @@ const updateFilter = (key: keyof typeof props.filters, value: string | number) =
   grid-template-columns: repeat(6, minmax(140px, 1fr));
   gap: var(--space-3);
   align-items: end;
-  padding: var(--space-4);
+  padding: var(--space-3);
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface-2);
+  border: 1px solid color-mix(in srgb, var(--color-border) 85%, transparent);
+  background: color-mix(in srgb, var(--color-surface-2) 55%, var(--color-surface));
 }
 
 .audit-filters :deep(.input),

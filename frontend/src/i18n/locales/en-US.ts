@@ -38,6 +38,8 @@ export default {
     clearDone: 'Clear completed',
     upload: 'Upload',
     new: 'New',
+    emptyTitle: 'No data',
+    emptyDescription: 'There are no records to display.',
   },
   files: {
     rootName: 'My Drive',
@@ -58,6 +60,10 @@ export default {
       language: 'Language',
       langZh: 'Chinese',
       langEn: 'English',
+      theme: 'Theme',
+      themeSystem: 'System',
+      themeLight: 'Light',
+      themeDark: 'Dark',
       profile: 'Profile settings',
       admin: 'Admin',
       backToDrive: 'Back to Drive',
@@ -405,6 +411,13 @@ export default {
       online: {
         title: 'Online Users',
         subtitle: 'Current sessions and device information',
+      },
+      autoRefresh: {
+        label: 'Auto Refresh',
+        off: 'Off',
+        sec1: '1s',
+        sec5: '5s',
+        sec10: '10s',
       },
       cards: {
         onlineUsers: 'Online Users',

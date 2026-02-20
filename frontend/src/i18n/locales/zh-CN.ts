@@ -38,6 +38,8 @@ export default {
     clearDone: '清理已完成',
     upload: '上传',
     new: '新建',
+    emptyTitle: '暂无数据',
+    emptyDescription: '目前没有可展示的记录',
   },
   files: {
     rootName: '我的网盘',
@@ -58,6 +60,10 @@ export default {
       language: '语言',
       langZh: '中文',
       langEn: '英文',
+      theme: '主题',
+      themeSystem: '跟随系统',
+      themeLight: '浅色',
+      themeDark: '深色',
       profile: '个人设置',
       admin: '后台管理',
       backToDrive: '返回网盘',
@@ -405,6 +411,13 @@ export default {
       online: {
         title: '在线用户',
         subtitle: '当前在线会话与设备信息',
+      },
+      autoRefresh: {
+        label: '自动刷新',
+        off: '关闭',
+        sec1: '1 秒',
+        sec5: '5 秒',
+        sec10: '10 秒',
       },
       cards: {
         onlineUsers: '在线用户',
