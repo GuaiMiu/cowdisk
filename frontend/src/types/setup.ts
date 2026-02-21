@@ -11,6 +11,7 @@ export type PublicConfigOut = {
   site_favicon_url?: string
   login_background_url?: string
   theme_image_url?: string
+  office_enabled?: boolean
 }
 
 export type SetupDefaultsOut = {

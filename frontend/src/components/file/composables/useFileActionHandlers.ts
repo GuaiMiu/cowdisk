@@ -58,6 +58,7 @@ type EntryAction =
   | 'extract'
 type DeleteMode = 'trash' | 'hard'
 type ArchiveStatusResult = { status?: string; message?: string }
+type OfficeCreateKind = 'word' | 'excel' | 'ppt'
 
 type UseFileActionHandlersOptions = {
   t: Translate
@@ -444,6 +445,44 @@ export const useFileActionHandlers = (options: UseFileActionHandlersOptions) => 
     }
   }
 
+  const handleCreateOfficeInline = async (kind: OfficeCreateKind) => {
+    const extensionMap: Record<OfficeCreateKind, 'docx' | 'xlsx' | 'pptx'> = {
+      word: 'docx',
+      excel: 'xlsx',
+      ppt: 'pptx',
+    }
+    const defaultNameMap: Record<OfficeCreateKind, string> = {
+      word: options.t('fileExplorer.officeWordDefault'),
+      excel: options.t('fileExplorer.officeExcelDefault'),
+      ppt: options.t('fileExplorer.officePptDefault'),
+    }
+    const mimeMap: Record<OfficeCreateKind, string> = {
+      word: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      excel: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ppt: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    }
+    const suggested = `${defaultNameMap[kind]}.${extensionMap[kind]}`
+    const filename = options.explorer.suggestAvailableName(suggested)
+    try {
+      const file = new File([new Blob([''], { type: mimeMap[kind] })], filename, {
+        type: mimeMap[kind],
+      })
+      await uploadFiles({
+        items: [{ file, filename }],
+        parent_id: options.explorer.parentId.value ?? null,
+        name: filename,
+        overwrite: false,
+      })
+      options.message.success(options.t('fileExplorer.toasts.docCreated'))
+      await options.explorer.refresh()
+    } catch (error) {
+      options.message.error(
+        options.t('fileExplorer.toasts.createFailedTitle'),
+        normalizeDiskError(error, options.t('fileExplorer.toasts.createFailedMessage')),
+      )
+    }
+  }
+
   const handleRenameInline = async (payload: { entry: DiskEntry; name: string }) => {
     const ok = await options.explorer.renameEntry(payload.entry, payload.name)
     if (ok) {
@@ -487,6 +526,7 @@ export const useFileActionHandlers = (options: UseFileActionHandlersOptions) => 
     handleAction,
     handleCreateInline,
     handleCreateTextInline,
+    handleCreateOfficeInline,
     handleRenameInline,
     openMoveSelected,
     confirmMove,

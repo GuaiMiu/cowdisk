@@ -1004,6 +1004,9 @@ export default {
     },
     pdfPreviewDefault: 'PDF 预览',
     videoPreviewDefault: '视频预览',
+    officeWordDefault: '新建文档',
+    officeExcelDefault: '新建表格',
+    officePptDefault: '新建演示',
   },
   fileTable: {
     createFolderName: '新建文件夹',
@@ -1057,6 +1060,9 @@ export default {
     new: '新建',
     folder: '文件夹',
     textFile: '文本文档',
+    wordFile: 'Word 文档',
+    excelFile: 'Excel 表格',
+    pptFile: 'PPT 演示',
     upload: '上传',
     searchPlaceholder: '搜索文件',
     uploadFile: '文件',
@@ -1069,6 +1075,7 @@ export default {
     refresh: '刷新',
     viewList: '列表视图',
     viewThumb: '缩略图视图',
+    dragUploadHint: '拖拽文件或目录到此处上传',
   },
   fileGrid: {
     selectAll: '全选',

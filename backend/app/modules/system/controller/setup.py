@@ -101,6 +101,7 @@ class PublicConfigOut(BaseModel):
     site_favicon_url: str = Field(default="", description="站点 Favicon URL")
     login_background_url: str = Field(default="", description="登录背景图 URL")
     theme_image_url: str = Field(default="", description="主题图 URL")
+    office_enabled: bool = Field(default=False, description="是否启用 Office 在线编辑")
 
 
 class SiteLogoUploadOut(BaseModel):
@@ -171,6 +172,7 @@ async def get_public_config(
     site_favicon_url = ""
     login_background_url = ""
     theme_image_url = ""
+    office_enabled = False
     if InstallStateService.get_status().phase == "DONE":
         try:
             dynamic_site_name = await config.system.site_name()
@@ -180,6 +182,7 @@ async def get_public_config(
             site_favicon_url = (await config.system.site_favicon_url() or "").strip()
             login_background_url = (await config.system.login_background_url() or "").strip()
             theme_image_url = (await config.system.theme_image_url() or "").strip()
+            office_enabled = bool(await config.office.enabled())
         except (OperationalError, ProgrammingError):
             pass
     return ok(
@@ -189,6 +192,7 @@ async def get_public_config(
             site_favicon_url=site_favicon_url,
             login_background_url=login_background_url,
             theme_image_url=theme_image_url,
+            office_enabled=office_enabled,
         ).model_dump()
     )
 

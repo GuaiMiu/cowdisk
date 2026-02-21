@@ -31,6 +31,7 @@ import { useShareDialog } from '@/components/file/composables/useShareDialog'
 import { useMessage } from '@/stores/message'
 import { useUploadsStore } from '@/stores/uploads'
 import { useAuthStore } from '@/stores/auth'
+import { useAppStore } from '@/stores/app'
 import { formatBytes, formatTime } from '@/utils/format'
 import { getRouteSearchKeyword } from '@/composables/useHeaderSearch'
 import { toRelativePath } from '@/utils/path'
@@ -51,6 +52,7 @@ const shareActions = useShareActions()
 const message = useMessage()
 const uploadsStore = useUploadsStore()
 const authStore = useAuthStore()
+const appStore = useAppStore()
 const queuePendingCount = computed(
   () =>
     uploadsStore.items.filter((item) =>
@@ -72,6 +74,152 @@ const archiveNameResolver = ref<((value: string | null) => void) | null>(null)
 const LAST_PATH_KEY = 'cowdisk:last_path'
 const LAST_STACK_KEY = 'cowdisk:last_stack'
 const VIEW_MODE_KEY = 'cowdisk:view_mode'
+const dragActive = ref(false)
+const dragCounter = ref(0)
+
+type WebkitDataTransferItem = DataTransferItem & {
+  webkitGetAsEntry?: () => FileSystemEntry | null
+}
+
+const isFileDragEvent = (event: DragEvent) => {
+  const types = event.dataTransfer?.types
+  return !!types && Array.from(types).includes('Files')
+}
+
+const normalizeRelativePath = (value: string) => value.replace(/\\/g, '/').replace(/^\/+/, '')
+
+const attachRelativePath = (file: File, relativePath: string) => {
+  const normalized = normalizeRelativePath(relativePath)
+  if (!normalized || normalized === file.name) {
+    return file
+  }
+  try {
+    Object.defineProperty(file, 'webkitRelativePath', {
+      configurable: true,
+      value: normalized,
+    })
+    return file
+  } catch {
+    const clone = new File([file], file.name, {
+      type: file.type,
+      lastModified: file.lastModified,
+    })
+    try {
+      Object.defineProperty(clone, 'webkitRelativePath', {
+        configurable: true,
+        value: normalized,
+      })
+    } catch {
+      // ignore define failures and fallback to plain file name
+    }
+    return clone
+  }
+}
+
+const readFileFromEntry = (entry: FileSystemFileEntry, basePath: string) =>
+  new Promise<File[]>((resolve) => {
+    entry.file(
+      (file) => resolve([attachRelativePath(file, `${basePath}${entry.name}`)]),
+      () => resolve([]),
+    )
+  })
+
+const readDirectoryChildren = (entry: FileSystemDirectoryEntry) =>
+  new Promise<FileSystemEntry[]>((resolve) => {
+    const reader = entry.createReader()
+    const all: FileSystemEntry[] = []
+    const readBatch = () => {
+      reader.readEntries(
+        (entries) => {
+          if (!entries.length) {
+            resolve(all)
+            return
+          }
+          all.push(...entries)
+          readBatch()
+        },
+        () => resolve(all),
+      )
+    }
+    readBatch()
+  })
+
+const collectFilesFromEntry = async (
+  entry: FileSystemEntry,
+  basePath = '',
+): Promise<File[]> => {
+  if (entry.isFile) {
+    return readFileFromEntry(entry as FileSystemFileEntry, basePath)
+  }
+  if (entry.isDirectory) {
+    const dir = entry as FileSystemDirectoryEntry
+    const nextBase = `${basePath}${dir.name}/`
+    const children = await readDirectoryChildren(dir)
+    const parts = await Promise.all(children.map((child) => collectFilesFromEntry(child, nextBase)))
+    return parts.flat()
+  }
+  return []
+}
+
+const collectDroppedFiles = async (event: DragEvent): Promise<File[]> => {
+  const dataTransfer = event.dataTransfer
+  if (!dataTransfer) {
+    return []
+  }
+  const items = Array.from(dataTransfer.items || []) as WebkitDataTransferItem[]
+  const entries = items
+    .map((item) => item.webkitGetAsEntry?.())
+    .filter((entry): entry is FileSystemEntry => !!entry)
+  if (entries.length) {
+    const groups = await Promise.all(entries.map((entry) => collectFilesFromEntry(entry)))
+    return groups.flat()
+  }
+  return Array.from(dataTransfer.files || [])
+}
+
+const onDragEnter = (event: DragEvent) => {
+  if (!isFileDragEvent(event)) {
+    return
+  }
+  dragCounter.value += 1
+  dragActive.value = true
+}
+
+const onDragOver = (event: DragEvent) => {
+  if (!isFileDragEvent(event)) {
+    return
+  }
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'copy'
+  }
+}
+
+const onDragLeave = (event: DragEvent) => {
+  if (!isFileDragEvent(event)) {
+    return
+  }
+  event.preventDefault()
+  dragCounter.value = Math.max(0, dragCounter.value - 1)
+  if (dragCounter.value === 0) {
+    dragActive.value = false
+  }
+}
+
+const onDrop = async (event: DragEvent) => {
+  if (!isFileDragEvent(event)) {
+    return
+  }
+  event.preventDefault()
+  dragCounter.value = 0
+  dragActive.value = false
+  const files = await collectDroppedFiles(event)
+  if (!files.length) {
+    return
+  }
+  await uploader.enqueue(files, explorer.path.value, explorer.parentId.value ?? null)
+  uploader.notifyQueue()
+}
 
 const requestArchiveName = (suggested: string) =>
   new Promise<string | null>((resolve) => {
@@ -219,6 +367,7 @@ const {
   handleCreateInline,
   cancelCreateInline,
   handleCreateTextInline,
+  handleCreateOfficeInline,
   handleRenameInline,
   cancelRenameInline,
   openMoveSelected,
@@ -238,6 +387,59 @@ const {
   openEditorForFolder,
   openEditorForFile,
 })
+
+type BlankAction =
+  | 'new-folder'
+  | 'new-text'
+  | 'new-word'
+  | 'new-excel'
+  | 'new-ppt'
+  | 'upload-file'
+  | 'upload-folder'
+type BulkAction = 'move' | 'delete' | 'compress' | 'extract'
+
+const handleBlankAction = async (action: BlankAction) => {
+  switch (action) {
+    case 'new-folder':
+      openFolderModal()
+      return
+    case 'new-text':
+      openNewTextInline()
+      return
+    case 'new-word':
+      await handleCreateOfficeInline('word')
+      return
+    case 'new-excel':
+      await handleCreateOfficeInline('excel')
+      return
+    case 'new-ppt':
+      await handleCreateOfficeInline('ppt')
+      return
+    case 'upload-file':
+      openUpload()
+      return
+    case 'upload-folder':
+      openFolderUpload()
+      return
+  }
+}
+
+const handleBulkAction = async (action: BulkAction) => {
+  switch (action) {
+    case 'move':
+      openMoveSelected()
+      return
+    case 'delete':
+      handleDelete(selection.selectedItems.value)
+      return
+    case 'compress':
+      await handleCompressSelected()
+      return
+    case 'extract':
+      await handleExtractSelected()
+      return
+  }
+}
 
 onMounted(() => {
   const savedViewMode = sessionStorage.getItem(VIEW_MODE_KEY)
@@ -340,7 +542,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="explorer">
+  <section
+    class="explorer"
+    :class="{ 'is-drag-active': dragActive }"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <FileToolbar
       :selected-count="selection.selectedItems.value.length"
       :queue-pending-count="queuePendingCount"
@@ -368,6 +577,7 @@ onBeforeUnmount(() => {
       <FileTable
         v-if="viewMode === 'list'"
         :items="displayItems"
+        :selected-count="selection.selectedItems.value.length"
         :all-selected="selection.allSelected.value"
         :indeterminate="selection.indeterminate.value"
         :is-selected="selection.isSelected"
@@ -377,6 +587,7 @@ onBeforeUnmount(() => {
         :sort-order="explorer.sortOrder.value"
         :creating-folder="creatingFolder"
         :creating-text="creatingText"
+        :office-enabled="appStore.officeEnabled"
         :editing-entry="renamingEntry"
         :editing-name="renamingName"
         @sort-change="explorer.setSort"
@@ -387,6 +598,9 @@ onBeforeUnmount(() => {
         @create-cancel="cancelCreateInline"
         @rename-confirm="handleRenameInline"
         @rename-cancel="cancelRenameInline"
+        @blank-action="handleBlankAction"
+        @blank-click="selection.clear"
+        @bulk-action="handleBulkAction"
       />
       <FileGrid
         v-else
@@ -399,6 +613,7 @@ onBeforeUnmount(() => {
         :toggle-all="selection.toggleAll"
         :creating-folder="creatingFolder"
         :creating-text="creatingText"
+        :office-enabled="appStore.officeEnabled"
         :editing-entry="renamingEntry"
         :editing-name="renamingName"
         @open="handleOpen"
@@ -408,7 +623,13 @@ onBeforeUnmount(() => {
         @create-cancel="cancelCreateInline"
         @rename-confirm="handleRenameInline"
         @rename-cancel="cancelRenameInline"
+        @blank-action="handleBlankAction"
+        @blank-click="selection.clear"
+        @bulk-action="handleBulkAction"
       />
+    </div>
+    <div v-if="dragActive" class="explorer__drop-overlay" aria-hidden="true">
+      <div class="explorer__drop-card">{{ t('fileToolbar.dragUploadHint') }}</div>
     </div>
   </section>
 
@@ -584,11 +805,34 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .explorer {
+  position: relative;
   display: grid;
   gap: var(--space-4);
   grid-template-rows: auto auto 1fr;
   min-height: 0;
   height: 100%;
+}
+
+.explorer__drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  border: 2px dashed color-mix(in srgb, var(--color-primary) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  display: grid;
+  place-items: center;
+}
+
+.explorer__drop-card {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface) 86%, transparent);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 13px;
+  box-shadow: var(--shadow-sm);
 }
 
 .explorer__bar {

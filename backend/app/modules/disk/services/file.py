@@ -503,6 +503,51 @@ class FileService:
             candidate = f"{stem}{suffix}{index}{ext}"
         raise NameConflict("恢复失败：重名过多")
 
+    @staticmethod
+    def _ensure_zip_extension(name: str) -> str:
+        return ensure_name(name if name.lower().endswith(".zip") else f"{name}.zip")
+
+    @classmethod
+    async def _generate_unique_name_with_suffix(
+        cls,
+        db: AsyncSession,
+        user_id: int,
+        parent_id: int | None,
+        base_name: str,
+        *,
+        suffix: str,
+        conflict_error: Exception,
+    ) -> str:
+        candidate = base_name
+        exists = await cls._find_active_by_name(db, user_id, parent_id, candidate)
+        if not exists:
+            return candidate
+
+        if "." in base_name:
+            stem, ext_part = base_name.rsplit(".", 1)
+            ext = f".{ext_part}"
+        else:
+            stem = base_name
+            ext = ""
+
+        for index in range(1, 1000):
+            candidate = ensure_name(f"{stem}{suffix}{index}{ext}")
+            exists = await cls._find_active_by_name(db, user_id, parent_id, candidate)
+            if not exists:
+                return candidate
+        raise conflict_error
+
+    @staticmethod
+    def _dedupe_keep_order(values: list[int]) -> list[int]:
+        unique_values: list[int] = []
+        seen: set[int] = set()
+        for value in values:
+            if value in seen:
+                continue
+            seen.add(value)
+            unique_values.append(value)
+        return unique_values
+
     @classmethod
     def _storage_path_for(cls, user_id: int, parent: File | None, name: str) -> str:
         return build_storage_path(
@@ -2607,25 +2652,15 @@ class FileService:
         if parent_id is not None:
             parent = await cls._get_active_dir(db, user_id, parent_id)
         base_name = name or (target.name or "archive")
-        safe_name = ensure_name(
-            base_name if base_name.lower().endswith(".zip") else f"{base_name}.zip"
+        safe_name = cls._ensure_zip_extension(base_name)
+        safe_name = await cls._generate_unique_name_with_suffix(
+            db,
+            user_id,
+            parent_id,
+            safe_name,
+            suffix=" (压缩)",
+            conflict_error=ZipTooManyConflicts(),
         )
-        if await cls._find_active_by_name(db, user_id, parent_id, safe_name):
-            if safe_name.lower().endswith(".zip"):
-                stem = safe_name[:-4]
-                ext = ".zip"
-            else:
-                stem = safe_name
-                ext = ""
-            for index in range(1, 1000):
-                candidate = ensure_name(f"{stem} (压缩){index}{ext}")
-                if not await cls._find_active_by_name(
-                    db, user_id, parent_id, candidate
-                ):
-                    safe_name = candidate
-                    break
-            else:
-                raise ZipTooManyConflicts()
         storage = await cls._get_storage_by_id(db, target.storage_id)
         backend = get_storage_backend(storage)
         storage_path = cls._storage_path_for(user_id, parent, safe_name)
@@ -2669,13 +2704,7 @@ class FileService:
     async def compress_many_by_ids(
         cls, db: AsyncSession, user_id: int, file_ids: list[int], name: str | None
     ) -> File:
-        unique_ids: list[int] = []
-        seen: set[int] = set()
-        for file_id in file_ids:
-            if file_id in seen:
-                continue
-            seen.add(file_id)
-            unique_ids.append(file_id)
+        unique_ids = cls._dedupe_keep_order(file_ids)
         if not unique_ids:
             raise ZipTargetRequired()
 
@@ -2690,21 +2719,15 @@ class FileService:
             parent = await cls._get_active_dir(db, user_id, first_parent_id)
 
         base_name = name or "archive.zip"
-        safe_name = ensure_name(
-            base_name if base_name.lower().endswith(".zip") else f"{base_name}.zip"
+        safe_name = cls._ensure_zip_extension(base_name)
+        safe_name = await cls._generate_unique_name_with_suffix(
+            db,
+            user_id,
+            first_parent_id,
+            safe_name,
+            suffix=" (压缩)",
+            conflict_error=ZipTooManyConflicts(),
         )
-        if await cls._find_active_by_name(db, user_id, first_parent_id, safe_name):
-            stem = safe_name[:-4] if safe_name.lower().endswith(".zip") else safe_name
-            ext = ".zip" if safe_name.lower().endswith(".zip") else ""
-            for index in range(1, 1000):
-                candidate = ensure_name(f"{stem} (压缩){index}{ext}")
-                if not await cls._find_active_by_name(
-                    db, user_id, first_parent_id, candidate
-                ):
-                    safe_name = candidate
-                    break
-            else:
-                raise ZipTooManyConflicts()
 
         storage = await cls._get_storage_by_id(db, targets[0].storage_id)
         for target in targets:
@@ -2785,17 +2808,14 @@ class FileService:
         if not source.name.lower().endswith(".zip"):
             raise BadRequestException("仅支持 ZIP 文件解压")
         base_name = ensure_name(source.name.rsplit(".", 1)[0] or "extract")
-        root_name = base_name
-        if await cls._find_active_by_name(db, user_id, source.parent_id, root_name):
-            for index in range(1, 1000):
-                candidate = ensure_name(f"{base_name} (解压){index}")
-                if not await cls._find_active_by_name(
-                    db, user_id, source.parent_id, candidate
-                ):
-                    root_name = candidate
-                    break
-            else:
-                raise ZipTooManyConflicts("解压失败：重名过多")
+        root_name = await cls._generate_unique_name_with_suffix(
+            db,
+            user_id,
+            source.parent_id,
+            base_name,
+            suffix=" (解压)",
+            conflict_error=ZipTooManyConflicts("解压失败：重名过多"),
+        )
         root_dir = await cls.create_dir(db, user_id, source.parent_id, root_name)
         storage = await cls._get_storage_by_id(db, source.storage_id)
         backend = get_storage_backend(storage)

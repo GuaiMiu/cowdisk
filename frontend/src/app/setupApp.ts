@@ -16,7 +16,7 @@ export async function setupApp(app: App) {
 
   const appStore = useAppStore(pinia)
   const authStore = useAuthStore(pinia)
-  await appStore.initRuntimeConfig()
+  void appStore.initRuntimeConfig()
   setTokenGetter(() => authStore.token)
   setTokenRefresher(() => authStore.refreshToken())
   setUnauthorizedHandler(() => authStore.handleUnauthorized())

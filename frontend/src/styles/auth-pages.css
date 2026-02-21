@@ -1,0 +1,38 @@
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-9);
+  overflow: auto;
+  background-color: var(--color-bg);
+  background-image: var(
+    --runtime-login-bg-image,
+    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 10%, #ffffff) 0%, #f7fafc 100%)
+  );
+  background-size: cover;
+  background-position: center;
+}
+
+.auth-page__panel {
+  background: color-mix(in srgb, var(--color-surface) 76%, transparent);
+  border-radius: var(--radius-xl);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  padding: var(--space-7);
+  display: grid;
+  gap: var(--space-4);
+  box-shadow: var(--shadow-md);
+  width: min(var(--auth-panel-width, 420px), 100%);
+  backdrop-filter: blur(10px);
+}
+
+@media (max-width: 1024px) {
+  .auth-page {
+    padding: var(--space-7);
+  }
+}
+
+@media (max-width: 768px) {
+  .auth-page {
+    padding: var(--space-5);
+  }
+}

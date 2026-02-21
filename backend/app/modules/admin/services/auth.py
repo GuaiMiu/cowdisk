@@ -115,6 +115,46 @@ class AuthService:
         return value
 
     @classmethod
+    async def _incr_with_ttl(
+        cls,
+        redis: aioredis.Redis,
+        *,
+        key: str,
+        fallback_ttl: int,
+    ) -> int:
+        current_raw = await redis.get(key)
+        current = int(cls._normalize_token(current_raw) or "0") + 1
+        ttl = await redis.ttl(key) if hasattr(redis, "ttl") else -1
+        if ttl and ttl > 0:
+            await redis.set(key, str(current), ex=ttl)
+        else:
+            await redis.set(key, str(current), ex=fallback_ttl)
+        return current
+
+    @staticmethod
+    async def _set_json_with_ttl(
+        redis: aioredis.Redis,
+        *,
+        key: str,
+        value: dict,
+        ex: int | timedelta,
+    ) -> None:
+        await redis.set(
+            key,
+            json.dumps(value, ensure_ascii=False),
+            ex=ex,
+        )
+
+    @staticmethod
+    def _quota_to_total_space(quota_gb) -> int:
+        if quota_gb is not None and str(quota_gb) != "":
+            try:
+                return max(int(quota_gb), 0) * 1024 * 1024 * 1024
+            except (TypeError, ValueError):
+                return default_total_space_bytes()
+        return default_total_space_bytes()
+
+    @classmethod
     def build_device_fingerprint(
         cls,
         *,
@@ -135,13 +175,11 @@ class AuthService:
         window_seconds: int,
     ) -> bool:
         key = cls._rate_limit_key(action, identifier or "unknown")
-        current_raw = await redis.get(key)
-        current = int(cls._normalize_token(current_raw) or "0") + 1
-        ttl = await redis.ttl(key) if hasattr(redis, "ttl") else -1
-        if ttl and ttl > 0:
-            await redis.set(key, str(current), ex=ttl)
-        else:
-            await redis.set(key, str(current), ex=window_seconds)
+        current = await cls._incr_with_ttl(
+            redis,
+            key=key,
+            fallback_ttl=window_seconds,
+        )
         return current <= max(limit, 1)
 
     @classmethod
@@ -152,13 +190,11 @@ class AuthService:
         user_id: int,
     ) -> bool:
         key = cls._refresh_rotate_key(user_id)
-        current_raw = await redis.get(key)
-        current = int(cls._normalize_token(current_raw) or "0") + 1
-        ttl = await redis.ttl(key) if hasattr(redis, "ttl") else -1
-        if ttl and ttl > 0:
-            await redis.set(key, str(current), ex=ttl)
-        else:
-            await redis.set(key, str(current), ex=24 * 60 * 60)
+        current = await cls._incr_with_ttl(
+            redis,
+            key=key,
+            fallback_ttl=24 * 60 * 60,
+        )
         return current <= max(settings.JWT_REFRESH_ROTATE_LIMIT, 1)
 
     @classmethod
@@ -182,38 +218,32 @@ class AuthService:
             access_token,
             ex=timedelta(minutes=settings.JWT_REDIS_EXPIRE_MINUTES),
         )
-        await redis.set(
-            cls._refresh_token_key(session_id),
-            json.dumps(
-                {
-                    "user_id": user_id,
-                    "token_hash": cls._hash_refresh_token(refresh_token),
-                },
-                ensure_ascii=False,
-            ),
+        await cls._set_json_with_ttl(
+            redis,
+            key=cls._refresh_token_key(session_id),
+            value={
+                "user_id": user_id,
+                "token_hash": cls._hash_refresh_token(refresh_token),
+            },
             ex=cls.SESSION_TTL_SECONDS,
         )
-        await redis.set(
-            cls._device_info_key(session_id),
-            json.dumps(
-                {
-                    "user_agent": user_agent,
-                    "login_ip": login_ip,
-                    "user_id": user_id,
-                },
-                ensure_ascii=False,
-            ),
+        await cls._set_json_with_ttl(
+            redis,
+            key=cls._device_info_key(session_id),
+            value={
+                "user_agent": user_agent,
+                "login_ip": login_ip,
+                "user_id": user_id,
+            },
             ex=cls.SESSION_TTL_SECONDS,
         )
-        await redis.set(
-            cls._session_meta_key(session_id),
-            json.dumps(
-                {
-                    "fingerprint": fingerprint,
-                    "user_id": user_id,
-                },
-                ensure_ascii=False,
-            ),
+        await cls._set_json_with_ttl(
+            redis,
+            key=cls._session_meta_key(session_id),
+            value={
+                "fingerprint": fingerprint,
+                "user_id": user_id,
+            },
             ex=cls.SESSION_TTL_SECONDS,
         )
         await redis.sadd(cls._user_sessions_key(user_id), session_id)
@@ -406,13 +436,7 @@ class AuthService:
             raise UserConflict(f"邮箱 {user.mail} 已被注册")
         user_model = User.model_validate(user)
         quota_gb = await config.auth.default_user_quota_gb()
-        if quota_gb is not None and str(quota_gb) != "":
-            try:
-                user_model.total_space = max(int(quota_gb), 0) * 1024 * 1024 * 1024
-            except (TypeError, ValueError):
-                user_model.total_space = default_total_space_bytes()
-        else:
-            user_model.total_space = default_total_space_bytes()
+        user_model.total_space = cls._quota_to_total_space(quota_gb)
         default_role = (
             await db.exec(
                 select(Role).where(

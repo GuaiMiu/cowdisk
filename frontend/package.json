@@ -1,4 +1,4 @@
- {
+{
   "name": "frontend",
   "version": "0.0.0",
   "private": true,
@@ -16,6 +16,7 @@
     "lucide-vue-next": "^0.562.0",
     "monaco-editor": "^0.55.1",
     "nprogress": "^0.2.0",
+    "pdfjs-dist": "^5.4.624",
     "pinia": "^3.0.4",
     "vidstack": "^1.12.13",
     "vite-plugin-monaco-editor": "^1.1.0",

@@ -56,8 +56,8 @@ const switchLocale = async (locale: string) => {
 </script>
 
 <template>
-  <div class="login">
-    <div class="login__panel">
+  <div class="login auth-page">
+    <div class="login__panel auth-page__panel">
       <div class="login__brand-row">
         <div class="login__brand" :title="siteName">{{ siteName }}</div>
         <div class="lang-switch">
@@ -108,33 +108,6 @@ const switchLocale = async (locale: string) => {
 </template>
 
 <style scoped>
-.login {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: var(--space-9);
-  overflow: auto;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 10%, #ffffff) 0%, #f7fafc 100%);
-  background-image:
-    var(--runtime-login-bg-image),
-    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 10%, #ffffff) 0%, #f7fafc 100%);
-  background-size: cover;
-  background-position: center;
-}
-
-.login__panel {
-  background: color-mix(in srgb, var(--color-surface) 76%, transparent);
-  border-radius: var(--radius-xl);
-  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  padding: var(--space-7);
-  display: grid;
-  gap: var(--space-4);
-  box-shadow: var(--shadow-md);
-  width: min(420px, 100%);
-  backdrop-filter: blur(10px);
-}
-
 .login__brand-row {
   display: flex;
   align-items: center;
@@ -200,17 +173,5 @@ const switchLocale = async (locale: string) => {
 .lang-switch__btn.is-active {
   background: var(--color-primary);
   color: var(--color-primary-contrast);
-}
-
-@media (max-width: 1024px) {
-  .login {
-    padding: var(--space-7);
-  }
-}
-
-@media (max-width: 768px) {
-  .login {
-    padding: var(--space-5);
-  }
 }
 </style>

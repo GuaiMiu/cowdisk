@@ -83,6 +83,7 @@ export const useFileActions = (options: UseFileActionsOptions) => {
     handleAction: handlers.handleAction,
     handleCreateInline: handlers.handleCreateInline,
     handleCreateTextInline: handlers.handleCreateTextInline,
+    handleCreateOfficeInline: handlers.handleCreateOfficeInline,
     handleRenameInline: handlers.handleRenameInline,
     openMoveSelected: handlers.openMoveSelected,
     confirmMove: handlers.confirmMove,

@@ -17,9 +17,19 @@ import { getFileKind } from '@/utils/fileType'
 import { useAuthStore } from '@/stores/auth'
 
 type SortKey = 'name' | 'size' | 'type' | 'updatedAt'
+type BlankAction =
+  | 'new-folder'
+  | 'new-text'
+  | 'new-word'
+  | 'new-excel'
+  | 'new-ppt'
+  | 'upload-file'
+  | 'upload-folder'
+type BulkAction = 'move' | 'delete' | 'compress' | 'extract'
 
 const props = defineProps<{
   items: DiskEntry[]
+  selectedCount: number
   allSelected: boolean
   indeterminate: boolean
   isSelected: (item: DiskEntry) => boolean
@@ -27,6 +37,7 @@ const props = defineProps<{
   toggleAll: () => void
   creatingFolder?: boolean
   creatingText?: boolean
+  officeEnabled?: boolean
   editingEntry?: DiskEntry | null
   editingName?: string
   sortKey?: SortKey | null
@@ -48,6 +59,9 @@ const emit = defineEmits<{
   (event: 'rename-confirm', payload: { entry: DiskEntry; name: string }): void
   (event: 'rename-cancel'): void
   (event: 'sort-change', key: SortKey): void
+  (event: 'blank-action', action: BlankAction): void
+  (event: 'blank-click'): void
+  (event: 'bulk-action', action: BulkAction): void
 }>()
 
 const { t } = useI18n({ useScope: 'global' })
@@ -178,8 +192,25 @@ const contextMenu = ref({
   width: 228,
 })
 const contextMenuRef = ref<HTMLElement | null>(null)
+const selectionContextMenu = ref({
+  open: false,
+  x: 0,
+  y: 0,
+  width: 212,
+})
 const menuHovering = ref(false)
 const menuEntryPath = ref<string | null>(null)
+const itemElementRefs = ref(new Map<string, HTMLElement>())
+const isDragSelecting = ref(false)
+const dragBox = ref({ left: 0, top: 0, width: 0, height: 0 })
+const DRAG_ACTIVATION_DISTANCE = 4
+let dragStartX = 0
+let dragStartY = 0
+let dragCurrentClientX = 0
+let dragCurrentClientY = 0
+let pendingDragSelection = false
+let suppressRowClick = false
+let suppressBlankClick = false
 let closeTimer: number | null = null
 const MENU_VIEWPORT_PADDING = 8
 
@@ -197,15 +228,82 @@ const contextMenuItems = useFileEntryActionsMenu({
   hasPermission,
 })
 
+const blankMenuGroups = computed<
+  Array<{
+    key: string
+    label: string
+    children: Array<{ key: string; label: string; action: BlankAction }>
+  }>
+>(() => {
+  const groups: Array<{
+    key: string
+    label: string
+    children: Array<{ key: string; label: string; action: BlankAction }>
+  }> = []
+
+  const createChildren: Array<{ key: string; label: string; action: BlankAction }> = []
+  if (hasPermission('disk:file:mkdir')) {
+    createChildren.push({ key: 'new-folder', label: t('fileToolbar.folder'), action: 'new-folder' })
+  }
+  if (hasPermission('disk:file:upload')) {
+    createChildren.push({ key: 'new-text', label: t('fileToolbar.textFile'), action: 'new-text' })
+    if (props.officeEnabled) {
+      createChildren.push({ key: 'new-word', label: t('fileToolbar.wordFile'), action: 'new-word' })
+      createChildren.push({ key: 'new-excel', label: t('fileToolbar.excelFile'), action: 'new-excel' })
+      createChildren.push({ key: 'new-ppt', label: t('fileToolbar.pptFile'), action: 'new-ppt' })
+    }
+  }
+  if (createChildren.length) {
+    groups.push({ key: 'create', label: t('fileToolbar.new'), children: createChildren })
+  }
+
+  if (hasPermission('disk:file:upload')) {
+    groups.push({
+      key: 'upload',
+      label: t('fileToolbar.upload'),
+      children: [
+        { key: 'upload-file', label: t('fileToolbar.uploadFile'), action: 'upload-file' },
+        { key: 'upload-folder', label: t('fileToolbar.uploadDirectory'), action: 'upload-folder' },
+      ],
+    })
+  }
+
+  return groups
+})
+const selectionMenuItems = computed<Array<{ key: BulkAction; label: string; danger?: boolean }>>(() => {
+  const items: Array<{ key: BulkAction; label: string; danger?: boolean }> = []
+  if (hasPermission('disk:file:move')) {
+    items.push({ key: 'move', label: t('fileTable.actions.move') })
+  }
+  if (hasPermission('disk:archive:compress')) {
+    items.push({ key: 'compress', label: t('fileTable.actions.compress') })
+  }
+  if (hasPermission('disk:archive:extract')) {
+    items.push({ key: 'extract', label: t('fileTable.actions.extract') })
+  }
+  if (hasPermission('disk:file:delete')) {
+    items.push({ key: 'delete', label: t('fileTable.actions.delete'), danger: true })
+  }
+  return items
+})
+
 const closeContextMenu = () => {
   contextMenu.value.open = false
   contextMenu.value.entry = null
+  blankContextMenu.value.open = false
+  selectionContextMenu.value.open = false
   menuEntryPath.value = null
   if (closeTimer) {
     window.clearTimeout(closeTimer)
     closeTimer = null
   }
 }
+const isTableBlankTarget = (target: HTMLElement | null) =>
+  !!target &&
+  !target.closest('.table__row') &&
+  !target.closest('.table__header') &&
+  !target.closest('.context-menu') &&
+  !target.closest('.overlay-scrollbar')
 
 const focusFirstMenuItem = () => {
   void nextTick(() => {
@@ -237,6 +335,14 @@ const realignContextMenu = () => {
 
 const openContextMenu = (event: MouseEvent, entry: DiskEntry) => {
   event.preventDefault()
+  closeContextMenu()
+  if (props.selectedCount > 1 && props.isSelected(entry) && selectionMenuItems.value.length) {
+    const width = 212
+    const roughHeight = 220
+    const { x, y } = clampMenuPosition(event.clientX, event.clientY, width, roughHeight)
+    selectionContextMenu.value = { open: true, x, y, width }
+    return
+  }
   const width = 228
   const roughHeight = 320
   const { x, y } = clampMenuPosition(event.clientX, event.clientY, width, roughHeight)
@@ -245,7 +351,190 @@ const openContextMenu = (event: MouseEvent, entry: DiskEntry) => {
   realignContextMenu()
 }
 
+const blankContextMenu = ref({
+  open: false,
+  x: 0,
+  y: 0,
+  width: 188,
+})
+
+const openBlankContextMenu = (event: MouseEvent) => {
+  if (!blankMenuGroups.value.length) {
+    return
+  }
+  event.preventDefault()
+  closeContextMenu()
+  const width = 188
+  const roughHeight = 320
+  const { x, y } = clampMenuPosition(event.clientX, event.clientY, width, roughHeight)
+  blankContextMenu.value = { open: true, x, y, width }
+}
+
+const onTableContextMenu = (event: MouseEvent) => {
+  const target = event.target as HTMLElement | null
+  if (!isTableBlankTarget(target)) {
+    return
+  }
+  openBlankContextMenu(event)
+}
+
+const setItemElementRef = (entry: DiskEntry): VNodeRef => {
+  return (refNode: Element | ComponentPublicInstance | null) => {
+    const element = refNode instanceof HTMLElement ? refNode : null
+    const key = String(entry.id)
+    if (element) {
+      itemElementRefs.value.set(key, element)
+      return
+    }
+    itemElementRefs.value.delete(key)
+  }
+}
+
+const intersect = (
+  a: { left: number; top: number; right: number; bottom: number },
+  b: { left: number; top: number; right: number; bottom: number },
+) => a.left <= b.right && a.right >= b.left && a.top <= b.bottom && a.bottom >= b.top
+
+const applySelectionState = (selectedKeys: Set<string>) => {
+  for (const item of props.items) {
+    const key = String(item.id)
+    const next = selectedKeys.has(key)
+    if (props.isSelected(item) !== next) {
+      props.toggle(item)
+    }
+  }
+}
+
+const getContentPoint = (clientX: number, clientY: number) => {
+  const container = scrollRef.value
+  if (!container) {
+    return { x: 0, y: 0 }
+  }
+  const rect = container.getBoundingClientRect()
+  return {
+    x: clientX - rect.left + container.scrollLeft,
+    y: clientY - rect.top + container.scrollTop,
+  }
+}
+
+const updateDragSelection = () => {
+  const container = scrollRef.value
+  if (!container) {
+    return
+  }
+  const startPoint = getContentPoint(dragStartX, dragStartY)
+  const currentPoint = getContentPoint(dragCurrentClientX, dragCurrentClientY)
+  const left = Math.min(startPoint.x, currentPoint.x)
+  const top = Math.min(startPoint.y, currentPoint.y)
+  const right = Math.max(startPoint.x, currentPoint.x)
+  const bottom = Math.max(startPoint.y, currentPoint.y)
+  dragBox.value = {
+    left,
+    top,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
+  }
+  const selectedKeys = new Set<string>()
+  const containerRect = container.getBoundingClientRect()
+  for (const item of props.items) {
+    const key = String(item.id)
+    const element = itemElementRefs.value.get(key)
+    if (!element) {
+      continue
+    }
+    const rect = element.getBoundingClientRect()
+    const itemRect = {
+      left: rect.left - containerRect.left + container.scrollLeft,
+      top: rect.top - containerRect.top + container.scrollTop,
+      right: rect.right - containerRect.left + container.scrollLeft,
+      bottom: rect.bottom - containerRect.top + container.scrollTop,
+    }
+    if (intersect({ left, top, right, bottom }, itemRect)) {
+      selectedKeys.add(key)
+    }
+  }
+  applySelectionState(selectedKeys)
+}
+
+const onDragPointerMove = (event: PointerEvent) => {
+  if (!pendingDragSelection && !isDragSelecting.value) {
+    return
+  }
+  dragCurrentClientX = event.clientX
+  dragCurrentClientY = event.clientY
+  if (!isDragSelecting.value) {
+    const distance = Math.hypot(dragCurrentClientX - dragStartX, dragCurrentClientY - dragStartY)
+    if (distance < DRAG_ACTIVATION_DISTANCE) {
+      return
+    }
+    isDragSelecting.value = true
+    suppressRowClick = true
+    suppressBlankClick = true
+    closeContextMenu()
+  }
+  updateDragSelection()
+  event.preventDefault()
+}
+
+const stopDragSelection = () => {
+  pendingDragSelection = false
+  isDragSelecting.value = false
+  window.removeEventListener('pointermove', onDragPointerMove)
+  window.removeEventListener('pointerup', stopDragSelection)
+}
+
+const onTablePointerDown = (event: PointerEvent) => {
+  if (event.button !== 0) {
+    return
+  }
+  const target = event.target as HTMLElement | null
+  if (
+    !target ||
+    target.closest('.table__row') ||
+    target.closest('.table__header') ||
+    target.closest('input') ||
+    target.closest('button') ||
+    target.closest('.context-menu')
+  ) {
+    return
+  }
+  dragStartX = event.clientX
+  dragStartY = event.clientY
+  dragCurrentClientX = event.clientX
+  dragCurrentClientY = event.clientY
+  pendingDragSelection = true
+  suppressRowClick = false
+  window.addEventListener('pointermove', onDragPointerMove)
+  window.addEventListener('pointerup', stopDragSelection)
+  event.preventDefault()
+}
+
+const onTableBlankClick = (event: MouseEvent) => {
+  if (suppressBlankClick) {
+    suppressBlankClick = false
+    return
+  }
+  const target = event.target as HTMLElement | null
+  if (!isTableBlankTarget(target)) {
+    return
+  }
+  emit('blank-click')
+}
+
+const onTableClick = (event: MouseEvent) => {
+  closeContextMenu()
+  onTableBlankClick(event)
+}
+
+const dragBoxStyle = computed(() => ({
+  left: `${dragBox.value.left}px`,
+  top: `${dragBox.value.top}px`,
+  width: `${dragBox.value.width}px`,
+  height: `${dragBox.value.height}px`,
+}))
+
 const openContextMenuAtElement = (element: HTMLElement, entry: DiskEntry, mode: 'full' | 'more') => {
+  closeContextMenu()
   const width = mode === 'more' ? 212 : 228
   const roughHeight = mode === 'more' ? 260 : 320
   const rect = element.getBoundingClientRect()
@@ -260,6 +549,7 @@ const openContextMenuAtElement = (element: HTMLElement, entry: DiskEntry, mode: 
 
 const openMoreMenu = (event: MouseEvent, entry: DiskEntry) => {
   event.stopPropagation()
+  closeContextMenu()
   const width = 212
   const roughHeight = 260
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
@@ -290,13 +580,16 @@ const onMenuEnter = () => {
 const onMenuLeave = () => {
   menuHovering.value = false
   menuEntryPath.value = null
-  closeContextMenu()
+  if (contextMenu.value.mode === 'more') {
+    closeContextMenu()
+  }
 }
 
 const onRowLeave = (entry: DiskEntry) => {
   if (
     contextMenu.value.open &&
     contextMenu.value.entry?.id === entry.id &&
+    contextMenu.value.mode === 'more' &&
     !menuHovering.value
   ) {
     if (closeTimer) {
@@ -338,6 +631,10 @@ const onNameClick = (entry: DiskEntry) => {
 }
 
 const onRowClick = (entry: DiskEntry) => {
+  if (suppressRowClick) {
+    suppressRowClick = false
+    return
+  }
   props.toggle(entry)
 }
 
@@ -427,6 +724,15 @@ const triggerContextMenuAction = (action: FileEntryAction) => {
   closeContextMenu()
 }
 
+const triggerBlankContextAction = (action: BlankAction) => {
+  emit('blank-action', action)
+  closeContextMenu()
+}
+const triggerSelectionAction = (action: BulkAction) => {
+  emit('bulk-action', action)
+  closeContextMenu()
+}
+
 onMounted(() => {
   window.addEventListener('click', closeContextMenu)
   window.addEventListener('scroll', closeContextMenu, true)
@@ -434,6 +740,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopDragSelection()
   window.removeEventListener('click', closeContextMenu)
   window.removeEventListener('scroll', closeContextMenu, true)
   window.removeEventListener('keydown', onWindowKey)
@@ -469,7 +776,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="tableRef" class="table" @click="closeContextMenu">
+  <div
+    ref="tableRef"
+    class="table"
+    :class="{ 'is-drag-selecting': isDragSelecting || pendingDragSelection }"
+    @click="onTableClick"
+    @contextmenu="onTableContextMenu"
+  >
     <div ref="headerRef" class="table__header">
       <label class="table__cell table__cell--check">
         <input
@@ -531,7 +844,13 @@ onBeforeUnmount(() => {
       @mouseenter="onMouseEnter"
       @mouseleave="onMouseLeave"
     >
-      <div ref="scrollRef" class="table__scroll overlay-scroll" @scroll="onScroll">
+      <div
+        ref="scrollRef"
+        class="table__scroll overlay-scroll"
+        :class="{ 'table__scroll--drag-selecting': isDragSelecting || pendingDragSelection }"
+        @scroll="onScroll"
+        @pointerdown="onTablePointerDown"
+      >
         <div v-if="creatingFolder || creatingText" class="table__row table__row--edit">
           <label class="table__cell table__cell--check">
             <input type="checkbox" disabled />
@@ -580,7 +899,12 @@ onBeforeUnmount(() => {
         <div
           v-for="item in items"
           :key="item.id"
-          :class="['table__row', isEditing(item) ? 'table__row--edit' : '']"
+          :ref="setItemElementRef(item)"
+          :class="[
+            'table__row',
+            isEditing(item) ? 'table__row--edit' : '',
+            isSelected(item) ? 'table__row--selected' : '',
+          ]"
           :tabindex="isEditing(item) ? -1 : 0"
           @click="onRowClick(item)"
           @keydown="onRowKeyDown($event, item)"
@@ -691,6 +1015,11 @@ onBeforeUnmount(() => {
             </IconButton>
           </div>
         </div>
+        <div
+          v-if="isDragSelecting"
+          class="table__selection-box"
+          :style="dragBoxStyle"
+        ></div>
       </div>
       <div v-if="isScrollable" class="overlay-scrollbar" :class="{ 'is-visible': visible }">
         <div
@@ -733,6 +1062,66 @@ onBeforeUnmount(() => {
         </button>
       </template>
     </div>
+
+    <div
+      v-if="blankContextMenu.open"
+      class="context-menu"
+      role="menu"
+      :aria-label="t('common.actions')"
+      :style="{
+        left: `${blankContextMenu.x}px`,
+        top: `${blankContextMenu.y}px`,
+        width: `${blankContextMenu.width}px`,
+      }"
+      @click.stop
+    >
+      <div
+        v-for="group in blankMenuGroups"
+        :key="group.key"
+        class="context-menu__item context-menu__item--submenu"
+        role="menuitem"
+        tabindex="0"
+      >
+        <span class="context-menu__label">{{ group.label }}</span>
+        <span class="context-menu__arrow">›</span>
+        <div class="context-menu__submenu">
+          <button
+            v-for="item in group.children"
+            :key="item.key"
+            class="context-menu__item"
+            type="button"
+            role="menuitem"
+            @click="triggerBlankContextAction(item.action)"
+          >
+            <span class="context-menu__label">{{ item.label }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div
+      v-if="selectionContextMenu.open"
+      class="context-menu"
+      role="menu"
+      :aria-label="t('common.actions')"
+      :style="{
+        left: `${selectionContextMenu.x}px`,
+        top: `${selectionContextMenu.y}px`,
+        width: `${selectionContextMenu.width}px`,
+      }"
+      @click.stop
+    >
+      <button
+        v-for="item in selectionMenuItems"
+        :key="item.key"
+        class="context-menu__item"
+        :class="{ 'context-menu__item--danger': item.danger }"
+        type="button"
+        role="menuitem"
+        @click="triggerSelectionAction(item.key)"
+      >
+        <span class="context-menu__label">{{ item.label }}</span>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -767,6 +1156,10 @@ onBeforeUnmount(() => {
 
 .table__row:hover {
   background: var(--color-surface-2);
+}
+
+.table__row--selected {
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
 }
 
 .table__row:focus-visible {
@@ -817,15 +1210,15 @@ onBeforeUnmount(() => {
 
 .table__body {
   display: grid;
-  gap: 0;
+  grid-template-rows: minmax(0, 1fr);
   position: relative;
   overflow: hidden;
   min-height: 0;
   height: 100%;
-  align-content: start;
 }
 
 .table__scroll {
+  position: relative;
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
@@ -833,6 +1226,19 @@ onBeforeUnmount(() => {
   gap: 0;
   align-content: start;
   grid-auto-rows: 48px;
+}
+
+.table__selection-box {
+  position: absolute;
+  z-index: 2;
+  border: 1px solid var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+  pointer-events: none;
+}
+
+.table__scroll--drag-selecting {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .table__cell--check {
@@ -962,6 +1368,11 @@ onBeforeUnmount(() => {
   pointer-events: auto;
 }
 
+.table.is-drag-selecting .table__row-actions {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .context-menu {
   position: fixed;
   z-index: 100;
@@ -992,6 +1403,33 @@ onBeforeUnmount(() => {
   transition:
     background var(--transition-fast),
     color var(--transition-fast);
+}
+
+.context-menu__item--submenu {
+  position: relative;
+}
+
+.context-menu__arrow {
+  color: var(--color-muted);
+}
+
+.context-menu__submenu {
+  position: absolute;
+  left: 100%;
+  top: -6px;
+  min-width: 156px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-2);
+  display: none;
+  gap: var(--space-1);
+}
+
+.context-menu__item--submenu:hover .context-menu__submenu,
+.context-menu__item--submenu:focus-within .context-menu__submenu {
+  display: grid;
 }
 
 .context-menu__item:hover {

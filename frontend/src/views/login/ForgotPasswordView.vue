@@ -46,8 +46,8 @@ const onSubmit = async () => {
 </script>
 
 <template>
-  <div class="forgot">
-    <div class="forgot__panel">
+  <div class="forgot auth-page">
+    <div class="forgot__panel auth-page__panel">
       <div class="forgot__brand" :title="siteName">{{ siteName }}</div>
       <h1 class="forgot__title">{{ t('auth.forgot.title') }}</h1>
       <p class="forgot__subtitle">{{ t('auth.forgot.subtitle') }}</p>
@@ -69,33 +69,6 @@ const onSubmit = async () => {
 </template>
 
 <style scoped>
-.forgot {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: var(--space-9);
-  overflow: auto;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 10%, #ffffff) 0%, #f7fafc 100%);
-  background-image:
-    var(--runtime-login-bg-image),
-    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 10%, #ffffff) 0%, #f7fafc 100%);
-  background-size: cover;
-  background-position: center;
-}
-
-.forgot__panel {
-  background: color-mix(in srgb, var(--color-surface) 76%, transparent);
-  border-radius: var(--radius-xl);
-  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  padding: var(--space-7);
-  display: grid;
-  gap: var(--space-4);
-  box-shadow: var(--shadow-md);
-  width: min(420px, 100%);
-  backdrop-filter: blur(10px);
-}
-
 .forgot__brand {
   font-family: var(--font-display);
   font-weight: 700;
@@ -130,17 +103,5 @@ const onSubmit = async () => {
   color: inherit;
   font-weight: 600;
   text-decoration: none;
-}
-
-@media (max-width: 1024px) {
-  .forgot {
-    padding: var(--space-7);
-  }
-}
-
-@media (max-width: 768px) {
-  .forgot {
-    padding: var(--space-5);
-  }
 }
 </style>

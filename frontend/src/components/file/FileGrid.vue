@@ -15,6 +15,16 @@ import {
 import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
 import { useAuthStore } from '@/stores/auth'
 
+type BlankAction =
+  | 'new-folder'
+  | 'new-text'
+  | 'new-word'
+  | 'new-excel'
+  | 'new-ppt'
+  | 'upload-file'
+  | 'upload-folder'
+type BulkAction = 'move' | 'delete' | 'compress' | 'extract'
+
 const props = defineProps<{
   items: DiskEntry[]
   selectedCount: number
@@ -25,6 +35,7 @@ const props = defineProps<{
   toggleAll: () => void
   creatingFolder?: boolean
   creatingText?: boolean
+  officeEnabled?: boolean
   editingEntry?: DiskEntry | null
   editingName?: string
 }>()
@@ -43,6 +54,9 @@ const emit = defineEmits<{
   (event: 'create-cancel'): void
   (event: 'rename-confirm', payload: { entry: DiskEntry; name: string }): void
   (event: 'rename-cancel'): void
+  (event: 'blank-action', action: BlankAction): void
+  (event: 'blank-click'): void
+  (event: 'bulk-action', action: BulkAction): void
 }>()
 
 const { t } = useI18n({ useScope: 'global' })
@@ -65,6 +79,8 @@ const createInputRef = ref<HTMLInputElement | null>(null)
 const renameInputRefs = ref(new Map<string, HTMLInputElement>())
 const selectAllRef = ref<HTMLInputElement | null>(null)
 const contextMenuRef = ref<HTMLElement | null>(null)
+const blankContextMenuRef = ref<HTMLElement | null>(null)
+const selectionContextMenuRef = ref<HTMLElement | null>(null)
 const contextMenu = ref({
   open: false,
   x: 0,
@@ -72,8 +88,35 @@ const contextMenu = ref({
   entry: null as DiskEntry | null,
   width: 228,
 })
+const blankContextMenu = ref({
+  open: false,
+  x: 0,
+  y: 0,
+  width: 188,
+})
+const selectionContextMenu = ref({
+  open: false,
+  x: 0,
+  y: 0,
+  width: 212,
+})
+const itemElementRefs = ref(new Map<string, HTMLElement>())
+const isDragSelecting = ref(false)
+const dragBox = ref({ left: 0, top: 0, width: 0, height: 0 })
+const DRAG_ACTIVATION_DISTANCE = 4
+let dragStartX = 0
+let dragStartY = 0
+let dragCurrentClientX = 0
+let dragCurrentClientY = 0
+let pendingDragSelection = false
+let suppressCardClick = false
+let suppressBlankClick = false
 
 const onCardClick = (entry: DiskEntry) => {
+  if (suppressCardClick) {
+    suppressCardClick = false
+    return
+  }
   if (entry.is_dir) {
     emit('open', entry)
     return
@@ -130,12 +173,94 @@ const contextMenuItems = useFileEntryActionsMenu({
   t,
   hasPermission,
 })
+const blankMenuGroups = computed<
+  Array<{
+    key: string
+    label: string
+    children: Array<{ key: string; label: string; action: BlankAction }>
+  }>
+>(() => {
+  const groups: Array<{
+    key: string
+    label: string
+    children: Array<{ key: string; label: string; action: BlankAction }>
+  }> = []
+
+  const createChildren: Array<{ key: string; label: string; action: BlankAction }> = []
+  if (hasPermission('disk:file:mkdir')) {
+    createChildren.push({ key: 'new-folder', label: t('fileToolbar.folder'), action: 'new-folder' })
+  }
+  if (hasPermission('disk:file:upload')) {
+    createChildren.push({ key: 'new-text', label: t('fileToolbar.textFile'), action: 'new-text' })
+    if (props.officeEnabled) {
+      createChildren.push({ key: 'new-word', label: t('fileToolbar.wordFile'), action: 'new-word' })
+      createChildren.push({ key: 'new-excel', label: t('fileToolbar.excelFile'), action: 'new-excel' })
+      createChildren.push({ key: 'new-ppt', label: t('fileToolbar.pptFile'), action: 'new-ppt' })
+    }
+  }
+  if (createChildren.length) {
+    groups.push({ key: 'create', label: t('fileToolbar.new'), children: createChildren })
+  }
+
+  if (hasPermission('disk:file:upload')) {
+    groups.push({
+      key: 'upload',
+      label: t('fileToolbar.upload'),
+      children: [
+        { key: 'upload-file', label: t('fileToolbar.uploadFile'), action: 'upload-file' },
+        { key: 'upload-folder', label: t('fileToolbar.uploadDirectory'), action: 'upload-folder' },
+      ],
+    })
+  }
+  return groups
+})
+const selectionMenuItems = computed<Array<{ key: BulkAction; label: string; danger?: boolean }>>(() => {
+  const items: Array<{ key: BulkAction; label: string; danger?: boolean }> = []
+  if (hasPermission('disk:file:move')) {
+    items.push({ key: 'move', label: t('fileTable.actions.move') })
+  }
+  if (hasPermission('disk:archive:compress')) {
+    items.push({ key: 'compress', label: t('fileTable.actions.compress') })
+  }
+  if (hasPermission('disk:archive:extract')) {
+    items.push({ key: 'extract', label: t('fileTable.actions.extract') })
+  }
+  if (hasPermission('disk:file:delete')) {
+    items.push({ key: 'delete', label: t('fileTable.actions.delete'), danger: true })
+  }
+  return items
+})
 const closeContextMenu = () => {
   contextMenu.value.open = false
   contextMenu.value.entry = null
+  blankContextMenu.value.open = false
+  selectionContextMenu.value.open = false
 }
+const hasOpenContextMenu = () =>
+  contextMenu.value.open || blankContextMenu.value.open || selectionContextMenu.value.open
+
+const isMenuElement = (target: Node | null) =>
+  !!target &&
+  (contextMenuRef.value?.contains(target) ||
+    blankContextMenuRef.value?.contains(target) ||
+    selectionContextMenuRef.value?.contains(target))
+
+const isGridBlankTarget = (target: HTMLElement | null) =>
+  !!target &&
+  !target.closest('.card') &&
+  !target.closest('.context-menu') &&
+  !target.closest('.overlay-scrollbar')
 const openContextMenu = (event: MouseEvent, entry: DiskEntry) => {
   event.preventDefault()
+  closeContextMenu()
+  if (props.selectedCount > 1 && props.isSelected(entry) && selectionMenuItems.value.length) {
+    const width = 212
+    const roughHeight = 220
+    const x = Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8))
+    const y = Math.max(8, Math.min(event.clientY, window.innerHeight - roughHeight - 8))
+    selectionContextMenu.value = { open: true, x, y, width }
+    return
+  }
   const width = 228
   const roughHeight = 320
   const x = Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8))
@@ -145,6 +270,7 @@ const openContextMenu = (event: MouseEvent, entry: DiskEntry) => {
 const openMoreMenu = (event: MouseEvent, entry: DiskEntry) => {
   event.preventDefault()
   event.stopPropagation()
+  closeContextMenu()
   const button = event.currentTarget as HTMLElement | null
   if (!button) {
     openContextMenu(event, entry)
@@ -165,18 +291,196 @@ const triggerContextMenuAction = (action: FileEntryAction) => {
   }
   emit('action', { entry, action })
 }
+const triggerBlankContextAction = (action: BlankAction) => {
+  emit('blank-action', action)
+  closeContextMenu()
+}
+const triggerSelectionAction = (action: BulkAction) => {
+  emit('bulk-action', action)
+  closeContextMenu()
+}
+const openBlankContextMenu = (event: MouseEvent) => {
+  if (!blankMenuGroups.value.length) {
+    return
+  }
+  event.preventDefault()
+  const width = 188
+  const roughHeight = 320
+  const x = Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8))
+  const y = Math.max(8, Math.min(event.clientY, window.innerHeight - roughHeight - 8))
+  blankContextMenu.value = { open: true, x, y, width }
+}
+const onGridBodyContextMenu = (event: MouseEvent) => {
+  const target = event.target as HTMLElement | null
+  if (!isGridBlankTarget(target)) {
+    return
+  }
+  openBlankContextMenu(event)
+}
+
+const setItemElementRef = (entry: DiskEntry): VNodeRef => {
+  return (refNode: Element | ComponentPublicInstance | null) => {
+    const element = refNode instanceof HTMLElement ? refNode : null
+    const key = String(entry.id)
+    if (element) {
+      itemElementRefs.value.set(key, element)
+      return
+    }
+    itemElementRefs.value.delete(key)
+  }
+}
+
+const intersect = (
+  a: { left: number; top: number; right: number; bottom: number },
+  b: { left: number; top: number; right: number; bottom: number },
+) => a.left <= b.right && a.right >= b.left && a.top <= b.bottom && a.bottom >= b.top
+
+const applySelectionState = (selectedKeys: Set<string>) => {
+  for (const item of props.items) {
+    const key = String(item.id)
+    const next = selectedKeys.has(key)
+    if (props.isSelected(item) !== next) {
+      props.toggle(item)
+    }
+  }
+}
+
+const getContentPoint = (clientX: number, clientY: number) => {
+  const container = scrollRef.value
+  if (!container) {
+    return { x: 0, y: 0 }
+  }
+  const rect = container.getBoundingClientRect()
+  return {
+    x: clientX - rect.left + container.scrollLeft,
+    y: clientY - rect.top + container.scrollTop,
+  }
+}
+
+const updateDragSelection = () => {
+  const container = scrollRef.value
+  if (!container) {
+    return
+  }
+  const startPoint = getContentPoint(dragStartX, dragStartY)
+  const currentPoint = getContentPoint(dragCurrentClientX, dragCurrentClientY)
+  const left = Math.min(startPoint.x, currentPoint.x)
+  const top = Math.min(startPoint.y, currentPoint.y)
+  const right = Math.max(startPoint.x, currentPoint.x)
+  const bottom = Math.max(startPoint.y, currentPoint.y)
+  dragBox.value = {
+    left,
+    top,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
+  }
+  const selectedKeys = new Set<string>()
+  const containerRect = container.getBoundingClientRect()
+  for (const item of props.items) {
+    const key = String(item.id)
+    const element = itemElementRefs.value.get(key)
+    if (!element) {
+      continue
+    }
+    const rect = element.getBoundingClientRect()
+    const itemRect = {
+      left: rect.left - containerRect.left + container.scrollLeft,
+      top: rect.top - containerRect.top + container.scrollTop,
+      right: rect.right - containerRect.left + container.scrollLeft,
+      bottom: rect.bottom - containerRect.top + container.scrollTop,
+    }
+    if (intersect({ left, top, right, bottom }, itemRect)) {
+      selectedKeys.add(key)
+    }
+  }
+  applySelectionState(selectedKeys)
+}
+
+const onDragPointerMove = (event: PointerEvent) => {
+  if (!pendingDragSelection && !isDragSelecting.value) {
+    return
+  }
+  dragCurrentClientX = event.clientX
+  dragCurrentClientY = event.clientY
+  if (!isDragSelecting.value) {
+    const distance = Math.hypot(dragCurrentClientX - dragStartX, dragCurrentClientY - dragStartY)
+    if (distance < DRAG_ACTIVATION_DISTANCE) {
+      return
+    }
+    isDragSelecting.value = true
+    suppressCardClick = true
+    suppressBlankClick = true
+    closeContextMenu()
+  }
+  updateDragSelection()
+  event.preventDefault()
+}
+
+const stopDragSelection = () => {
+  pendingDragSelection = false
+  isDragSelecting.value = false
+  window.removeEventListener('pointermove', onDragPointerMove)
+  window.removeEventListener('pointerup', stopDragSelection)
+}
+
+const onGridPointerDown = (event: PointerEvent) => {
+  if (event.button !== 0) {
+    return
+  }
+  const target = event.target as HTMLElement | null
+  if (
+    !target ||
+    target.closest('.card') ||
+    target.closest('input') ||
+    target.closest('button') ||
+    target.closest('.context-menu')
+  ) {
+    return
+  }
+  closeContextMenu()
+  dragStartX = event.clientX
+  dragStartY = event.clientY
+  dragCurrentClientX = event.clientX
+  dragCurrentClientY = event.clientY
+  pendingDragSelection = true
+  suppressCardClick = false
+  window.addEventListener('pointermove', onDragPointerMove)
+  window.addEventListener('pointerup', stopDragSelection)
+  event.preventDefault()
+}
+
+const onGridBodyClick = (event: MouseEvent) => {
+  if (suppressBlankClick) {
+    suppressBlankClick = false
+    return
+  }
+  const target = event.target as HTMLElement | null
+  if (!isGridBlankTarget(target)) {
+    return
+  }
+  closeContextMenu()
+  emit('blank-click')
+}
+
+const dragBoxStyle = computed(() => ({
+  left: `${dragBox.value.left}px`,
+  top: `${dragBox.value.top}px`,
+  width: `${dragBox.value.width}px`,
+  height: `${dragBox.value.height}px`,
+}))
+
 const onWindowPointerDown = (event: MouseEvent) => {
-  if (!contextMenu.value.open) {
+  if (!hasOpenContextMenu()) {
     return
   }
   const target = event?.target as Node | null
-  if (target && contextMenuRef.value?.contains(target)) {
+  if (isMenuElement(target)) {
     return
   }
   closeContextMenu()
 }
 const onWindowKeyDown = (event: KeyboardEvent) => {
-  if (!contextMenu.value.open) {
+  if (!hasOpenContextMenu()) {
     return
   }
   if (event.key === 'Escape') {
@@ -232,6 +536,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopDragSelection()
   window.removeEventListener('mousedown', onWindowPointerDown)
   window.removeEventListener('keydown', onWindowKeyDown)
 })
@@ -239,7 +544,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="grid-shell" @mouseenter="onMouseEnter" @mouseleave="onMouseLeave">
+  <div
+    class="grid-shell"
+    :class="{ 'is-drag-selecting': isDragSelecting || pendingDragSelection }"
+    @mouseenter="onMouseEnter"
+    @mouseleave="onMouseLeave"
+  >
     <div v-if="items.length" class="grid__bulk">
       <label class="grid__bulk-check">
         <input
@@ -254,12 +564,16 @@ onBeforeUnmount(() => {
         {{ t('fileGrid.selectedCount', { count: selectedCount }) }}
       </span>
     </div>
-    <div class="grid__body">
+    <div class="grid__body" @contextmenu="onGridBodyContextMenu" @click="onGridBodyClick">
       <div
         ref="scrollRef"
         class="grid overlay-scroll"
-        :class="{ 'grid--empty': !items.length && !creatingFolder && !creatingText }"
+        :class="{
+          'grid--empty': !items.length && !creatingFolder && !creatingText,
+          'grid--drag-selecting': isDragSelecting || pendingDragSelection,
+        }"
         @scroll="onScroll"
+        @pointerdown="onGridPointerDown"
       >
         <article v-if="creatingFolder || creatingText" class="card card--edit" @click.stop>
           <div class="card__top card__top--static"></div>
@@ -287,6 +601,7 @@ onBeforeUnmount(() => {
           <article
             v-for="item in items"
             :key="item.id"
+            :ref="setItemElementRef(item)"
             class="card"
             :class="{ 'is-selected': isSelected(item), 'card--edit': isEditing(item) }"
             @click="isEditing(item) ? undefined : onCardClick(item)"
@@ -332,6 +647,11 @@ onBeforeUnmount(() => {
           </article>
         </template>
         <div v-else-if="!creatingFolder && !creatingText" class="grid__empty">{{ t('fileTable.empty') }}</div>
+        <div
+          v-if="isDragSelecting"
+          class="grid__selection-box"
+          :style="dragBoxStyle"
+        ></div>
       </div>
       <div v-if="isScrollable" class="overlay-scrollbar" :class="{ 'is-visible': visible }">
         <div
@@ -364,6 +684,59 @@ onBeforeUnmount(() => {
         </button>
       </template>
     </div>
+    <div
+      v-if="blankContextMenu.open"
+      ref="blankContextMenuRef"
+      class="context-menu"
+      role="menu"
+      :aria-label="t('common.actions')"
+      :style="{ left: `${blankContextMenu.x}px`, top: `${blankContextMenu.y}px`, width: `${blankContextMenu.width}px` }"
+      @click.stop
+    >
+      <div
+        v-for="group in blankMenuGroups"
+        :key="group.key"
+        class="context-menu__item context-menu__item--submenu"
+        role="menuitem"
+        tabindex="0"
+      >
+        <span class="context-menu__label">{{ group.label }}</span>
+        <span class="context-menu__arrow">›</span>
+        <div class="context-menu__submenu">
+          <button
+            v-for="item in group.children"
+            :key="item.key"
+            class="context-menu__item"
+            type="button"
+            role="menuitem"
+            @click="triggerBlankContextAction(item.action)"
+          >
+            <span class="context-menu__label">{{ item.label }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div
+      v-if="selectionContextMenu.open"
+      ref="selectionContextMenuRef"
+      class="context-menu"
+      role="menu"
+      :aria-label="t('common.actions')"
+      :style="{ left: `${selectionContextMenu.x}px`, top: `${selectionContextMenu.y}px`, width: `${selectionContextMenu.width}px` }"
+      @click.stop
+    >
+      <button
+        v-for="item in selectionMenuItems"
+        :key="item.key"
+        class="context-menu__item"
+        :class="{ 'context-menu__item--danger': item.danger }"
+        type="button"
+        role="menuitem"
+        @click="triggerSelectionAction(item.key)"
+      >
+        <span class="context-menu__label">{{ item.label }}</span>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -385,6 +758,7 @@ onBeforeUnmount(() => {
 }
 
 .grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
   grid-auto-rows: max-content;
@@ -395,6 +769,19 @@ onBeforeUnmount(() => {
   overflow: auto;
   padding: 6px;
   background: transparent;
+}
+
+.grid__selection-box {
+  position: absolute;
+  z-index: 2;
+  border: 1px solid var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+  pointer-events: none;
+}
+
+.grid--drag-selecting {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .grid--empty {
@@ -515,6 +902,7 @@ onBeforeUnmount(() => {
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
+  overflow-wrap: anywhere;
   width: 64px;
   justify-self: center;
   text-align: center;
@@ -580,6 +968,12 @@ onBeforeUnmount(() => {
   transform: translateY(0);
 }
 
+.grid-shell.is-drag-selecting .card__actions {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(-2px) !important;
+}
+
 .grid__empty {
   text-align: center;
   color: var(--color-muted);
@@ -611,6 +1005,33 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-size: 13px;
   color: var(--color-text);
+}
+
+.context-menu__item--submenu {
+  position: relative;
+}
+
+.context-menu__arrow {
+  color: var(--color-muted);
+}
+
+.context-menu__submenu {
+  position: absolute;
+  left: 100%;
+  top: -6px;
+  min-width: 156px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-2);
+  display: none;
+  gap: var(--space-1);
+}
+
+.context-menu__item--submenu:hover .context-menu__submenu,
+.context-menu__item--submenu:focus-within .context-menu__submenu {
+  display: grid;
 }
 
 .context-menu__item:hover {

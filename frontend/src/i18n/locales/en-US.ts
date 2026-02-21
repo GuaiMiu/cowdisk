@@ -1005,6 +1005,9 @@ export default {
     },
     pdfPreviewDefault: 'PDF Preview',
     videoPreviewDefault: 'Video Preview',
+    officeWordDefault: 'New Document',
+    officeExcelDefault: 'New Spreadsheet',
+    officePptDefault: 'New Presentation',
   },
   fileTable: {
     createFolderName: 'New Folder',
@@ -1058,6 +1061,9 @@ export default {
     new: 'New',
     folder: 'Folder',
     textFile: 'Text file',
+    wordFile: 'Word document',
+    excelFile: 'Excel spreadsheet',
+    pptFile: 'PowerPoint presentation',
     upload: 'Upload',
     searchPlaceholder: 'Search files',
     uploadFile: 'File',
@@ -1070,6 +1076,7 @@ export default {
     refresh: 'Refresh',
     viewList: 'List view',
     viewThumb: 'Thumbnail view',
+    dragUploadHint: 'Drop files or folders here to upload',
   },
   fileGrid: {
     selectAll: 'Select all',
