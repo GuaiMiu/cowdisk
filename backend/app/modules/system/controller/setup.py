@@ -10,10 +10,8 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_async_session
 from app.core.errors.exceptions import ConflictException
 from app.core.response import ApiResponse, ok
@@ -23,8 +21,6 @@ from app.modules.system.services.branding import BrandingService
 from app.modules.system.services.install_state import InstallStateService
 from app.modules.system.services.setup import SetupService
 from app.modules.system.typed.config import Config
-from app.modules.system.typed.keys import ConfigKey
-from app.modules.system.typed.specs import get_default
 from app.shared.deps import require_permissions, require_user
 
 setup_router = APIRouter(prefix="/setup", tags=["System - Setup"])
@@ -165,36 +161,8 @@ async def get_setup_defaults():
 async def get_public_config(
     config: Config = Depends(get_config),
 ):
-    site_name = (settings.APP_NAME or "").strip() or str(
-        get_default(ConfigKey.SYSTEM_SITE_NAME, "CowDisk")
-    )
-    site_logo_url = ""
-    site_favicon_url = ""
-    login_background_url = ""
-    theme_image_url = ""
-    office_enabled = False
-    if InstallStateService.get_status().phase == "DONE":
-        try:
-            dynamic_site_name = await config.system.site_name()
-            if (dynamic_site_name or "").strip():
-                site_name = dynamic_site_name.strip()
-            site_logo_url = (await config.system.site_logo_url() or "").strip()
-            site_favicon_url = (await config.system.site_favicon_url() or "").strip()
-            login_background_url = (await config.system.login_background_url() or "").strip()
-            theme_image_url = (await config.system.theme_image_url() or "").strip()
-            office_enabled = bool(await config.office.enabled())
-        except (OperationalError, ProgrammingError):
-            pass
-    return ok(
-        PublicConfigOut(
-            site_name=site_name,
-            site_logo_url=site_logo_url,
-            site_favicon_url=site_favicon_url,
-            login_background_url=login_background_url,
-            theme_image_url=theme_image_url,
-            office_enabled=office_enabled,
-        ).model_dump()
-    )
+    data = await SetupService.get_public_config(config)
+    return ok(PublicConfigOut.model_validate(data).model_dump())
 
 
 @setup_router.post(

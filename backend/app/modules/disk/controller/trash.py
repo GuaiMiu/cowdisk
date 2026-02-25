@@ -55,8 +55,11 @@ async def restore_trash(
     current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    entry = await FileService.restore_trash(int(data.id), current_user.id, db)
-    await FileService.refresh_used_space(db, current_user.id)
+    entry = await FileService.restore_trash_with_refresh(
+        file_id=int(data.id),
+        user_id=current_user.id,
+        db=db,
+    )
     return ok(entry.model_dump())
 
 
@@ -72,9 +75,11 @@ async def batch_restore_trash(
     db: AsyncSession = Depends(get_async_session),
 ):
     ids = [int(value) for value in data.ids]
-    result = await FileService.batch_restore_trash(ids, current_user.id, db)
-    if result.get("success"):
-        await FileService.refresh_used_space(db, current_user.id)
+    result = await FileService.batch_restore_trash_with_refresh(
+        ids=ids,
+        user_id=current_user.id,
+        db=db,
+    )
     return ok(result)
 
 

@@ -12,12 +12,8 @@ from fastapi import APIRouter, Depends, Request
 from redis import asyncio as aioredis
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_async_redis, get_async_session
-from app.core.errors.codes import CommonCode
-from app.core.errors.exceptions import AppException
 from app.core.response import ApiResponse, ok
-from app.modules.admin.services.auth import AuthService
 from app.modules.system.schemas.monitor import ForceLogoutOut, SystemMonitorOut
 from app.modules.system.services.monitor import MonitorService
 from app.shared.deps import require_permissions, require_user
@@ -55,14 +51,9 @@ async def force_logout_online_user(
     redis: aioredis.Redis = Depends(get_async_redis),
 ):
     client_ip = request.client.host if request.client else "unknown"
-    allowed = await AuthService.apply_rate_limit(
-        redis,
-        action="force_logout",
-        identifier=client_ip,
-        limit=settings.AUTH_FORCE_LOGOUT_RATE_LIMIT,
-        window_seconds=settings.AUTH_FORCE_LOGOUT_RATE_WINDOW,
+    data = await MonitorService.force_logout_online_user(
+        redis=redis,
+        session_id=session_id,
+        client_ip=client_ip,
     )
-    if not allowed:
-        raise AppException(http_status=429, code=int(CommonCode.RATE_LIMITED), message="操作过于频繁，请稍后重试")
-    data = await MonitorService.force_logout_session(redis=redis, session_id=session_id)
     return ok(data, message="会话已强制下线")

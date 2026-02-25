@@ -13,7 +13,6 @@ from app.core.database import get_async_session
 from app.core.errors.exceptions import BadRequestException
 from app.core.response import ApiResponse, ok
 from app.modules.admin.models.user import User
-from app.modules.disk.domain.paths import rel_path_from_storage
 from app.modules.disk.schemas.disk import (
     DiskTextReadOut,
     FileDeleteBatchOut,
@@ -60,7 +59,7 @@ async def list_files(
     return ok(
         {
             "parent_id": parent_id,
-            "items": [_to_file_entry(item).model_dump() for item in items],
+            "items": [FileService.serialize_entry(item) for item in items],
             "total": total,
             "nextCursor": next_cursor,
         }
@@ -95,7 +94,7 @@ async def search_files(
     return ok(
         {
             "keyword": term,
-            "items": [_to_file_entry(item).model_dump() for item in items],
+            "items": [FileService.serialize_entry(item) for item in items],
             "total": total,
             "nextCursor": next_cursor,
         }
@@ -114,7 +113,7 @@ async def get_file(
     db: AsyncSession = Depends(get_async_session),
 ):
     entry = await FileService.get_entry(db=db, user_id=current_user.id, file_id=file_id)
-    return ok(_to_file_entry(entry).model_dump())
+    return ok(FileEntryOut.model_validate(FileService.serialize_entry(entry)).model_dump())
 
 
 @files_router.post(
@@ -134,7 +133,7 @@ async def create_dir(
         parent_id=data.parent_id,
         name=data.name,
     )
-    return ok(_to_file_entry(entry).model_dump(), message="创建成功")
+    return ok(FileEntryOut.model_validate(FileService.serialize_entry(entry)).model_dump(), message="创建成功")
 
 
 @files_router.post(
@@ -151,21 +150,15 @@ async def upload_file(
     current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    if name and len(files) != 1:
-        raise BadRequestException(message="指定名称时仅支持单文件上传")
-    items: list[FileEntryOut] = []
-    for upload in files:
-        entry = await FileService.upload_file(
-            db=db,
-            user_id=current_user.id,
-            parent_id=parent_id,
-            name=name,
-            upload=upload,
-            overwrite=overwrite,
-            commit=False,
-        )
-        items.append(_to_file_entry(entry))
-    await FileService.refresh_used_space(db, current_user.id)
+    entries = await FileService.upload_files_batch(
+        db=db,
+        user_id=current_user.id,
+        files=files,
+        parent_id=parent_id,
+        name=name,
+        overwrite=overwrite,
+    )
+    items = [FileEntryOut.model_validate(FileService.serialize_entry(entry)) for entry in entries]
     return ok(FileUploadOut(items=items).model_dump(), message="上传成功")
 
 
@@ -198,7 +191,7 @@ async def update_file(
             target_parent_id=data.parent_id,
             new_name=data.name,
         )
-    return ok(_to_file_entry(entry).model_dump(), message="更新成功")
+    return ok(FileEntryOut.model_validate(FileService.serialize_entry(entry)).model_dump(), message="更新成功")
 
 
 @files_router.delete(
@@ -212,18 +205,16 @@ async def delete_files(
     current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    success: list[int] = []
-    failed: list[FileDeleteFailure] = []
-    for file_id in data.file_ids:
-        try:
-            await FileService.delete_entry(
-                db=db, user_id=current_user.id, file_id=file_id, commit=False
-            )
-            success.append(file_id)
-        except Exception as exc:
-            failed.append(FileDeleteFailure(file_id=file_id, error=str(exc)))
-    if success:
-        await FileService.refresh_used_space(db, current_user.id)
+    result = await FileService.delete_entries_batch(
+        db=db,
+        user_id=current_user.id,
+        file_ids=data.file_ids,
+    )
+    success = [int(v) for v in result.get("success", [])]
+    failed = [
+        FileDeleteFailure(file_id=int(item["file_id"]), error=str(item["error"]))
+        for item in result.get("failed", [])
+    ]
     return ok(FileDeleteBatchOut(success=success, failed=failed).model_dump())
 
 
@@ -307,25 +298,11 @@ async def save_text(
     current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    entry = await FileService.save_text_file(
-        db, file_id, data.content, current_user.id, data.overwrite
+    entry = await FileService.save_text_file_with_refresh(
+        db=db,
+        file_id=file_id,
+        content=data.content,
+        user_id=current_user.id,
+        overwrite=data.overwrite,
     )
-    await FileService.refresh_used_space(db, current_user.id)
-    return ok(_to_file_entry(entry).model_dump(), message="保存成功")
-
-
-def _to_file_entry(entry) -> FileEntryOut:
-    rel_path = rel_path_from_storage(entry.user_id, entry.storage_path)
-    return FileEntryOut(
-        id=entry.id,
-        user_id=entry.user_id,
-        parent_id=entry.parent_id,
-        name=entry.name,
-        path=rel_path,
-        is_dir=entry.is_dir,
-        size=entry.size,
-        mime_type=entry.mime_type,
-        etag=entry.etag,
-        created_at=entry.created_at,
-        updated_at=entry.updated_at,
-    )
+    return ok(FileEntryOut.model_validate(FileService.serialize_entry(entry)).model_dump(), message="保存成功")

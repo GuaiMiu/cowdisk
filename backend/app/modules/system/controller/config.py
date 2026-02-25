@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from app.core.errors.exceptions import NoPermission
 from app.core.response import ApiResponse, ok
 from app.modules.admin.models.user import User
 from app.modules.admin.services.auth import get_user_permissions
 from app.modules.system.deps import get_config, get_config_service
-from app.modules.system.permissions import build_config_permission
 from app.modules.system.schemas.config_center import (
     ConfigBatchUpdateIn,
     ConfigGroupDetailOut,
@@ -15,9 +13,7 @@ from app.modules.system.schemas.config_center import (
 )
 from app.modules.system.services.config import ConfigCenterService
 from app.modules.system.typed.config import Config
-from app.modules.system.typed.specs import REGISTRY
 from app.shared.deps import require_permissions, require_user
-from app.shared.permission_match import has_permission
 
 system_config_router = APIRouter(
     prefix="/admin/system/config",
@@ -37,14 +33,11 @@ async def list_config_groups(
     user_permissions: list[str] = Depends(get_user_permissions),
 ):
     all_groups = await service.list_groups()
-    if current_user.is_superuser:
-        groups = all_groups
-    else:
-        groups = [
-            group
-            for group in all_groups
-            if has_permission(user_permissions, build_config_permission(group, "read"))
-        ]
+    groups = service.list_groups_for_user(
+        all_groups,
+        current_user=current_user,
+        user_permissions=user_permissions,
+    )
     return ok(ConfigGroupListOut(groups=groups).model_dump())
 
 
@@ -59,10 +52,11 @@ async def get_group_config(
     current_user: User = Depends(require_user),
     user_permissions: list[str] = Depends(get_user_permissions),
 ):
-    if not current_user.is_superuser:
-        required = build_config_permission(group, "read")
-        if not has_permission(user_permissions, required):
-            raise NoPermission("无权查看该配置分组")
+    service.assert_can_read_group(
+        group,
+        current_user=current_user,
+        user_permissions=user_permissions,
+    )
     items = await service.list_group_specs_with_values(group)
     return ok(ConfigGroupDetailOut(group=group, items=items).model_dump())
 
@@ -78,17 +72,11 @@ async def update_configs(
     current_user: User = Depends(require_user),
     user_permissions: list[str] = Depends(get_user_permissions),
 ):
-    if not current_user.is_superuser:
-        required_permissions: set[str] = set()
-        for item in payload.items:
-            key = item.key.strip()
-            spec = REGISTRY.get(key)
-            if not spec:
-                continue
-            required_permissions.add(build_config_permission(spec.group, "write"))
-        for required in required_permissions:
-            if not has_permission(user_permissions, required):
-                raise NoPermission("无权修改该配置分组")
+    service.assert_can_update_items(
+        payload.items,
+        current_user=current_user,
+        user_permissions=user_permissions,
+    )
 
     result = await service.update_batch(
         items=[item.model_dump() for item in payload.items],

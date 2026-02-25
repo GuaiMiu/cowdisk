@@ -13,8 +13,9 @@ from pathlib import Path
 import secrets
 from typing import Callable, NoReturn
 
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from redis import asyncio as aioredis
@@ -30,6 +31,7 @@ from app.modules.system.services.setup_fields import (
     get_setup_defaults,
 )
 from app.modules.system.typed.keys import ConfigKey
+from app.modules.system.typed.config import Config
 from app.modules.system.typed.specs import get_default
 from app.modules.admin.models.user import User
 
@@ -313,6 +315,37 @@ class SetupService:
             "redis_username": redis_username,
             "redis_db": cls._as_int(merged.get("redis_db"), 0),
             "storage_path": str(merged.get("storage_path") or ""),
+        }
+
+    @classmethod
+    async def get_public_config(cls, config: Config) -> dict[str, object]:
+        site_name = (settings.APP_NAME or "").strip() or str(
+            get_default(ConfigKey.SYSTEM_SITE_NAME, "CowDisk")
+        )
+        site_logo_url = ""
+        site_favicon_url = ""
+        login_background_url = ""
+        theme_image_url = ""
+        office_enabled = False
+        if InstallStateService.get_status().phase == "DONE":
+            try:
+                dynamic_site_name = await config.system.site_name()
+                if (dynamic_site_name or "").strip():
+                    site_name = dynamic_site_name.strip()
+                site_logo_url = (await config.system.site_logo_url() or "").strip()
+                site_favicon_url = (await config.system.site_favicon_url() or "").strip()
+                login_background_url = (await config.system.login_background_url() or "").strip()
+                theme_image_url = (await config.system.theme_image_url() or "").strip()
+                office_enabled = bool(await config.office.enabled())
+            except (OperationalError, ProgrammingError):
+                pass
+        return {
+            "site_name": site_name,
+            "site_logo_url": site_logo_url,
+            "site_favicon_url": site_favicon_url,
+            "login_background_url": login_background_url,
+            "theme_image_url": theme_image_url,
+            "office_enabled": office_enabled,
         }
 
     @classmethod

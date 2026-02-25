@@ -9,6 +9,9 @@
 from datetime import datetime, timedelta
 from pathlib import PurePosixPath
 import mimetypes
+from uuid import uuid4
+
+from fastapi import Request
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -16,6 +19,7 @@ from app.core.errors.exceptions import (
     BadRequestException,
     FileNotFound,
     ShareCodeInvalid,
+    ShareCodeRequired,
     ShareExpired,
     ShareInvalidExpireAt,
     ShareNotFolder,
@@ -65,6 +69,50 @@ class ShareService:
         return f"share:access:{token}:{access_token}"
 
     @staticmethod
+    def get_access_token_from_request(request: Request) -> str | None:
+        query_token = request.query_params.get("accessToken")
+        if query_token:
+            return query_token
+        auth = request.headers.get("authorization")
+        if not auth:
+            return None
+        prefix = "bearer "
+        if not auth.lower().startswith(prefix):
+            return None
+        token = auth[len(prefix) :].strip()
+        return token or None
+
+    @staticmethod
+    def build_locked_share_payload(share: dict) -> dict:
+        return {
+            "locked": True,
+            "share": {
+                "name": share.get("name"),
+                "resourceType": share.get("resourceType"),
+                "expiresAt": share.get("expiresAt"),
+                "ownerName": share.get("ownerName"),
+            },
+        }
+
+    @classmethod
+    async def ensure_public_share_access(
+        cls,
+        *,
+        token: str,
+        share: dict,
+        request: Request,
+        redis,
+    ) -> None:
+        if not share.get("hasCode"):
+            return
+        access_token = cls.get_access_token_from_request(request)
+        if not access_token:
+            raise ShareCodeRequired()
+        valid = await redis.get(cls.share_access_key(token, access_token))
+        if not valid:
+            raise ShareCodeRequired()
+
+    @staticmethod
     def _to_ms(dt: datetime) -> int:
         return int(dt.timestamp() * 1000)
 
@@ -82,6 +130,125 @@ class ShareService:
             "code": share.code if include_code else None,
             "status": share.status,
         }
+
+    @classmethod
+    async def get_public_share_detail(
+        cls,
+        *,
+        token: str,
+        request: Request,
+        redis,
+        db: AsyncSession,
+    ) -> dict:
+        user_id, share = await cls.resolve_share(token, db)
+        if share.get("hasCode"):
+            access_token = cls.get_access_token_from_request(request)
+            if not access_token:
+                return cls.build_locked_share_payload(share)
+            key = cls.share_access_key(token, access_token)
+            valid = await redis.get(key)
+            if not valid:
+                return cls.build_locked_share_payload(share)
+        share_public = dict(share)
+        share_public.pop("code", None)
+        file_meta = await cls.get_share_file_meta(share, user_id, db)
+        return {"locked": False, "share": share_public, "fileMeta": file_meta}
+
+    @classmethod
+    async def unlock_public_share(
+        cls,
+        *,
+        token: str,
+        code: str,
+        redis,
+        db: AsyncSession,
+    ) -> dict:
+        _, share = await cls.resolve_share(token, db)
+        if not share.get("hasCode"):
+            return {"ok": True}
+        if code != share.get("code"):
+            raise ShareCodeInvalid()
+        access_token = uuid4().hex
+        ttl = 86400 * 7
+        expires_at = share.get("expiresAt")
+        if expires_at:
+            ttl = max(
+                int((int(expires_at) - cls._to_ms(datetime.now())) / 1000),
+                60,
+            )
+        await redis.set(cls.share_access_key(token, access_token), "1", ex=ttl)
+        return {"accessToken": access_token}
+
+    @classmethod
+    async def list_public_share_entries_page(
+        cls,
+        *,
+        token: str,
+        request: Request,
+        redis,
+        db: AsyncSession,
+        parent_id: int | None,
+        cursor: str | None,
+        limit: int,
+    ) -> dict:
+        user_id, share = await cls.resolve_share(token, db)
+        await cls.ensure_public_share_access(
+            token=token,
+            share=share,
+            request=request,
+            redis=redis,
+        )
+        items = await cls.list_share_entries(share, user_id, db, parent_id)
+        offset = int(cursor) if cursor and cursor.isdigit() else 0
+        end = offset + max(1, min(limit, 100))
+        next_cursor = str(end) if end < len(items) else None
+        return {"items": items[offset:end], "nextCursor": next_cursor}
+
+    @classmethod
+    async def get_public_share_content_response(
+        cls,
+        *,
+        token: str,
+        request: Request,
+        redis,
+        db: AsyncSession,
+        file_id: int | None,
+        disposition: str,
+    ):
+        user_id, share = await cls.resolve_share(token, db)
+        await cls.ensure_public_share_access(
+            token=token,
+            share=share,
+            request=request,
+            redis=redis,
+        )
+        file_path = await cls.download_share_file(share, user_id, db, file_id)
+        return FileService.build_download_response(
+            request=request,
+            file_path=file_path,
+            filename=file_path.name,
+            inline=disposition == "inline",
+            background=None,
+        )
+
+    @classmethod
+    async def save_public_share_to_user_with_refresh(
+        cls,
+        *,
+        token: str,
+        target_user_id: int,
+        target_parent_id: int | None,
+        db: AsyncSession,
+    ) -> None:
+        owner_id, share = await cls.resolve_share(token, db)
+        await cls.save_share_to_user(
+            share=share,
+            owner_id=owner_id,
+            target_user_id=target_user_id,
+            target_parent_id=target_parent_id,
+            db=db,
+        )
+        await FileService.refresh_used_space(db, target_user_id)
 
     @staticmethod
     async def _share_resource_exists(

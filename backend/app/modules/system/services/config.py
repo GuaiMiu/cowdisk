@@ -16,8 +16,10 @@ from app.audit.constants import AUDIT_OUTBOX_EVENT_TYPE, AuditOutboxStatus
 from app.audit.models import AuditOutbox
 from app.core.audit_context import get_audit_context
 from app.core.config import settings
-from app.core.errors.exceptions import BadRequestException
+from app.core.errors.exceptions import BadRequestException, NoPermission
+from app.modules.admin.models.user import User
 from app.modules.system.repo.config import ConfigRepository
+from app.modules.system.permissions import build_config_permission
 from app.modules.system.services.providers import (
     DefaultConfigProvider,
     DynamicConfigProvider,
@@ -28,6 +30,7 @@ from app.modules.system.services.providers import (
 from app.modules.system.typed.config import Config, ConfigProvider
 from app.modules.system.typed.keys import SECRET_MASK
 from app.modules.system.typed.specs import ConfigSpec, GROUPS, REGISTRY
+from app.shared.permission_match import has_permission
 
 
 class DistributedConfigCache(Protocol):
@@ -331,6 +334,54 @@ class ConfigCenterService:
 
     async def list_groups(self) -> list[str]:
         return list(GROUPS)
+
+    @staticmethod
+    def list_groups_for_user(
+        all_groups: list[str],
+        *,
+        current_user: User,
+        user_permissions: list[str],
+    ) -> list[str]:
+        if current_user.is_superuser:
+            return all_groups
+        return [
+            group
+            for group in all_groups
+            if has_permission(user_permissions, build_config_permission(group, "read"))
+        ]
+
+    @staticmethod
+    def assert_can_read_group(
+        group: str,
+        *,
+        current_user: User,
+        user_permissions: list[str],
+    ) -> None:
+        if current_user.is_superuser:
+            return
+        required = build_config_permission(group, "read")
+        if not has_permission(user_permissions, required):
+            raise NoPermission("无权查看该配置分组")
+
+    @staticmethod
+    def assert_can_update_items(
+        items: list[Any],
+        *,
+        current_user: User,
+        user_permissions: list[str],
+    ) -> None:
+        if current_user.is_superuser:
+            return
+        required_permissions: set[str] = set()
+        for item in items:
+            key = str(getattr(item, "key", "")).strip()
+            spec = REGISTRY.get(key)
+            if not spec:
+                continue
+            required_permissions.add(build_config_permission(spec.group, "write"))
+        for required in required_permissions:
+            if not has_permission(user_permissions, required):
+                raise NoPermission("无权修改该配置分组")
 
     async def list_group_specs_with_values(self, group: str) -> list[dict[str, Any]]:
         specs = [spec for spec in REGISTRY.values() if spec.group == group]

@@ -19,6 +19,7 @@ import jwt
 from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 from jwt import InvalidTokenError
+from pydantic import ValidationError
 from redis import asyncio as aioredis
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -32,8 +33,12 @@ from app.core.errors.exceptions import (
     InvalidCredentials,
     LoginRateLimited,
     NoPermission,
+    RefreshRateLimited,
+    RefreshTokenInvalid,
+    SessionEnvChanged,
     Unauthorized,
     UserConflict,
+    UserNotFound,
 )
 from app.enum.redis import RedisInitKeyEnum
 from app.modules.admin.dao.menu import menu_curd
@@ -41,7 +46,13 @@ from app.modules.admin.dao.user import user_crud
 from app.modules.admin.models.menu import Menu
 from app.modules.admin.models.role import Role
 from app.modules.admin.models.user import User, default_total_space_bytes
-from app.modules.admin.schemas.auth import TokenPayload, UserLoginIn, UserRegisterIn
+from app.modules.admin.schemas.auth import (
+    TokenPayload,
+    UserLoginIn,
+    UserProfileUpdateIn,
+    UserRegisterIn,
+)
+from app.modules.admin.schemas.user import UserOut
 from app.modules.system.typed.config import Config
 from app.shared.permission_match import has_permission
 from app.utils.logger import logger
@@ -361,6 +372,134 @@ class AuthService:
         )
 
     @classmethod
+    async def _issue_session_tokens(
+        cls,
+        *,
+        db_user: User,
+        redis: aioredis.Redis,
+        user_agent: str | None,
+        client_ip: str | None,
+        purge_session_id: str | None = None,
+    ) -> dict[str, str]:
+        session_id = secrets.token_urlsafe(32)
+        refresh_token = cls.create_refresh_token()
+        access_token = await cls.create_access_token(
+            TokenPayload(id=db_user.id, session_id=session_id, username=db_user.username)
+        )
+        await cls.bind_session(
+            redis,
+            user_id=db_user.id,
+            session_id=session_id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            user_agent=user_agent,
+            login_ip=client_ip,
+        )
+        if purge_session_id:
+            await cls.purge_session(redis, session_id=purge_session_id, user_id=db_user.id)
+        return {
+            "access_token": access_token,
+            "session_id": session_id,
+            "refresh_token": refresh_token,
+        }
+
+    @classmethod
+    async def login_session(
+        cls,
+        *,
+        db: AsyncSession,
+        redis: aioredis.Redis,
+        username: str,
+        password: str,
+        client_ip: str | None,
+        user_agent: str | None,
+    ) -> dict[str, str]:
+        allowed = await cls.apply_rate_limit(
+            redis,
+            action="login",
+            identifier=client_ip or "unknown",
+            limit=settings.AUTH_LOGIN_RATE_LIMIT,
+            window_seconds=settings.AUTH_LOGIN_RATE_WINDOW,
+        )
+        if not allowed:
+            logger.warning("登录限流触发 ip=%s", client_ip or "")
+            raise LoginRateLimited()
+        if not username or not password:
+            raise InvalidCredentials()
+        try:
+            login_user = UserLoginIn(username=username, password=password)
+        except ValidationError:
+            raise BadRequestException(message="登录参数校验失败")
+        db_user = await cls.login(
+            db=db,
+            redis=redis,
+            login_user=login_user,
+            client_ip=client_ip,
+        )
+        return await cls._issue_session_tokens(
+            db_user=db_user,
+            redis=redis,
+            user_agent=user_agent,
+            client_ip=client_ip,
+        )
+
+    @classmethod
+    async def refresh_session(
+        cls,
+        *,
+        db: AsyncSession,
+        redis: aioredis.Redis,
+        session_id: str | None,
+        refresh_token: str | None,
+        client_ip: str | None,
+        user_agent: str | None,
+    ) -> dict[str, str]:
+        allowed = await cls.apply_rate_limit(
+            redis,
+            action="refresh",
+            identifier=client_ip or "unknown",
+            limit=settings.AUTH_REFRESH_RATE_LIMIT,
+            window_seconds=settings.AUTH_REFRESH_RATE_WINDOW,
+        )
+        if not allowed:
+            raise RefreshRateLimited()
+        if not session_id or not refresh_token:
+            raise RefreshTokenInvalid(message="请先登录")
+
+        user_id = await cls.get_refresh_user_id(
+            redis,
+            session_id=session_id,
+            refresh_token=refresh_token,
+        )
+        if not user_id:
+            raise RefreshTokenInvalid(message="请先登录")
+
+        fingerprint_ok = await cls.validate_session_fingerprint(
+            redis,
+            session_id=session_id,
+            user_agent=user_agent,
+            login_ip=client_ip,
+        )
+        if not fingerprint_ok:
+            raise SessionEnvChanged()
+
+        rotate_allowed = await cls.apply_refresh_rotate_limit(redis, user_id=int(user_id))
+        if not rotate_allowed:
+            raise RefreshTokenInvalid(message="刷新次数过多，请重新登录")
+
+        db_user = await user_crud.get_by_id(db, user_id)
+        if not db_user:
+            raise UserNotFound(message="用户不存在，请重新登录")
+
+        return await cls._issue_session_tokens(
+            db_user=db_user,
+            redis=redis,
+            user_agent=user_agent,
+            client_ip=client_ip,
+            purge_session_id=session_id,
+        )
+
+    @classmethod
     @audited(
         "LOGIN",
         resource_type="USER",
@@ -551,6 +690,79 @@ class AuthService:
     ) -> bool:
         await cls.purge_session(redis, session_id=session_id, user_id=user_id)
         return True
+
+    @classmethod
+    def sanitize_permissions(cls, permissions: list[object]) -> list[str]:
+        return [perm for perm in permissions if isinstance(perm, str)]
+
+    @classmethod
+    def serialize_current_user(cls, user: User) -> dict:
+        return UserOut.model_validate(user).model_dump(exclude={"roles"})
+
+    @classmethod
+    async def update_current_user_profile(
+        cls,
+        *,
+        db: AsyncSession,
+        current_user: User,
+        payload: UserProfileUpdateIn,
+    ) -> User:
+        db_user = await user_crud.get_by_id(db, current_user.id)
+        if not db_user:
+            raise UserNotFound()
+
+        if payload.mail is not None and payload.mail != db_user.mail:
+            exists = await user_crud.get_by_field(db, "mail", payload.mail)
+            if exists and exists.id != db_user.id:
+                raise UserConflict(message=f"邮箱 {payload.mail} 已被使用")
+            db_user.mail = payload.mail
+
+        if payload.nickname is not None:
+            db_user.nickname = payload.nickname
+
+        if payload.new_password is not None:
+            if not db_user.verify_password(payload.current_password or ""):
+                raise BadRequestException(message="当前密码不正确")
+            db_user.password = User.create_password(payload.new_password)
+
+        db_user.update_by = db_user.username
+        return await user_crud.update(db, db_user)
+
+    @classmethod
+    async def list_login_devices(
+        cls,
+        *,
+        redis: aioredis.Redis,
+        user_id: int,
+    ) -> list[dict]:
+        session_ids = await redis.smembers(cls._user_sessions_key(user_id))
+        devices: list[dict] = []
+        for sid in session_ids:
+            session_id = sid.decode("utf-8") if isinstance(sid, bytes) else str(sid)
+            device_key = cls._device_info_key(session_id)
+            device_info = await redis.get(device_key)
+            if not device_info:
+                await redis.srem(cls._user_sessions_key(user_id), sid)
+                continue
+            try:
+                raw_info = cls._normalize_token(device_info)
+                info = json.loads(raw_info) if isinstance(raw_info, str) else raw_info
+            except json.JSONDecodeError:
+                await redis.srem(cls._user_sessions_key(user_id), sid)
+                await redis.delete(device_key)
+                continue
+            if not isinstance(info, dict):
+                await redis.srem(cls._user_sessions_key(user_id), sid)
+                await redis.delete(device_key)
+                continue
+            devices.append(
+                {
+                    "session_id": session_id,
+                    "user_agent": info.get("user_agent"),
+                    "login_ip": info.get("login_ip"),
+                }
+            )
+        return devices
 
     @classmethod
     async def get_request_info(cls, request: Request) -> dict:

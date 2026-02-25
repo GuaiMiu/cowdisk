@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Download, ExternalLink, Maximize, Minimize, X } from 'lucide-vue-next'
 import { useOverlayScrollbar } from '@/composables/useOverlayScrollbar'
+import { isMobileLikeDevice } from '@/utils/device'
 
 const props = withDefaults(
   defineProps<{
@@ -42,7 +43,6 @@ const {
   onThumbMouseDown,
 } = useOverlayScrollbar()
 
-let mobileQuery: MediaQueryList | null = null
 let renderToken = 0
 let activeDoc: { destroy: () => Promise<void> } | null = null
 
@@ -97,7 +97,7 @@ const onFullscreenChange = () => {
 }
 
 const updateViewport = () => {
-  isMobile.value = mobileQuery?.matches ?? window.innerWidth <= 768
+  isMobile.value = isMobileLikeDevice()
 }
 
 const clearPdfjsView = () => {
@@ -232,25 +232,12 @@ watch(
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
   document.addEventListener('fullscreenchange', onFullscreenChange)
-  mobileQuery = window.matchMedia('(max-width: 768px)')
   updateViewport()
-  if (typeof mobileQuery.addEventListener === 'function') {
-    mobileQuery.addEventListener('change', updateViewport)
-  } else {
-    mobileQuery.addListener(updateViewport)
-  }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
   document.removeEventListener('fullscreenchange', onFullscreenChange)
-  if (mobileQuery) {
-    if (typeof mobileQuery.removeEventListener === 'function') {
-      mobileQuery.removeEventListener('change', updateViewport)
-    } else {
-      mobileQuery.removeListener(updateViewport)
-    }
-  }
   clearPdfjsView()
 })
 </script>

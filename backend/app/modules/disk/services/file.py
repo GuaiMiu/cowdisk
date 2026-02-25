@@ -1125,6 +1125,139 @@ class FileService:
         return total
 
     @classmethod
+    def serialize_entry(cls, entry: File) -> dict:
+        rel_path = rel_path_from_storage(entry.user_id, entry.storage_path)
+        return {
+            "id": entry.id,
+            "user_id": entry.user_id,
+            "parent_id": entry.parent_id,
+            "name": entry.name,
+            "path": rel_path,
+            "is_dir": entry.is_dir,
+            "size": entry.size,
+            "mime_type": entry.mime_type,
+            "etag": entry.etag,
+            "created_at": entry.created_at,
+            "updated_at": entry.updated_at,
+        }
+
+    @classmethod
+    async def upload_files_batch(
+        cls,
+        *,
+        db: AsyncSession,
+        user_id: int,
+        files: list[UploadFile],
+        parent_id: int | None,
+        name: str | None,
+        overwrite: bool,
+    ) -> list[File]:
+        if name and len(files) != 1:
+            raise BadRequestException(message="指定名称时仅支持单文件上传")
+        items: list[File] = []
+        for upload in files:
+            entry = await cls.upload_file(
+                db=db,
+                user_id=user_id,
+                parent_id=parent_id,
+                name=name,
+                upload=upload,
+                overwrite=overwrite,
+                commit=False,
+            )
+            items.append(entry)
+        await cls.refresh_used_space(db, user_id)
+        return items
+
+    @classmethod
+    async def delete_entries_batch(
+        cls,
+        *,
+        db: AsyncSession,
+        user_id: int,
+        file_ids: list[int],
+    ) -> dict:
+        success: list[int] = []
+        failed: list[dict[str, str | int]] = []
+        for file_id in file_ids:
+            try:
+                await cls.delete_entry(db=db, user_id=user_id, file_id=file_id, commit=False)
+                success.append(file_id)
+            except Exception as exc:
+                failed.append({"file_id": file_id, "error": str(exc)})
+        if success:
+            await cls.refresh_used_space(db, user_id)
+        return {"success": success, "failed": failed}
+
+    @classmethod
+    async def save_text_file_with_refresh(
+        cls,
+        *,
+        db: AsyncSession,
+        file_id: int,
+        content: str,
+        user_id: int,
+        overwrite: bool,
+    ) -> File:
+        entry = await cls.save_text_file(db, file_id, content, user_id, overwrite)
+        await cls.refresh_used_space(db, user_id)
+        return entry
+
+    @classmethod
+    async def finalize_upload_with_refresh(
+        cls,
+        *,
+        db: AsyncSession,
+        redis,
+        user_id: int,
+        upload_id: str,
+        parent_id: int | None,
+        name: str | None,
+        overwrite: bool,
+        mime_type: str | None,
+        total_parts: int,
+    ) -> File:
+        entry = await cls.finalize_upload(
+            db=db,
+            redis=redis,
+            user_id=user_id,
+            upload_id=upload_id,
+            parent_id=parent_id,
+            name=name,
+            overwrite=overwrite,
+            mime_type=mime_type,
+            total_parts=total_parts,
+            commit=False,
+        )
+        await cls.refresh_used_space(db, user_id)
+        return entry
+
+    @classmethod
+    async def restore_trash_with_refresh(
+        cls,
+        *,
+        file_id: int,
+        user_id: int,
+        db: AsyncSession,
+    ) -> File:
+        entry = await cls.restore_trash(file_id, user_id, db)
+        await cls.refresh_used_space(db, user_id)
+        return entry
+
+    @classmethod
+    async def batch_restore_trash_with_refresh(
+        cls,
+        *,
+        ids: list[int],
+        user_id: int,
+        db: AsyncSession,
+    ) -> dict:
+        result = await cls.batch_restore_trash(ids, user_id, db)
+        if result.get("success"):
+            await cls.refresh_used_space(db, user_id)
+        return result
+
+    @classmethod
     async def _collect_descendants(
         cls,
         db: AsyncSession,
@@ -2416,6 +2549,22 @@ class FileService:
             "output_path": decoded.get("output_path", ""),
             "usage_updated": decoded.get("usage_updated", "0"),
         }
+
+    @classmethod
+    async def refresh_job_usage_if_ready(
+        cls,
+        status: dict,
+        user_id: int,
+        job_key: str,
+        redis,
+        db: AsyncSession,
+    ) -> None:
+        if status.get("status") != "ready" or status.get("usage_updated") == "1":
+            return
+        await cls.refresh_used_space(db, user_id)
+        await redis.hset(job_key, mapping={"usage_updated": "1"})
+        await redis.expire(job_key, 10800)
+        status["usage_updated"] = "1"
 
     @classmethod
     async def get_download_job_status(cls, job_id: str, user_id: int, redis) -> dict:

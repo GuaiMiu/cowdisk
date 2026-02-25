@@ -72,7 +72,7 @@ async def compress_status(
     db: AsyncSession = Depends(get_async_session),
 ):
     status = await FileService.get_compress_job_status(job_id, current_user.id, redis)
-    await _refresh_usage_if_needed(
+    await FileService.refresh_job_usage_if_ready(
         status, current_user.id, f"disk:compress:{job_id}", redis, db
     )
     return ok({"status": status.get("status"), "message": status.get("message", "")})
@@ -109,17 +109,7 @@ async def extract_status(
     db: AsyncSession = Depends(get_async_session),
 ):
     status = await FileService.get_extract_job_status(job_id, current_user.id, redis)
-    await _refresh_usage_if_needed(
+    await FileService.refresh_job_usage_if_ready(
         status, current_user.id, f"disk:extract:{job_id}", redis, db
     )
     return ok({"status": status.get("status"), "message": status.get("message", "")})
-
-
-async def _refresh_usage_if_needed(
-    status: dict, user_id: int, job_key: str, redis, db: AsyncSession
-) -> None:
-    if status.get("status") == "ready" and status.get("usage_updated") != "1":
-        await FileService.refresh_used_space(db, user_id)
-        await redis.hset(job_key, mapping={"usage_updated": "1"})
-        await redis.expire(job_key, 10800)
-        status["usage_updated"] = "1"

@@ -15,7 +15,6 @@ from app.core.database import get_async_redis, get_async_session
 from app.core.errors.exceptions import BadRequestException
 from app.core.response import ApiResponse, ok
 from app.modules.admin.models.user import User
-from app.modules.disk.domain.paths import rel_path_from_storage
 from app.modules.disk.schemas.disk import (
     DiskUploadFinalizeIn,
     DiskUploadInitIn,
@@ -168,7 +167,7 @@ async def finalize_upload(
 ):
     entry = await _with_config(
         config,
-        FileService.finalize_upload,
+        FileService.finalize_upload_with_refresh,
         db=db,
         redis=redis,
         user_id=current_user.id,
@@ -178,15 +177,8 @@ async def finalize_upload(
         overwrite=data.overwrite,
         mime_type=data.mime_type,
         total_parts=data.total_parts,
-        commit=False,
     )
-    await _with_config(
-        config,
-        FileService.refresh_used_space,
-        db,
-        current_user.id,
-    )
-    return ok(_to_file_entry(entry).model_dump())
+    return ok(FileEntryOut.model_validate(FileService.serialize_entry(entry)).model_dump())
 
 
 @uploads_router.delete(
@@ -212,20 +204,3 @@ async def cancel_upload(
     )
     return ok(True)
 
-
-
-def _to_file_entry(entry) -> FileEntryOut:
-    rel_path = rel_path_from_storage(entry.user_id, entry.storage_path)
-    return FileEntryOut(
-        id=entry.id,
-        user_id=entry.user_id,
-        parent_id=entry.parent_id,
-        name=entry.name,
-        path=rel_path,
-        is_dir=entry.is_dir,
-        size=entry.size,
-        mime_type=entry.mime_type,
-        etag=entry.etag,
-        created_at=entry.created_at,
-        updated_at=entry.updated_at,
-    )
