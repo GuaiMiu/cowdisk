@@ -98,6 +98,9 @@ const onFullscreenChange = () => {
 
 const updateViewport = () => {
   isMobile.value = isMobileLikeDevice()
+  if (props.open && isMobile.value) {
+    void renderPdfByPdfjs()
+  }
 }
 
 const clearPdfjsView = () => {
@@ -157,7 +160,8 @@ const renderPdfByPdfjs = async () => {
     }
     activeDoc = doc
 
-    const containerWidth = host.clientWidth || Math.max(320, window.innerWidth - 40)
+    const viewportWidth = canvasViewport.value?.clientWidth || host.clientWidth || window.innerWidth
+    const containerWidth = Math.max(1, Math.floor(viewportWidth))
     const dpr = window.devicePixelRatio || 1
 
     for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
@@ -231,12 +235,16 @@ watch(
 
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('resize', updateViewport)
+  window.addEventListener('orientationchange', updateViewport)
   document.addEventListener('fullscreenchange', onFullscreenChange)
   updateViewport()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('resize', updateViewport)
+  window.removeEventListener('orientationchange', updateViewport)
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   clearPdfjsView()
 })
@@ -400,6 +408,7 @@ onBeforeUnmount(() => {
 }
 
 .pdf-preview__pdfjs {
+  width: 100%;
   min-height: 100%;
   display: flex;
   flex-direction: column;
