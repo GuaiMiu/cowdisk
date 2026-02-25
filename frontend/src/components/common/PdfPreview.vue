@@ -45,6 +45,12 @@ const {
 
 let renderToken = 0
 let activeDoc: { destroy: () => Promise<void> } | null = null
+let renderRafId = 0
+let viewportResizeObserver: ResizeObserver | null = null
+let viewportClientWidth = 0
+let pdfjsRuntimePromise: Promise<
+  readonly [typeof import('pdfjs-dist'), { default: string }]
+> | null = null
 
 const close = () => {
   if (document.fullscreenElement) {
@@ -96,25 +102,62 @@ const onFullscreenChange = () => {
   fullscreenActive.value = !!document.fullscreenElement
 }
 
-const updateViewport = () => {
-  isMobile.value = isMobileLikeDevice()
-  if (props.open && isMobile.value) {
-    void renderPdfByPdfjs()
+const destroyActiveDoc = () => {
+  if (!activeDoc) {
+    return
   }
+  void activeDoc.destroy()
+  activeDoc = null
 }
 
-const clearPdfjsView = () => {
-  renderToken += 1
-  pdfjsLoading.value = false
-  pdfjsError.value = ''
+const clearCanvasHost = () => {
   if (canvasHost.value) {
     canvasHost.value.innerHTML = ''
   }
   updateMetrics()
-  if (activeDoc) {
-    void activeDoc.destroy()
-    activeDoc = null
+}
+
+const getPdfContainerWidth = (host: HTMLDivElement) => {
+  const width = canvasViewport.value?.clientWidth || host.clientWidth || window.innerWidth
+  return Math.max(1, Math.floor(width) - 2)
+}
+
+const cancelPdfRenderRequest = () => {
+  if (!renderRafId) {
+    return
   }
+  window.cancelAnimationFrame(renderRafId)
+  renderRafId = 0
+}
+
+const requestPdfRender = () => {
+  if (typeof window === 'undefined') {
+    return
+  }
+  cancelPdfRenderRequest()
+  renderRafId = window.requestAnimationFrame(() => {
+    renderRafId = 0
+    void renderPdfByPdfjs()
+  })
+}
+
+const loadPdfjsRuntime = async () => {
+  if (!pdfjsRuntimePromise) {
+    pdfjsRuntimePromise = Promise.all([
+      import('pdfjs-dist'),
+      import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+    ]) as Promise<readonly [typeof import('pdfjs-dist'), { default: string }]>
+  }
+  return pdfjsRuntimePromise
+}
+
+const clearPdfjsView = () => {
+  cancelPdfRenderRequest()
+  renderToken += 1
+  pdfjsLoading.value = false
+  pdfjsError.value = ''
+  clearCanvasHost()
+  destroyActiveDoc()
 }
 
 const renderPdfByPdfjs = async () => {
@@ -135,18 +178,11 @@ const renderPdfByPdfjs = async () => {
     }
     return
   }
-  host.innerHTML = ''
-  updateMetrics()
-  if (activeDoc) {
-    void activeDoc.destroy()
-    activeDoc = null
-  }
+  clearCanvasHost()
+  destroyActiveDoc()
 
   try {
-    const [pdfjs, workerModule] = await Promise.all([
-      import('pdfjs-dist'),
-      import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
-    ])
+    const [pdfjs, workerModule] = await loadPdfjsRuntime()
     if (token !== renderToken) {
       return
     }
@@ -160,8 +196,7 @@ const renderPdfByPdfjs = async () => {
     }
     activeDoc = doc
 
-    const viewportWidth = canvasViewport.value?.clientWidth || host.clientWidth || window.innerWidth
-    const containerWidth = Math.max(1, Math.floor(viewportWidth))
+    const containerWidth = getPdfContainerWidth(host)
     const dpr = window.devicePixelRatio || 1
 
     for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
@@ -192,12 +227,15 @@ const renderPdfByPdfjs = async () => {
           transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0],
         })
         .promise
-      updateMetrics()
+      if (pageNumber === 1 || pageNumber === doc.numPages) {
+        updateMetrics()
+      }
     }
     if (token !== renderToken) {
       return
     }
     pdfjsLoading.value = false
+    updateMetrics()
   } catch {
     if (token !== renderToken) {
       return
@@ -207,10 +245,42 @@ const renderPdfByPdfjs = async () => {
   }
 }
 
+const disconnectViewportResizeObserver = () => {
+  if (!viewportResizeObserver) {
+    return
+  }
+  viewportResizeObserver.disconnect()
+  viewportResizeObserver = null
+}
+
+const onViewportResize = () => {
+  const width = canvasViewport.value?.clientWidth ?? 0
+  if (width <= 0 || width === viewportClientWidth) {
+    return
+  }
+  viewportClientWidth = width
+  updateMetrics()
+  if (props.open && usePdfjs.value) {
+    requestPdfRender()
+  }
+}
+
+const bindViewportResizeObserver = (node: HTMLDivElement | null) => {
+  disconnectViewportResizeObserver()
+  viewportClientWidth = node?.clientWidth ?? 0
+  if (!node || typeof ResizeObserver === 'undefined') {
+    return
+  }
+  viewportResizeObserver = new ResizeObserver(() => {
+    onViewportResize()
+  })
+  viewportResizeObserver.observe(node)
+}
+
 watch(
   [() => props.open, () => props.src, usePdfjs],
   () => {
-    void renderPdfByPdfjs()
+    requestPdfRender()
   },
   { immediate: true },
 )
@@ -228,6 +298,7 @@ watch(
   canvasViewport,
   (node) => {
     scrollRef.value = node
+    bindViewportResizeObserver(node)
     updateMetrics()
   },
   { immediate: true },
@@ -235,17 +306,14 @@ watch(
 
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
-  window.addEventListener('resize', updateViewport)
-  window.addEventListener('orientationchange', updateViewport)
   document.addEventListener('fullscreenchange', onFullscreenChange)
-  updateViewport()
+  isMobile.value = isMobileLikeDevice()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
-  window.removeEventListener('resize', updateViewport)
-  window.removeEventListener('orientationchange', updateViewport)
   document.removeEventListener('fullscreenchange', onFullscreenChange)
+  disconnectViewportResizeObserver()
   clearPdfjsView()
 })
 </script>
@@ -338,8 +406,8 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   background: var(--color-overlay-strong);
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
   z-index: var(--z-overlay);
 }
 
@@ -385,18 +453,23 @@ onBeforeUnmount(() => {
 
 .pdf-preview__canvas {
   position: relative;
+  flex: 1;
   padding: 0 var(--space-5) var(--space-5);
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 
 .pdf-preview__viewport {
+  width: 100%;
   height: 100%;
+  min-width: 0;
   overflow: hidden;
 }
 
 .pdf-preview__viewport--scrollable {
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .pdf-preview__frame {
@@ -410,6 +483,7 @@ onBeforeUnmount(() => {
 .pdf-preview__pdfjs {
   width: 100%;
   min-height: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
