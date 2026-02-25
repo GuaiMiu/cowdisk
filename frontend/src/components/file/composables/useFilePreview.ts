@@ -37,7 +37,6 @@ export const useFilePreview = (options: UseFilePreviewOptions) => {
   const pdfOpen = ref(false)
   const pdfSrc = ref<string | null>(null)
   const pdfName = ref('')
-  const pdfUrls = ref<string[]>([])
   const pdfRequestId = ref(0)
 
   const videoOpen = ref(false)
@@ -74,8 +73,6 @@ export const useFilePreview = (options: UseFilePreviewOptions) => {
 
   const clearPdfPreview = () => {
     pdfRequestId.value += 1
-    pdfUrls.value.forEach((url) => URL.revokeObjectURL(url))
-    pdfUrls.value = []
     pdfSrc.value = null
     pdfName.value = ''
     pdfOpen.value = false
@@ -166,13 +163,12 @@ export const useFilePreview = (options: UseFilePreviewOptions) => {
     try {
       clearPdfPreview()
       pdfRequestId.value = requestId
-      const result = await options.previewFile(entry.id)
+      const result = await options.issuePreviewUrl(entry.id)
       if (requestId !== pdfRequestId.value) {
         return
       }
-      const url = URL.createObjectURL(result.blob)
-      pdfUrls.value = [url]
-      pdfSrc.value = url
+      const base = import.meta.env.VITE_API_BASE_URL || ''
+      pdfSrc.value = base ? new URL(result.url, base).toString() : result.url
       pdfName.value = entry.name || options.t('fileExplorer.pdfPreviewDefault')
       pdfOpen.value = true
     } catch (error) {
