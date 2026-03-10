@@ -65,6 +65,8 @@ class UserService:
         payload = user.model_dump(exclude_unset=True)
         if not payload.get("password"):
             payload.pop("password", None)
+        else:
+            payload["password"] = User.create_password(payload["password"])
         db_user = db_user.sqlmodel_update(payload)
         db_user.update_by = current_user.username
         user = await user_crud.update(db, db_user)
